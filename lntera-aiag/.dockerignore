@@ -1,0 +1,46 @@
+# Docker build context = lntera-aiag/. Keep it lean: only src/, package*.json,
+# tsconfig.json, scripts/ are needed to run `mastra build`.
+
+# Dependencies & build output (reinstalled/regenerated in the image)
+node_modules
+.mastra
+dist
+src/mastra/public/app
+
+# Frontend — deploys separately on Vercel; backend never imports it at runtime
+web
+
+# Local DB/state (runtime storage is Postgres)
+*.duckdb
+*.duckdb.wal
+*.db
+*.db-*
+
+# Secrets / env — never bake into the image
+.env
+.env.*
+
+# VCS, CI, editor & AI tooling, generated caches
+.git
+.gitignore
+.github
+.vscode
+.cursor
+.claude
+.gemini
+.qoder
+.kiro
+.code-review-graph
+.code-review-graphignore
+.graphifyignore
+graphify-out
+*.bak
+.DS_Store
+.netlify
+.vercel
+
+# Mastra Cloud project link (unused on Railway) + docs/notes
+.mastra-project.json
+supabase
+*.md
+output.txt

@@ -1,0 +1,77 @@
+// Typed client for the per-user chat-session endpoints (`/svc/v1/chat/*`).
+type Api = (path: string, init?: RequestInit) => Promise<Response>;
+
+export interface ChatThread {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HistoryMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+  /** "Provider · model" that produced an assistant turn — cached client-side (server omits it). */
+  model?: string;
+}
+
+export interface MessagesPage {
+  messages: HistoryMessage[];
+  hasMore: boolean;
+  /** createdAt of the oldest loaded message — pass as `before` to load the previous page. */
+  nextBefore: string | null;
+}
+
+/** The shared per-tenant "Notifications" thread id — proactive agent notifications persist here. */
+export function notificationsThreadId(tenant: string): string {
+  return `web:${tenant}:notifications`;
+}
+
+const BASE = '/svc/v1/chat/threads';
+
+export async function listThreads(api: Api): Promise<ChatThread[]> {
+  const res = await api(BASE);
+  if (!res.ok) throw new Error(`Failed to load chats (${res.status}).`);
+  const data = (await res.json()) as { threads?: ChatThread[] };
+  return data.threads ?? [];
+}
+
+export async function createThread(api: Api, title?: string): Promise<ChatThread> {
+  const res = await api(BASE, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  });
+  if (!res.ok) throw new Error(`Failed to create chat (${res.status}).`);
+  return (await res.json()) as ChatThread;
+}
+
+export async function getMessages(
+  api: Api,
+  threadId: string,
+  before?: string | null,
+  limit = 30,
+): Promise<MessagesPage> {
+  const q = new URLSearchParams({ limit: String(limit) });
+  if (before) q.set('before', before);
+  const res = await api(`${BASE}/${encodeURIComponent(threadId)}/messages?${q.toString()}`);
+  if (!res.ok) throw new Error(`Failed to load messages (${res.status}).`);
+  return (await res.json()) as MessagesPage;
+}
+
+export async function renameThread(api: Api, threadId: string, title: string): Promise<ChatThread> {
+  const res = await api(`${BASE}/${encodeURIComponent(threadId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  });
+  if (!res.ok) throw new Error(`Rename failed (${res.status}).`);
+  return (await res.json()) as ChatThread;
+}
+
+export async function deleteThread(api: Api, threadId: string): Promise<void> {
+  const res = await api(`${BASE}/${encodeURIComponent(threadId)}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Delete failed (${res.status}).`);
+}

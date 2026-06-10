@@ -1,0 +1,28 @@
+# Mastra backend container for Railway (and any Docker host).
+# Build context = lntera-aiag/ (set Railway "Root Directory" to lntera-aiag).
+# See RAILWAY.md for the deploy runbook + required env vars.
+# syntax=docker/dockerfile:1
+
+# ── Build stage: install full deps (the `mastra` CLI is a devDependency) and build. ──
+# `mastra build` bundles the server (esbuild/rollup) AND runs `npm install` inside
+# .mastra/output, producing a self-contained output dir (incl. its own node_modules).
+FROM node:22-slim AS builder
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+# ── Runtime stage: copy only the self-contained build output and run it. ──
+FROM node:22-slim AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+# Bind all interfaces so the container is reachable; Railway injects PORT at runtime
+# (the server reads process.env.PORT, default 4111).
+ENV MASTRA_HOST=0.0.0.0
+COPY --from=builder /app/.mastra/output ./
+EXPOSE 4111
+USER node
+# Mastra's documented production entry. (For OpenTelemetry, instead use:
+#   CMD ["node","--import=./instrumentation.mjs","index.mjs"])
+CMD ["node", "index.mjs"]

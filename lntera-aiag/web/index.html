@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <title>Lntera</title>
+    <meta name="description" content="Your business agent — chat and integrations." />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0a0a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Lntera" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="icon" href="%BASE_URL%icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="%BASE_URL%icon.svg" />
+    <!-- Apply the saved theme before paint to avoid a flash of the wrong color scheme. -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('lntera-theme') || 'system';
+          var dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+          var el = document.documentElement;
+          el.classList.toggle('dark', dark);
+          el.style.colorScheme = dark ? 'dark' : 'light';
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

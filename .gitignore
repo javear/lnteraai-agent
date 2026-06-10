@@ -1,0 +1,11 @@
+# Generated tooling output (regenerated locally; do not commit)
+.code-review-graph/
+graphify-out/
+*.bak
+
+# Safety: never commit env files, OS junk, or logs at the repo root
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
