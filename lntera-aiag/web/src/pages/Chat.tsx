@@ -322,6 +322,7 @@ export default function Chat() {
 
     let acc = '';
     let usedModel: string | undefined;
+    let errored = false;
     const apply = (full: string) =>
       setMessages((m) =>
         m.map((x) => (x.id === aiId ? { ...x, content: parseSuggestions(full).body, pending: false } : x)),
@@ -342,18 +343,33 @@ export default function Chat() {
           usedModel = label;
           setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, model: label } : x)));
         },
+        // Show the error/limit message AS the assistant reply (never an empty bubble).
         onTripwire: (code, reason) => {
           if (code === 'groq_not_configured') setConnectProvider('groq');
-          setError(reason);
+          errored = true;
+          const msg = reason || 'Sorry, I couldn’t answer that right now. Please try again.';
+          setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, content: msg, pending: false, tool: null } : x)));
         },
-        onError: (msg) => setError(msg),
+        onError: (msg) => {
+          errored = true;
+          setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, content: msg, pending: false, tool: null } : x)));
+        },
       },
       () => stopRef.current,
     );
 
     const { body, suggestions: sugg } = parseSuggestions(acc);
-    setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, content: body, pending: false, tool: null } : x)));
-    setSuggestions(sugg);
+    if (acc.trim()) {
+      setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, content: body, pending: false, tool: null } : x)));
+      setSuggestions(sugg);
+    } else if (!errored) {
+      // No text and no error surfaced — show a gentle fallback instead of an empty bubble.
+      setMessages((m) =>
+        m.map((x) =>
+          x.id === aiId ? { ...x, content: 'I didn’t get a response — please try again.', pending: false, tool: null } : x,
+        ),
+      );
+    }
     setStreaming(false);
 
     // Persist the turn to the offline cache + float the session to the top of the sidebar.

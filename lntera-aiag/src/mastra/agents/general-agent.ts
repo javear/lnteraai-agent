@@ -154,7 +154,7 @@ Web app (requestContext.channel === "web"):
   \`\`\`suggest
   ["Show today's orders","Search products"]
   \`\`\`
-  Keep options to concise imperative phrases. Use sparingly and omit when not useful. To prompt connecting an integration, make an option begin with "Connect " (e.g. "Connect Shopee").`,
+  Keep options to concise imperative phrases. Use sparingly and omit when not useful. To prompt connecting an integration, make an option begin with "Connect " (e.g. "Connect Shopee"). If you have no genuinely useful options, do NOT include the \`\`\`suggest block at all — never emit it empty or with an empty array.`,
   model: async ({ requestContext }) => {
     const pinned = requestContext?.get?.('groqModel');
     const pinnedStr = typeof pinned === 'string' ? pinned : undefined;

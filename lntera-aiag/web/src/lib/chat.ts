@@ -88,31 +88,60 @@ export async function streamChat(
  * `RESOURCE_EXHAUSTED`, HTTP 429) get a friendly nudge instead of dumping the raw JSON blob — the
  * agent already rolls across models/providers, so this only shows when everything is exhausted.
  */
+/** First retry-after hint (seconds) found in a provider error (Groq/Google/HTTP). */
+function retryAfterSeconds(raw: string): number | null {
+  for (const re of [
+    /(?:try again|retry)(?: again)? in ([\d.]+)\s*s/i,
+    /"?retryDelay"?\s*:\s*"?([\d.]+)s/i,
+    /retry-after["':\s]+([\d.]+)/i,
+  ]) {
+    const n = parseFloat(re.exec(raw)?.[1] ?? '');
+    if (Number.isFinite(n) && n > 0) return Math.ceil(n);
+  }
+  return null;
+}
+
 export function friendlyStreamError(err: unknown): string {
   const raw = err instanceof Error ? err.message : typeof err === 'string' ? err : JSON.stringify(err ?? '');
+  const retry = retryAfterSeconds(raw);
+  const soon = retry ? ` Please try again in about ${retry} second${retry === 1 ? '' : 's'}.` : ' Please try again shortly.';
+
+  // Request too large for the current model (per-request token / TPM ceiling).
+  if (/request too large|reduce your message size|tokens per minute|exceeded.*input token/i.test(raw)) {
+    return `That message was a bit too large for the current model — the agent will try a bigger one. Try a shorter message, or connect another provider (Groq/Gemini) for more headroom.`;
+  }
+  // Rate limit / quota exhausted across providers.
   if (/resource_exhausted|exceeded your current quota|\b429\b|too many requests|rate limit/i.test(raw)) {
-    return "This model's free quota is used up right now. The agent retries other models automatically — for more headroom, connect Groq as well or enable billing on your Gemini key.";
+    return `We're a bit over the request/token limit right now.${soon} Connecting both Groq and Gemini gives the agent more headroom.`;
   }
   return raw || 'Something went wrong. Please try again.';
 }
 
-const SUGGEST_RE = /```suggest\s*([\s\S]*?)```\s*$/;
+const SUGGEST_FENCE = '```suggest';
 
 /**
- * Split a completed assistant message into clean markdown + optional suggestion chips.
- * The agent may end a web reply with a fenced ```suggest ["A","B"]``` block.
+ * Split a completed (or in-progress) assistant message into clean markdown + optional chips.
+ * The agent ends a web reply with a fenced ```suggest ["A","B"]``` block. We strip the LAST such
+ * fence whether it's closed or not — so a partial fence mid-stream never renders as an empty
+ * ```suggest code block, and an empty/malformed block yields no chips and a clean body.
  */
 export function parseSuggestions(text: string): { body: string; suggestions: string[] } {
-  const m = text.match(SUGGEST_RE);
-  if (!m) return { body: text, suggestions: [] };
+  const start = text.lastIndexOf(SUGGEST_FENCE);
+  if (start === -1) return { body: text, suggestions: [] };
+
+  const after = text.slice(start + SUGGEST_FENCE.length);
+  const closeRel = after.indexOf('```');
   let suggestions: string[] = [];
-  try {
-    const parsed = JSON.parse(m[1].trim());
-    if (Array.isArray(parsed)) {
-      suggestions = parsed.map((s) => String(s)).filter(Boolean).slice(0, 4);
+  if (closeRel !== -1) {
+    try {
+      const parsed = JSON.parse(after.slice(0, closeRel).trim());
+      if (Array.isArray(parsed)) {
+        suggestions = parsed.map((s) => String(s)).filter(Boolean).slice(0, 4);
+      }
+    } catch {
+      suggestions = [];
     }
-  } catch {
-    suggestions = [];
   }
-  return { body: text.slice(0, m.index).trimEnd(), suggestions };
+  // Cut the fence (closed or unclosed) off the rendered body.
+  return { body: text.slice(0, start).trimEnd(), suggestions };
 }

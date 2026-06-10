@@ -4,11 +4,7 @@ import { RequestContext } from '@mastra/core/request-context';
 import type { MastraDBMessage } from '@mastra/core/agent';
 import { logErrorBrief } from '../../logger/compact-error';
 import { generalAgent } from '../../agents/general-agent';
-import {
-  allGroqToolModelsRateLimited,
-  groqAllModelsCoolingMessage,
-  isGroqRateLimitError,
-} from '../../models/groq-model-chain';
+import { friendlyAgentLimitMessage } from '../shared/friendly-error';
 import { resolveAgentTextFromResult } from '../shared/agent-result-text';
 import { sanitizeMarkdownTablesForDiscord } from '../../processors/discord-markdown-sanitize';
 import { buildGeneralAgentMemoryBinding } from '../../agents/general-agent-memory';
@@ -181,14 +177,9 @@ export async function handleDiscordMessage(args: HandleDiscordMessageArgs): Prom
     }
   } catch (err) {
     logErrorBrief('[discord] generalAgent.generate failed', err);
-    if (allGroqToolModelsRateLimited(target.tenantId)) {
-      fallbackText = groqAllModelsCoolingMessage();
-    } else if (isGroqRateLimitError(err)) {
-      fallbackText =
-        'Groq is temporarily rate-limited for this workspace. Please wait a moment and try again.';
-    } else {
-      fallbackText = 'Sorry, something went wrong while answering. Please try again.';
-    }
+    // Provider-agnostic apology (Groq + Gemini, incl. retry-after / oversize); generic otherwise.
+    fallbackText =
+      friendlyAgentLimitMessage(err) ?? 'Sorry, something went wrong while answering. Please try again.';
   }
 
   const ctx: DispatchContext = { kind: 'reply', message: fullMessage, client };
