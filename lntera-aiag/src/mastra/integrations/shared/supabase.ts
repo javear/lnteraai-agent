@@ -164,6 +164,27 @@ export async function deleteConnectionsByTenant(
   return (data as unknown[] | null)?.length ?? 0;
 }
 
+/** Delete ONE store connection (tenant-scoped, so a caller can only remove their own store). */
+export async function deleteConnectionByShop(
+  tenantId: Uuid,
+  platform: Platform,
+  externalShopId: string,
+): Promise<number> {
+  const { data, error } = await getSupabase()
+    .from(TABLE)
+    .delete()
+    .eq('tenant_id', tenantId)
+    .eq('platform', platform)
+    .eq('external_shop_id', externalShopId)
+    .select('id');
+  if (error) {
+    throw new Error(
+      `Failed to delete ${platform} connection ${externalShopId} for tenant ${tenantId}: ${error.message}`,
+    );
+  }
+  return (data as unknown[] | null)?.length ?? 0;
+}
+
 export async function getTenantById(id: Uuid): Promise<TenantMaster | null> {
   const { data, error } = await getSupabase()
     .from(TENANTS_TABLE)

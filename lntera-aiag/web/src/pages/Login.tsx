@@ -72,7 +72,7 @@ export default function Login() {
     <div className="flex min-h-dvh items-center justify-center px-5 py-10 sm:py-16">
       <div className="w-full max-w-md animate-fade-in-up">
         <div className="rounded-2xl border bg-card p-6 text-card-foreground shadow-sm sm:p-8">
-          <Logo />
+          <Logo size="md" />
           <h1 className="mt-7 text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">
             {mode === 'signin' ? 'Sign in' : 'Create account'}
           </h1>

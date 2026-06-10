@@ -412,7 +412,7 @@ export default function Chat() {
       <div className="flex flex-1 items-center justify-center px-6">
         <div className="max-w-md animate-fade-in-up text-center">
           <div className="mb-6 flex justify-center">
-            <Logo />
+            <Logo size="lg" />
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">Connect a model to start</h1>
           <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">

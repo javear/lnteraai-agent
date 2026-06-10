@@ -1,6 +1,7 @@
 import { registerApiRoute } from '@mastra/core/server';
 import { z } from 'zod';
 import {
+  deleteConnectionByShop,
   deleteConnectionsByTenant,
   listConnectionsByTenant,
 } from '../../../integrations/shared/supabase';
@@ -277,10 +278,50 @@ export const meDisconnectRoute = registerApiRoute(`${OPEN_API_PREFIX}/me/integra
   },
 });
 
+/** DELETE /svc/v1/me/integrations/:platform/:shopId — disconnect ONE marketplace store (shopee | tiktok). */
+export const meDisconnectStoreRoute = registerApiRoute(
+  `${OPEN_API_PREFIX}/me/integrations/:platform/:shopId`,
+  {
+    method: 'DELETE',
+    requiresAuth: false,
+    openapi: {
+      summary: 'Disconnect a single marketplace store for the current tenant',
+      tags: [...OPENAPI_TAGS.integrations],
+      parameters: [authHeaderParam],
+      responses: { 200: { description: 'Disconnected' }, 400: { description: 'Unsupported platform' }, 401: { description: 'Unauthorized' } },
+    },
+    handler: async (c: MeContext) => {
+      const auth = await resolveTenantFromBearer(c);
+      if (auth instanceof Response) return auth;
+
+      const platform = c.req.param('platform') ?? '';
+      const shopId = c.req.param('shopId') ?? '';
+      if (!isPlatform(platform)) {
+        return openApiJsonError(c, 400, 'unsupported_platform', `Unsupported platform: ${platform}`);
+      }
+      if (!shopId) {
+        return openApiJsonError(c, 400, 'missing_shop', 'A store id is required.');
+      }
+      try {
+        const removed = await deleteConnectionByShop(auth.tenantId, platform, shopId);
+        return c.json({ ok: true, platform, shopId, removed });
+      } catch (err) {
+        return openApiJsonError(
+          c,
+          400,
+          'disconnect_failed',
+          err instanceof Error ? err.message : 'Failed to disconnect store.',
+        );
+      }
+    },
+  },
+);
+
 export const meIntegrationsRoutes = [
   meIntegrationsStatusRoute,
   meConnectUrlRoute,
   meGroqConnectRoute,
   meLlmConnectRoute,
+  meDisconnectStoreRoute,
   meDisconnectRoute,
 ];

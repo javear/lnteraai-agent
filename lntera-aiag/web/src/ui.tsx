@@ -15,18 +15,43 @@ export { Input } from '@/components/ui/input';
 export { Textarea } from '@/components/ui/textarea';
 export { Skeleton } from '@/components/ui/skeleton';
 
-export function Logo({ className }: { className?: string }) {
+const LOGO_SIZES = {
+  sm: { tile: 'h-7 w-7 rounded-lg', svg: 16, gap: 'gap-2', text: 'text-sm' },
+  md: { tile: 'h-9 w-9 rounded-xl', svg: 20, gap: 'gap-2.5', text: 'text-base' },
+  lg: { tile: 'h-12 w-12 rounded-2xl', svg: 26, gap: 'gap-3', text: 'text-xl' },
+} as const;
+
+/** Brand mark: an "L" monogram + spark in a rounded tile, with the "Lntera" wordmark. */
+export function Logo({
+  className,
+  size = 'sm',
+  wordmark = true,
+}: {
+  className?: string;
+  size?: keyof typeof LOGO_SIZES;
+  wordmark?: boolean;
+}) {
+  const s = LOGO_SIZES[size];
   return (
-    <div className={cn('flex items-center gap-2', className)}>
-      <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="2" y="2" width="5" height="5" className="fill-primary-foreground" />
-          <rect x="9" y="2" width="5" height="5" className="fill-primary-foreground" />
-          <rect x="2" y="9" width="5" height="5" className="fill-primary-foreground" />
-          <rect x="9" y="9" width="5" height="5" className="fill-primary-foreground" opacity="0.4" />
+    <div className={cn('flex items-center', s.gap, className)}>
+      <div className={cn('flex shrink-0 items-center justify-center bg-primary', s.tile)}>
+        <svg width={s.svg} height={s.svg} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          {/* "L" monogram */}
+          <path
+            d="M8 5.5a1.4 1.4 0 0 1 2.8 0v9.1h5.1a1.4 1.4 0 0 1 0 2.8H8z"
+            className="fill-primary-foreground"
+          />
+          {/* spark */}
+          <path
+            d="M17 5.2l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8L14.5 7.7l1.8-.7z"
+            className="fill-primary-foreground"
+            opacity="0.7"
+          />
         </svg>
       </div>
-      <span className="text-sm font-semibold tracking-tight">lntera</span>
+      {wordmark ? (
+        <span className={cn('font-semibold tracking-tight text-foreground', s.text)}>Lntera</span>
+      ) : null}
     </div>
   );
 }

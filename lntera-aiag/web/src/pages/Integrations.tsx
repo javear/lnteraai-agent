@@ -77,6 +77,25 @@ export default function Integrations() {
     }
   }
 
+  /** Remove ONE marketplace store (a platform can have several connected). */
+  async function disconnectStore(platform: 'shopee' | 'tiktok', shopId: string, displayName: string) {
+    setBusy(`${platform}:${shopId}`);
+    try {
+      const res = await api(`/svc/v1/me/integrations/${platform}/${encodeURIComponent(shopId)}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        throw new Error(await apiErrorMessage(res, `Remove failed (${res.status}).`));
+      }
+      await refreshStatus(true);
+      toast.success(`${displayName} removed.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="mx-auto w-full max-w-2xl px-5 py-8 sm:px-6 sm:py-10">
       <h1 className="text-2xl font-semibold tracking-tight sm:text-[26px]">Integrations</h1>
@@ -123,23 +142,23 @@ export default function Integrations() {
             onDone={() => refreshStatus(true)}
             onDisconnect={() => disconnect('gemini')}
           />
-          <ShopCard
+          <MarketplaceCard
             name="TikTok Shop"
-            connected={(status?.tiktok.length ?? 0) > 0}
-            detail={status?.tiktok.map((s) => s.shopName || s.openId).join(', ')}
-            busy={busy === 'tiktok'}
+            platform="tiktok"
+            stores={(status?.tiktok ?? []).map((s) => ({ id: s.openId, shopName: s.shopName, region: s.region }))}
+            busy={busy}
             disabled={!online}
             onConnect={() => connectOAuth('tiktok')}
-            onDisconnect={() => disconnect('tiktok')}
+            onRemove={(id, dn) => disconnectStore('tiktok', id, dn)}
           />
-          <ShopCard
+          <MarketplaceCard
             name="Shopee"
-            connected={(status?.shopee.length ?? 0) > 0}
-            detail={status?.shopee.map((s) => s.shopName || s.shopId).join(', ')}
-            busy={busy === 'shopee'}
+            platform="shopee"
+            stores={(status?.shopee ?? []).map((s) => ({ id: s.shopId, shopName: s.shopName, region: null }))}
+            busy={busy}
             disabled={!online}
             onConnect={() => connectOAuth('shopee')}
-            onDisconnect={() => disconnect('shopee')}
+            onRemove={(id, dn) => disconnectStore('shopee', id, dn)}
           />
         </div>
       )}
@@ -259,39 +278,88 @@ function LlmProviderCard({
   );
 }
 
-function ShopCard({
+interface MarketplaceStore {
+  id: string;
+  shopName: string | null;
+  region: string | null;
+}
+
+/** Marketplace card supporting MULTIPLE stores per platform: list each, add more, remove one. */
+function MarketplaceCard({
   name,
-  connected,
-  detail,
+  platform,
+  stores,
   busy,
   disabled,
   onConnect,
-  onDisconnect,
+  onRemove,
 }: {
   name: string;
-  connected: boolean;
-  detail?: string;
-  busy: boolean;
+  platform: 'shopee' | 'tiktok';
+  stores: MarketplaceStore[];
+  busy: string | null;
   disabled: boolean;
   onConnect: () => void;
-  onDisconnect: () => void;
+  onRemove: (shopId: string, displayName: string) => void;
 }) {
+  const count = stores.length;
+  const connecting = busy === platform;
   return (
-    <Row
-      title={name}
-      desc={connected && detail ? detail : `Connect your ${name} shop via OAuth.`}
-      badge={connected ? <Badge tone="success">Connected</Badge> : <Badge tone="neutral">Not connected</Badge>}
-      actions={
-        connected ? (
-          <Button variant="danger" disabled={busy} onClick={onDisconnect}>
-            Disconnect
-          </Button>
-        ) : (
-          <Button disabled={busy || disabled} onClick={onConnect}>
-            Connect
-          </Button>
-        )
-      }
-    />
+    <Card className="transition-shadow hover:shadow-md">
+      <div className="flex flex-col gap-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h3 className="text-[15px] font-semibold">{name}</h3>
+              {count > 0 ? (
+                <Badge tone="success">{count} connected</Badge>
+              ) : (
+                <Badge tone="neutral">Not connected</Badge>
+              )}
+            </div>
+            <p className="mt-1 text-[13px] text-muted-foreground">
+              {count > 0
+                ? 'Add more stores or remove them individually.'
+                : `Connect your ${name} store via OAuth.`}
+            </p>
+          </div>
+          <div className="shrink-0">
+            <Button disabled={connecting || disabled} onClick={onConnect}>
+              {connecting ? 'Connecting…' : count > 0 ? 'Add store' : 'Connect'}
+            </Button>
+          </div>
+        </div>
+
+        {count > 0 ? (
+          <ul className="flex flex-col gap-2 border-t pt-3">
+            {stores.map((s) => {
+              const display = s.shopName || s.id;
+              const removing = busy === `${platform}:${s.id}`;
+              return (
+                <li
+                  key={s.id}
+                  className="flex items-center justify-between gap-3 rounded-lg border bg-muted/30 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-[13px] font-medium">{display}</div>
+                    <div className="truncate text-[11px] text-muted-foreground">
+                      {s.region ? `${s.region} · ` : ''}
+                      {s.id}
+                    </div>
+                  </div>
+                  <Button
+                    variant="danger"
+                    disabled={removing || disabled}
+                    onClick={() => onRemove(s.id, display)}
+                  >
+                    {removing ? 'Removing…' : 'Remove'}
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
+      </div>
+    </Card>
   );
 }

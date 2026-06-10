@@ -332,25 +332,27 @@ export function AppLayout() {
           </Sheet>
 
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-            {/* Mobile top bar */}
-            <header className="flex shrink-0 items-center gap-2 border-b bg-background/80 px-3 py-2 backdrop-blur safe-t sm:hidden">
+            {/* Mobile top bar — fixed height, brand left, controls clustered right. */}
+            <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background/80 px-3 backdrop-blur safe-t sm:hidden">
               <button
                 aria-label="Open menu"
                 onClick={() => setDrawerOpen(true)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                className="-ml-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 <Menu className="h-5 w-5" />
               </button>
-              <div className="flex-1">
-                <Logo />
+              <Logo />
+              <div className="ml-auto flex items-center gap-0.5">
+                {!online ? (
+                  <WifiOff className="mr-1 h-4 w-4 text-muted-foreground" aria-label="Offline" />
+                ) : null}
+                <NotificationBell />
+                <ThemeToggle />
+                <span
+                  className={cn('ml-1 h-2 w-2 rounded-full', anyConnected ? 'bg-success' : 'bg-muted-foreground/40')}
+                  title={anyConnected ? 'Integrations connected' : 'No integrations connected'}
+                />
               </div>
-              {!online ? <WifiOff className="h-4 w-4 text-muted-foreground" aria-label="Offline" /> : null}
-              <NotificationBell />
-              <ThemeToggle />
-              <span
-                className={cn('h-2 w-2 rounded-full', anyConnected ? 'bg-success' : 'bg-muted-foreground/40')}
-                title={anyConnected ? 'Integrations connected' : 'No integrations connected'}
-              />
             </header>
 
             {!online ? (

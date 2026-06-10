@@ -45,6 +45,8 @@ export interface NotifyTenantOfMarketplaceEventResult {
   status: 'delivered' | 'no_channel' | 'empty_response' | 'agent_failed' | 'dispatch_failed';
   deliveredChannels: number;
   reason?: string;
+  /** True when the AI text was unavailable and a minimal deterministic line was sent instead. */
+  usedFallback?: boolean;
 }
 
 export type ConnectionIntegration = 'tiktok' | 'shopee' | 'groq';
@@ -101,17 +103,17 @@ export async function notifyTenantOfMarketplaceEvent(
     );
   } catch (err) {
     logErrorBrief(`[active] generalAgent.generate failed (tenant=${input.tenantId})`, err);
-    return { status: 'agent_failed', deliveredChannels: 0, reason: 'agent_threw' };
   }
 
-  if (!answerText) {
-    return { status: 'empty_response', deliveredChannels: 0, reason: 'empty_response' };
-  }
+  // Always deliver SOMETHING: if the agent failed or returned nothing (e.g. rate-limited), send a
+  // minimal deterministic line so the tenant never silently misses a marketplace event.
+  const usedFallback = !answerText.trim();
+  const effectiveText = usedFallback ? buildFallbackMarketplaceText(input) : answerText;
 
   // 1) Tenant's own platform (web/desktop/mobile) — ALWAYS, even with no Discord linked.
   await deliverTenantWebNotification({
     tenantId: input.tenantId,
-    text: answerText,
+    text: effectiveText,
     heading: marketplaceHeading(input),
     marketplace: { platform: input.platform, category: input.category, code: input.code },
     kind: 'marketplace',
@@ -120,10 +122,10 @@ export async function notifyTenantOfMarketplaceEvent(
   // 2) Discord — only when the tenant has a linked channel.
   const channels = await resolveDiscordChannelsForTenant(input.tenantId);
   if (channels.length === 0) {
-    return { status: 'delivered', deliveredChannels: 0, reason: 'web_only' };
+    return { status: 'delivered', deliveredChannels: 0, reason: 'web_only', usedFallback };
   }
 
-  const reply = toDiscordReply(answerText);
+  const reply = toDiscordReply(effectiveText);
   const result = await sendDiscordToTenant(input.tenantId, reply);
   if (result.delivered.length === 0) {
     // Discord dispatch failed, but the web notification already went out.
@@ -131,24 +133,41 @@ export async function notifyTenantOfMarketplaceEvent(
       status: 'delivered',
       deliveredChannels: 0,
       reason: result.skipped[0]?.reason ?? 'discord_dispatch_failed',
+      usedFallback,
     };
   }
 
   await persistAssistantTurn({
     tenantId: input.tenantId,
     channels: result.delivered,
-    answerText,
+    answerText: effectiveText,
     systemMarkerText: `[Notification trigger] platform=${input.platform} category=${input.category} code=${input.code}`,
     metadata: { marketplace: { platform: input.platform, category: input.category, code: input.code } },
   });
 
-  return { status: 'delivered', deliveredChannels: result.delivered.length };
+  return { status: 'delivered', deliveredChannels: result.delivered.length, usedFallback };
 }
 
 function marketplaceHeading(input: NotifyTenantOfMarketplaceEventInput): string {
   const name =
     input.platform === 'tiktok' ? 'TikTok Shop' : input.platform === 'shopee' ? 'Shopee' : input.platform;
   return `${name} · ${input.category}`;
+}
+
+/** Minimal deterministic notification used when the AI can't produce one (keeps the user informed). */
+function buildFallbackMarketplaceText(input: NotifyTenantOfMarketplaceEventInput): string {
+  const name =
+    input.platform === 'tiktok' ? 'TikTok Shop' : input.platform === 'shopee' ? 'Shopee' : input.platform;
+  switch (input.category) {
+    case 'orders':
+      return `🛒 New order activity on ${name}.`;
+    case 'fulfillment':
+      return `📦 Shipping/fulfillment update on ${name}.`;
+    case 'returns':
+      return `↩️ Return or cancellation update on ${name}.`;
+    default:
+      return `🔔 New activity on ${name}.`;
+  }
 }
 
 function toDiscordReply(text: string): DiscordReply {
