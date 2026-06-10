@@ -50,44 +50,60 @@ function resolveWebRoot(): string {
   return findWebRoot() ?? resolve(process.cwd(), 'src/mastra/public/app');
 }
 
-const WEB_ROOT = resolveWebRoot();
-const INDEX_HTML = join(WEB_ROOT, 'index.html');
-
-if (!existsSync(INDEX_HTML)) {
-  // eslint-disable-next-line no-console
-  console.warn(`[web] SPA not found at ${WEB_ROOT}. Run \`npm run build:web\`. /app will 503 until then.`);
-}
-
 type HtmlCtx = {
   html: (s: string) => Response | Promise<Response>;
   text: (s: string, status?: number) => Response | Promise<Response>;
 };
 
-async function serveIndexHtml(c: HtmlCtx): Promise<Response> {
-  try {
-    const html = await readFile(INDEX_HTML, 'utf-8');
-    return await c.html(html);
-  } catch {
-    return await c.text('Web app is not built yet. Run `npm run build:web`.', 503);
+/** Frontend hosted standalone (e.g. Vercel) when WEB_APP_ORIGIN is set — don't serve /app here. */
+const EXTERNAL_WEB_APP = process.env.WEB_APP_ORIGIN?.trim().replace(/\/+$/, '');
+
+/** Monolith: serve the locally-built SPA at /app/* (same origin as the API). */
+function buildMonolithRoutes() {
+  const WEB_ROOT = resolveWebRoot();
+  const INDEX_HTML = join(WEB_ROOT, 'index.html');
+
+  if (!existsSync(INDEX_HTML)) {
+    // eslint-disable-next-line no-console
+    console.warn(`[web] SPA not found at ${WEB_ROOT}. Run \`npm run build:web\`. /app will 503 until then.`);
   }
+
+  const serveIndexHtml = async (c: HtmlCtx): Promise<Response> => {
+    try {
+      const html = await readFile(INDEX_HTML, 'utf-8');
+      return await c.html(html);
+    } catch {
+      return await c.text('Web app is not built yet. Run `npm run build:web`.', 503);
+    }
+  };
+
+  const spaStatic = serveStatic({
+    root: WEB_ROOT,
+    index: 'index.html',
+    rewriteRequestPath: (p) => p.replace(/^\/app/, '') || '/',
+  });
+
+  return [
+    registerApiRoute('/app', { method: 'GET', requiresAuth: false, handler: async (c) => serveIndexHtml(c) }),
+    registerApiRoute('/app/*', {
+      method: 'GET',
+      requiresAuth: false,
+      middleware: [spaStatic],
+      handler: async (c) => serveIndexHtml(c),
+    }),
+  ];
 }
 
-const spaStatic = serveStatic({
-  root: WEB_ROOT,
-  index: 'index.html',
-  rewriteRequestPath: (p) => p.replace(/^\/app/, '') || '/',
-});
+/** Standalone frontend: redirect any /app/* hit on the API origin to the real app (no SPA served). */
+function buildRedirectRoutes(origin: string) {
+  const redirect = (c: { req: { path: string }; redirect: (u: string, s?: number) => Response }) =>
+    c.redirect(`${origin}${c.req.path.replace(/^\/app/, '') || '/'}`, 308);
+  return [
+    registerApiRoute('/app', { method: 'GET', requiresAuth: false, handler: async (c) => redirect(c) }),
+    registerApiRoute('/app/*', { method: 'GET', requiresAuth: false, handler: async (c) => redirect(c) }),
+  ];
+}
 
-export const webAppRoutes = [
-  registerApiRoute('/app', {
-    method: 'GET',
-    requiresAuth: false,
-    handler: async (c) => serveIndexHtml(c),
-  }),
-  registerApiRoute('/app/*', {
-    method: 'GET',
-    requiresAuth: false,
-    middleware: [spaStatic],
-    handler: async (c) => serveIndexHtml(c),
-  }),
-];
+export const webAppRoutes = EXTERNAL_WEB_APP
+  ? buildRedirectRoutes(EXTERNAL_WEB_APP)
+  : buildMonolithRoutes();
