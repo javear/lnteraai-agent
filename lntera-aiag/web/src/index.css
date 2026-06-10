@@ -26,6 +26,9 @@
     --input: 0 0% 90%;
     --ring: 0 0% 9%;
     --radius: 0.65rem;
+    /* Brand accent (indigo #6366F1) — used only on the marketing landing; the app stays monochrome. */
+    --brand: 239 84% 67%;
+    --brand-foreground: 0 0% 100%;
   }
 
   .dark {
@@ -50,6 +53,8 @@
     --border: 0 0% 16%;
     --input: 0 0% 18%;
     --ring: 0 0% 83%;
+    --brand: 239 84% 70%;
+    --brand-foreground: 0 0% 100%;
   }
 
   * {

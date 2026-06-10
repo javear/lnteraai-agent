@@ -1,7 +1,36 @@
 import { fileURLToPath, URL } from 'node:url';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+
+// Resolve the canonical site URL once (override via Vercel env VITE_SITE_URL; placeholder fallback
+// for local/preview builds). Replaces the %SITE_URL% token in index.html (canonical/OG/JSON-LD) and
+// emits a matching robots.txt + sitemap.xml so the crawl URLs always agree with the meta tags.
+function seoAssets(): Plugin {
+  const siteUrl = (process.env.VITE_SITE_URL || 'https://lntera.vercel.app').replace(/\/$/, '');
+  return {
+    name: 'lntera-seo-assets',
+    transformIndexHtml(html) {
+      return html.replaceAll('%SITE_URL%', siteUrl);
+    },
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'robots.txt',
+        source: `User-agent: *\nAllow: /\nDisallow: /c/\nDisallow: /integrations\n\nSitemap: ${siteUrl}/sitemap.xml\n`,
+      });
+      this.emitFile({
+        type: 'asset',
+        fileName: 'sitemap.xml',
+        source:
+          `<?xml version="1.0" encoding="UTF-8"?>\n` +
+          `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+          `  <url>\n    <loc>${siteUrl}/</loc>\n    <changefreq>monthly</changefreq>\n    <priority>1.0</priority>\n  </url>\n` +
+          `</urlset>\n`,
+      });
+    },
+  };
+}
 
 // Three build targets from one codebase (the `base` knob drives every path-dependent value below):
 //  - default (web): served by the Mastra server at /app; output → server public dir; PWA on.
@@ -32,6 +61,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     plugins: [
+      seoAssets(),
       react(),
       VitePWA({
         // Disabled in native shells (no service worker; the bundle is already local).

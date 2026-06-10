@@ -1,6 +1,6 @@
-import { StrictMode, Suspense, lazy, useEffect, useState, type ReactElement } from 'react';
+import { StrictMode, Suspense, lazy, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, HashRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Navigate, Route, Routes, useMatch } from 'react-router-dom';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
@@ -20,6 +20,9 @@ import './index.css';
 const Login = lazy(() => import('./pages/Login'));
 const Chat = lazy(() => import('./pages/Chat'));
 const Integrations = lazy(() => import('./pages/Integrations'));
+// Marketing landing — web only. Gated on the BUILD mode (not the runtime IS_NATIVE) so Rollup
+// dead-code-eliminates the dynamic import: the chunk never ships in the native (Capacitor) bundle.
+const Landing = import.meta.env.MODE === 'native' ? null : lazy(() => import('./pages/Landing'));
 
 /** Full-screen branded splash for boot/auth gaps (lazy Lottie, falls back to the logo). */
 function BootScreen() {
@@ -30,11 +33,26 @@ function BootScreen() {
   );
 }
 
-function ProtectedRoute({ children }: { children: ReactElement }) {
+/**
+ * Index gate for the app shell. Logged-out visitors see the marketing landing at "/" and are
+ * bounced to the focused /login for any deeper route; authed users get the normal app layout
+ * (whose <Outlet/> renders the matched child route — Chat or Integrations).
+ */
+function AppGate() {
   const { session, loading } = useAuth();
+  const isHome = useMatch({ path: '/', end: true }) != null;
   if (loading) return <BootScreen />;
-  if (!session) return <Navigate to="/login" replace />;
-  return children;
+  if (!session) {
+    if (isHome && Landing) {
+      return (
+        <Suspense fallback={<BootScreen />}>
+          <Landing />
+        </Suspense>
+      );
+    }
+    return <Navigate to="/login" replace />;
+  }
+  return <AppLayout />;
 }
 
 function Boot() {
@@ -61,13 +79,7 @@ function Boot() {
             </Suspense>
           }
         />
-        <Route
-          element={
-            <ProtectedRoute>
-              <AppLayout />
-            </ProtectedRoute>
-          }
-        >
+        <Route element={<AppGate />}>
           <Route
             path="/"
             element={

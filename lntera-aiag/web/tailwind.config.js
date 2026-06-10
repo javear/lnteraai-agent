@@ -42,6 +42,11 @@ export default {
           DEFAULT: 'hsl(var(--popover))',
           foreground: 'hsl(var(--popover-foreground))',
         },
+        // Brand accent (indigo) — landing-only; see index.css --brand.
+        brand: {
+          DEFAULT: 'hsl(var(--brand))',
+          foreground: 'hsl(var(--brand-foreground))',
+        },
       },
       borderRadius: {
         lg: 'var(--radius)',
