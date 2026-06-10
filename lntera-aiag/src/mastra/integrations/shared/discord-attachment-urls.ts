@@ -1,6 +1,6 @@
 /** Append to product tools that accept `imageUrls` when Discord may supply attachments. */
 export const DISCORD_IMAGE_URL_TOOL_HINT =
-  'When the user message includes `[imageUrls for tools]` JSON or `[Attachments]` downloadUrl lines, pass those full URLs in `imageUrls` (include everything after `?`). Prefer the JSON array when present. Non-image attachments are ignored.';
+  'Pass Discord `[imageUrls for tools]` URLs in `imageUrls` when present (full URL including query).';
 
 export interface DiscordAttachmentInfo {
   id: string;

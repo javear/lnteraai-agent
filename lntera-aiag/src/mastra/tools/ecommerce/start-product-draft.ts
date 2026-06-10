@@ -24,7 +24,7 @@ const inputSchema = z
 export const startProductDraftTool = createTool({
   id: 'start-product-draft',
   description:
-    `Begin a new product draft. Returns \`draftId\` for **update-product-draft** and **publish-product-draft**. **TikTok**: native draft in Seller Center. **Shopee**: local row until publish. Pass known fields in \`initial\`; use returned \`missing[]\` for remaining required fields. Image URLs upload immediately so they do not expire. ${DISCORD_IMAGE_URL_TOOL_HINT} **Input:** \`{ platform, shopId, initial? }\`.`,
+    `Start a product draft; returns draftId. ${DISCORD_IMAGE_URL_TOOL_HINT}`,
   requestContextSchema: z.object({
     [TENANT_MASTER_ID_KEY]: z.string().uuid(),
   }),

@@ -26,7 +26,7 @@ const TOOL_ID = 'discard-product-draft';
 export const discardProductDraftTool = createTool({
   id: TOOL_ID,
   description:
-    `Discard an in-progress product draft. ${TOOL_TWO_STEP_CONFIRM_DESC} TikTok: deletes the draft product; Shopee: marks the local row \`discarded\`. **Input:** \`{ draftId, confirm? }\`.`,
+    `Discard a product draft. ${TOOL_TWO_STEP_CONFIRM_DESC}`,
   requestContextSchema: z.object({
     [TENANT_MASTER_ID_KEY]: z.string().uuid(),
   }),

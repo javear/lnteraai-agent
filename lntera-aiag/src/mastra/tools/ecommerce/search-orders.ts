@@ -235,7 +235,7 @@ export const searchOrdersTool = createTool({
   /** Groq: strict tool input forces all schema properties to be sent; disable for optional filters. */
   strict: false,
   description:
-    'Search orders for the tenant in requestContext. **Each row includes:** `orderId`, `shopId` (reuse in get-order-details / confirm / labels—required when multiple connections exist), `platform`, `status`, **`statusMeaning`** (plain-language explanation of `status`). Optional filters: **platform** (both|shopee|tiktok), **status** (normalized: pending|processing|processed|shipped|delivered|completed|cancelled|unknown — **processing** = to-ship; **processed** = logistics arranged e.g. Shopee PROCESSED; or native API enums like TikTok UNPAID|AWAITING_SHIPMENT|…, Shopee UNPAID|READY_TO_SHIP|PROCESSED|…), **orderId**, **createdFrom**/**createdTo** (Unix sec), **createDate** (YYYY-MM-DD or unix → UTC day range), **updatedFrom**/**updatedTo**, **pageSize** 1–100, **cursor**, **includeRaw**, **enrichWithDetails** (default true). **Shopee pickup/slot options** are not in this response—use **create-fulfillment-package** on the order after you have `shopId` + order SN. Note: when a normalized status maps to several marketplace statuses, results may be merged (pagination quirks on some queries).',
+    'Search orders for the tenant. Rows include orderId, shopId, platform, status, statusMeaning. Optional: platform, status, orderId, dates, pageSize, cursor, includeRaw, enrichWithDetails (default true). Pass shopId from rows into detail/fulfillment/label tools when multiple shops exist.',
   requestContextSchema: z.object({
     [TENANT_MASTER_ID_KEY]: z.string().uuid(),
   }),

@@ -53,7 +53,7 @@ export const listMarketplaceShopsTool = createTool({
   id: 'list-marketplace-shops',
   strict: false,
   description:
-    'List all marketplace shops linked to the tenant in requestContext. Returns only safe fields: **platform**, **shopId**, **name**, **region**, optional **shopCode** (TikTok Seller Center code), and **status** (`ready` | `needs_reconnect`). Never returns access tokens, refresh tokens, shop cipher, open_id, or raw connection payloads. **shopId** is what other ecommerce tools expect: Shopee numeric shop id; TikTok shop **id** or Seller Center **code** (not ROW cipher). Shopee **name**/**region** are loaded from DB; if **name** is missing, the tool automatically calls Shopee `get_shop_info` and saves it (no `refresh` flag needed). **Input:** `{ platform?: "both"|"shopee"|"tiktok", refresh?: boolean }` — `refresh: true` re-fetches all Shopee/TikTok shop profiles from the APIs.',
+    'List linked marketplace shops (platform, shopId, name, region, status). shopId is required for other product/order tools. Optional platform filter and refresh.',
   requestContextSchema: z.object({
     [TENANT_MASTER_ID_KEY]: z.string().uuid(),
   }),

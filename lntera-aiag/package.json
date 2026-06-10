@@ -5,11 +5,15 @@
   "scripts": {
     "test": "node scripts/verify-create-package-parsing.mjs",
     "dev": "node scripts/run-mastra-with-local-env.mjs dev",
+    "dev:web": "npm --prefix web run dev",
+    "build:web": "npm --prefix web run build",
     "build": "mastra build",
+    "build:monolith": "npm run build:web && mastra build",
     "start": "node scripts/run-mastra-with-local-env.mjs start",
     "discord": "tsx src/mastra/integrations/discord/run.ts",
     "mint-open-api-token": "node scripts/mint-open-api-token.mjs",
-    "send-sample-webhook": "node scripts/send-sample-webhook.mjs"
+    "send-sample-webhook": "node scripts/send-sample-webhook.mjs",
+    "tunnel": "node scripts/tunnel.mjs"
   },
   "keywords": [],
   "author": "",
@@ -20,6 +24,9 @@
     "node": ">=22.13.0"
   },
   "dependencies": {
+    "@hono/node-server": "^1.19.14",
+    "@mastra/auth": "^1.0.2",
+    "@mastra/auth-supabase": "^1.0.0",
     "@mastra/core": "^1.32.1",
     "@mastra/duckdb": "^1.3.0",
     "@mastra/evals": "^1.2.2",
@@ -27,13 +34,16 @@
     "@mastra/loggers": "^1.1.1",
     "@mastra/memory": "^1.17.5",
     "@mastra/observability": "^1.11.1",
+    "@mastra/pg": "^1.12.1",
     "@supabase/supabase-js": "^2.105.1",
     "discord.js": "14.26.4",
     "jose": "6.2.3",
     "json-bigint": "^1.0.0",
+    "portkey-ai": "^3.1.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@ngrok/ngrok": "^1.7.0",
     "@types/json-bigint": "^1.0.4",
     "@types/node": "^25.6.0",
     "mastra": "^1.8.1",

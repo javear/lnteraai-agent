@@ -4,6 +4,12 @@
  * Starts the Discord bot in-process, invokes notifyTenantOfMarketplaceEvent, then exits.
  * Requires the same .env as Mastra (Supabase, GROQ, DISCORD_BOT_TOKEN, etc.).
  */
+// Construct the Mastra instance first — it wires the configured storage (Supabase Postgres /
+// LibSQL) into the agent's Memory. Without it, generalAgent.generate() throws
+// "Memory requires a storage provider to function." (The `--http` path gets this for free
+// because `npm run dev` already builds the Mastra instance.) Embedded Discord stays gated on
+// DISCORD_EMBEDDED, so this import does not double-start the bot we launch explicitly below.
+import '../src/mastra/index';
 import { notifyTenantOfMarketplaceEvent } from '../src/mastra/active-mode/notifier';
 import { startDiscordBots } from '../src/mastra/integrations/discord/bot';
 import type { EventCategory } from '../src/mastra/integrations/shared/webhook-event-classifier';

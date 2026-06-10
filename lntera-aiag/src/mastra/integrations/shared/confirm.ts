@@ -80,4 +80,4 @@ export function confirmationPayloadFromError(err: unknown): ToolConfirmationPayl
 
 /** Append to a tool `description` when it uses `assertConfirmed` / `ToolConfirmationRequired`. */
 export const TOOL_TWO_STEP_CONFIRM_DESC =
-  '**Two-step confirmation:** call without `confirm` (or `confirm: false`) first. If the result has `requires_confirmation: true`, show the user the returned `preview` and `message` and wait for explicit approval; then re-call this tool with `confirm: true` and the same other arguments. Never auto-confirm. If the user declines or wants changes, adjust inputs or use other tools instead of confirming.';
+  '**Confirm:** call without `confirm` first; if `requires_confirmation`, show preview then re-call with `confirm: true`. Never auto-confirm.';

@@ -21,7 +21,7 @@ const inputSchema = z
 export const updateProductDraftTool = createTool({
   id: 'update-product-draft',
   description:
-    `Patch an existing draft (\`draftId\` from **start-product-draft**). Only fields in \`patch\` are updated. TikTok: \`partial_edit\`; Shopee: local row. Image URLs upload eagerly. ${DISCORD_IMAGE_URL_TOOL_HINT} **Input:** \`{ draftId, patch }\`. Returns \`missing[]\` before **publish-product-draft**.`,
+    `Patch a draft by draftId. Returns missing[] before publish. ${DISCORD_IMAGE_URL_TOOL_HINT}`,
   requestContextSchema: z.object({
     [TENANT_MASTER_ID_KEY]: z.string().uuid(),
   }),

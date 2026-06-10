@@ -33,6 +33,31 @@ export function getSupabase(): SupabaseClient {
   return cached;
 }
 
+/**
+ * Browser-safe Supabase key for client-side auth (the `/auth` page) and for
+ * `MastraAuthSupabase` token validation. Prefers the modern publishable key
+ * (`sb_publishable_...`) over the legacy `anon` JWT, mirroring the secret-key precedence.
+ */
+export function getSupabasePublishableKey(): string | null {
+  return (
+    process.env.SUPABASE_PUBLISHABLE_KEY?.trim() ||
+    process.env.SUPABASE_ANON_KEY?.trim() ||
+    null
+  );
+}
+
+/**
+ * Server-side Supabase URL + service key, for direct REST calls that the JS client doesn't wrap
+ * (e.g. the Realtime broadcast endpoint). Returns null when Supabase isn't configured so callers
+ * can degrade gracefully instead of throwing.
+ */
+export function getSupabaseServiceConfig(): { url: string; key: string } | null {
+  const url = process.env.SUPABASE_URL?.trim();
+  const key = (process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY)?.trim();
+  if (!url || !key) return null;
+  return { url: url.replace(/\/$/, ''), key };
+}
+
 export async function getConnection(
   platform: Platform,
   externalShopId: string,
@@ -120,6 +145,23 @@ export async function upsertConnection(
     throw new Error(`Failed to upsert connection: ${error?.message ?? 'unknown error'}`);
   }
   return data as MarketplaceConnection;
+}
+
+/** Delete a tenant's marketplace connections for one platform (disconnect). Returns rows removed. */
+export async function deleteConnectionsByTenant(
+  tenantId: Uuid,
+  platform: Platform,
+): Promise<number> {
+  const { data, error } = await getSupabase()
+    .from(TABLE)
+    .delete()
+    .eq('tenant_id', tenantId)
+    .eq('platform', platform)
+    .select('id');
+  if (error) {
+    throw new Error(`Failed to delete ${platform} connections for tenant ${tenantId}: ${error.message}`);
+  }
+  return (data as unknown[] | null)?.length ?? 0;
 }
 
 export async function getTenantById(id: Uuid): Promise<TenantMaster | null> {

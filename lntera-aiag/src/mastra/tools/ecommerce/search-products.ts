@@ -177,7 +177,7 @@ export const searchProductsTool = createTool({
   /** Groq: strict tool input forces all schema properties to be sent; disable for optional filters. */
   strict: false,
   description:
-    'Search products for the tenant in requestContext. **All parameters are optional** — you may pass `{}` for defaults. Each row includes **`shopId`** (required for all other product tools: get-product-details, update-product-*, archive-product). TikTok `shopId` is the `ROW_…` shop_cipher on the row; Shopee is the connection shop id. Optional filters: **platform**, **keyword**/**q**, **status**, **priceMin**/**priceMax**, **sort**, **pageSize**, **cursor**, **includeRaw**.',
+    'Search products. All params optional ({} ok). Each row has shopId for other product tools. Filters: platform, keyword, status, price, sort, pageSize, cursor, includeRaw.',
   requestContextSchema: z.object({
     [TENANT_MASTER_ID_KEY]: z
       .string()

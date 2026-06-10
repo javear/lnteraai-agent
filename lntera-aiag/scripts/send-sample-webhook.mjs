@@ -262,6 +262,9 @@ async function runDirect({ tenantId, platform, category }) {
   const env = { ...process.env };
   env.SAMPLE_WEBHOOK_SHOP_ID = platform === 'shopee' ? shops.shopeeShopId : shops.tiktokShopId;
   if (shops.tiktokCipher) env.SAMPLE_WEBHOOK_SHOP_CIPHER = shops.tiktokCipher;
+  // This script spins up its own Mastra (a second DB pool). Keep it tiny so it coexists with a
+  // running `npm run dev` under Supabase's session-pooler client cap (default 15).
+  if (!env.DATABASE_POOL_MAX?.trim()) env.DATABASE_POOL_MAX = '2';
 
   const tsx = resolve(PKG_ROOT, 'node_modules/tsx/dist/cli.mjs');
   const script = resolve(PKG_ROOT, 'scripts/send-sample-webhook-direct.ts');

@@ -4,7 +4,7 @@ export const PLATFORMS = ['shopee', 'tiktok'] as const;
 export type Platform = (typeof PLATFORMS)[number];
 export type Uuid = string;
 
-export const INTEGRATION_CODES = ['discord'] as const;
+export const INTEGRATION_CODES = ['discord', 'groq', 'gemini'] as const;
 export type IntegrationCode = (typeof INTEGRATION_CODES)[number];
 
 export function isIntegrationCode(value: string): value is IntegrationCode {
@@ -72,6 +72,36 @@ export interface TenantIntegration {
   tenant_id: Uuid;
   integration_code: IntegrationCode;
   config: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Wildcard value in `tenant_roles.allowed_tools` meaning "every tool". */
+export const ALL_TOOLS_WILDCARD = '*';
+
+export const TENANT_USER_STATUSES = ['active', 'invited', 'suspended'] as const;
+export type TenantUserStatus = (typeof TENANT_USER_STATUSES)[number];
+
+/** Maps a Supabase `auth.users` row to a tenant + role (slug into `tenant_roles`). */
+export interface TenantUser {
+  id: string;
+  tenant_id: Uuid;
+  auth_user_id: Uuid;
+  email: string | null;
+  role: string;
+  status: TenantUserStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Per-tenant role definition. `allowed_tools` holds Mastra tool ids; `['*']` = all tools. */
+export interface TenantRole {
+  id: string;
+  tenant_id: Uuid;
+  slug: string;
+  name: string;
+  allowed_tools: string[];
+  is_system: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -147,3 +177,39 @@ export const discordVaultSecretPayloadSchema = z
   .strict();
 
 export type DiscordVaultSecretPayload = z.infer<typeof discordVaultSecretPayloadSchema>;
+
+export const groqIntegrationStatusSchema = z.enum(['pending', 'active', 'error', 'revoked']);
+
+/**
+ * Stored in tenant_integrations.config for integration_code === "groq".
+ * Groq API keys live in Portkey only — never in this config.
+ */
+export const groqTenantIntegrationConfigSchema = z
+  .object({
+    status: groqIntegrationStatusSchema,
+    portkeyIntegrationSlug: z.string().min(1),
+    portkeyProviderSlug: z.string().min(1),
+    portkeyIntegrationId: z.string().min(1).optional(),
+    portkeyProviderId: z.string().min(1).optional(),
+    connectedAt: z.string().min(1).optional(),
+    lastValidatedAt: z.string().min(1).optional(),
+    errorMessage: z.string().optional(),
+  })
+  .strict();
+
+export type GroqTenantIntegrationConfig = z.infer<typeof groqTenantIntegrationConfigSchema>;
+
+/**
+ * Provider-agnostic alias: every BYO LLM provider (Groq, Gemini, …) stores the same shape in
+ * `tenant_integrations.config` — only Portkey slugs/ids + status, never the API key.
+ */
+export const llmProviderIntegrationConfigSchema = groqTenantIntegrationConfigSchema;
+export type LlmProviderIntegrationConfig = GroqTenantIntegrationConfig;
+
+export const groqOnboardSubmitSchema = z
+  .object({
+    groqApiKey: z.string().min(1),
+    tenantId: z.string().min(1).optional(),
+    token: z.string().min(1).optional(),
+  })
+  .strict();

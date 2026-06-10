@@ -62,7 +62,7 @@ export const getProductDetailsTool = createTool({
   id: 'get-product-details',
   strict: false,
   description:
-    'Fetch the full normalized detail for ONE product (title, description, status, category, brand, images, package weight/dimensions, attributes, variant SKUs with price/stock). **Input:** `{ platform, productId, shopId, includeRaw? }`. **shopId** is required — use the `shopId` from **search-products** on the same row. Use `variants[].skuId` for price/stock updates. Set `includeRaw: true` only when debugging.',
+    'One product detail (title, variants, images, etc.). Input: platform, productId, shopId from search-products. includeRaw for debug only.',
   requestContextSchema: z.object({
     [TENANT_MASTER_ID_KEY]: z.string().uuid(),
   }),

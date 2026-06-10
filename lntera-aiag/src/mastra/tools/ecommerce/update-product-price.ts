@@ -80,7 +80,7 @@ export const updateProductPriceTool = createTool({
   id: 'update-product-price',
   strict: false,
   description:
-    'Update the price of a product. **For a non-variant product**, pass `price` in the shop\'s normal money units (e.g. `100000` IDR, `19.99` USD). **For a variant product**, pass `updates: [{ skuId, price }, ...]` where `skuId` is the `variants[].skuId` from get-product-details. Currency is read from each SKU on TikTok (not passed in the tool). **Input:** `{ platform, productId, shopId, price? | updates? }` — **shopId** required (from **search-products**).',
+    'Update price. Non-variant: price. Variant: updates[{ skuId, price }]. shopId from search-products.',
   requestContextSchema: z.object({
     [TENANT_MASTER_ID_KEY]: z.string().uuid(),
   }),

@@ -9,20 +9,14 @@ import { createState, verifyState } from '../integrations/shared/oauth-state';
 import { findDiscordIntegrationConflictForRouting, upsertTenantIntegration } from '../integrations/shared/tenant-integrations';
 import { patchConnectionProfile, resolveTenantId, upsertConnection } from '../integrations/shared/supabase';
 import { isPlatform, type Platform } from '../integrations/shared/types';
+import { webAppUrl } from './web-app-origin';
 import { buildShopeeAuthUrl, exchangeShopeeCode } from '../integrations/shopee/auth';
 import { getShopeeClient } from '../integrations/shopee/client';
 import { getShopeeConfig } from '../integrations/shopee/config';
 import { getShopeeShopInfo } from '../integrations/shopee/shop-info';
 import { buildTiktokAuthUrl, exchangeTiktokCode, getTiktokAuthorizedShops } from '../integrations/tiktok/auth';
-
-function htmlPage(title: string, body: string): string {
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>
-body{font-family:-apple-system,system-ui,sans-serif;max-width:560px;margin:80px auto;padding:0 24px;color:#222}
-h1{margin-bottom:8px}
-code{background:#f3f3f3;padding:2px 6px;border-radius:4px}
-.ok{color:#0a7a2f}.err{color:#b00020}
-</style></head><body>${body}</body></html>`;
-}
+import { notifyTenantOfConnectionEvent } from '../active-mode/notifier';
+import { oauthErrorPage } from './html-pages';
 
 export const oauthRoutes = [
   // Discord routes must be registered before `/oauth/:platform/start`, otherwise `discord` is
@@ -42,7 +36,7 @@ export const oauthRoutes = [
       const tenantInput = c.req.query('tenantId');
       if (!tenantInput) {
         return c.html(
-          htmlPage('Discord install', '<h1 class="err">Missing tenantId.</h1><p>Pass <code>?tenantId=&lt;slug-or-uuid&gt;</code></p>'),
+          oauthErrorPage({ platform: 'Discord', title: 'Missing tenantId', message: 'Pass ?tenantId=<slug-or-uuid> in the URL.' }),
           400,
         );
       }
@@ -51,10 +45,7 @@ export const oauthRoutes = [
         tenantId = await resolveTenantId(tenantInput);
       } catch (err) {
         return c.html(
-          htmlPage(
-            'Discord install',
-            `<h1 class="err">Unknown tenant.</h1><p>${(err as Error).message}</p><p>Create the tenant in <code>tenant_master</code> first.</p>`,
-          ),
+          oauthErrorPage({ platform: 'Discord', title: 'Unknown tenant', message: (err as Error).message, hint: 'Create the tenant in tenant_master first.' }),
           400,
         );
       }
@@ -62,10 +53,7 @@ export const oauthRoutes = [
         getDiscordOauthConfig();
       } catch (err) {
         return c.html(
-          htmlPage(
-            'Discord install',
-            `<h1 class="err">Server configuration</h1><p>${(err as Error).message}</p>`,
-          ),
+          oauthErrorPage({ platform: 'Discord', title: 'Server configuration error', message: (err as Error).message }),
           500,
         );
       }
@@ -92,10 +80,7 @@ export const oauthRoutes = [
       const oauthDesc = c.req.query('error_description');
       if (oauthErr) {
         return c.html(
-          htmlPage(
-            'Discord install cancelled',
-            `<h1 class="err">Discord OAuth: ${oauthErr}</h1><p>${oauthDesc ?? ''}</p>`,
-          ),
+          oauthErrorPage({ platform: 'Discord', title: `OAuth: ${oauthErr}`, message: oauthDesc ?? 'Authorization was cancelled or denied.' }),
           400,
         );
       }
@@ -105,7 +90,7 @@ export const oauthRoutes = [
       const guildIdRaw = c.req.query('guild_id');
       if (!code || !stateRaw) {
         return c.html(
-          htmlPage('Discord OAuth error', '<h1 class="err">Missing code or state.</h1>'),
+          oauthErrorPage({ platform: 'Discord', title: 'Missing parameters', message: 'The authorization code or state parameter is missing.' }),
           400,
         );
       }
@@ -117,16 +102,13 @@ export const oauthRoutes = [
         tenantId = state.tenantId ?? null;
       } catch (err) {
         return c.html(
-          htmlPage('Discord OAuth error', `<h1 class="err">Invalid state.</h1><p>${(err as Error).message}</p>`),
+          oauthErrorPage({ platform: 'Discord', title: 'Invalid state', message: (err as Error).message }),
           400,
         );
       }
       if (!tenantId) {
         return c.html(
-          htmlPage(
-            'Discord OAuth error',
-            '<h1 class="err">Missing tenant in state.</h1><p>Start from <code>/oauth/discord/start?tenantId=...</code></p>',
-          ),
+          oauthErrorPage({ platform: 'Discord', title: 'Missing tenant context', message: 'No tenant was found in the OAuth state.', hint: 'Start from /oauth/discord/start?tenantId=...' }),
           400,
         );
       }
@@ -135,17 +117,14 @@ export const oauthRoutes = [
         await resolveTenantId(tenantId);
       } catch (err) {
         return c.html(
-          htmlPage('Discord OAuth error', `<h1 class="err">Tenant no longer valid.</h1><p>${(err as Error).message}</p>`),
+          oauthErrorPage({ platform: 'Discord', title: 'Tenant no longer valid', message: (err as Error).message }),
           400,
         );
       }
 
       if (!guildIdRaw?.trim()) {
         return c.html(
-          htmlPage(
-            'Discord OAuth error',
-            '<h1 class="err">Missing guild_id.</h1><p>Authorize the bot for a server (install scope).</p>',
-          ),
+          oauthErrorPage({ platform: 'Discord', title: 'Missing server', message: 'No guild_id was returned. Authorize the bot for a server (install scope).' }),
           400,
         );
       }
@@ -155,7 +134,7 @@ export const oauthRoutes = [
         await exchangeDiscordOAuthCode(code);
       } catch (err) {
         return c.html(
-          htmlPage('Discord OAuth failed', `<h1 class="err">Token exchange failed</h1><p>${(err as Error).message}</p>`),
+          oauthErrorPage({ platform: 'Discord', title: 'Token exchange failed', message: (err as Error).message }),
           500,
         );
       }
@@ -165,7 +144,7 @@ export const oauthRoutes = [
         channelId = await resolveDefaultChannelId(guildId);
       } catch (err) {
         return c.html(
-          htmlPage('Discord install', `<h1 class="err">Could not pick a channel</h1><p>${(err as Error).message}</p>`),
+          oauthErrorPage({ platform: 'Discord', title: 'Could not pick a channel', message: (err as Error).message }),
           500,
         );
       }
@@ -177,10 +156,7 @@ export const oauthRoutes = [
       });
       if (conflict) {
         return c.html(
-          htmlPage(
-            'Discord install conflict',
-            `<h1 class="err">This guild/channel is already linked to another tenant.</h1><p>Tenant: <code>${conflict.tenant_id}</code></p>`,
-          ),
+          oauthErrorPage({ platform: 'Discord', title: 'Server already linked', message: `This guild and channel are already linked to another workspace (${conflict.tenant_id}).` }),
           409,
         );
       }
@@ -205,21 +181,12 @@ export const oauthRoutes = [
         });
       } catch (err) {
         return c.html(
-          htmlPage('Discord install failed', `<h1 class="err">Save failed</h1><p>${(err as Error).message}</p>`),
+          oauthErrorPage({ platform: 'Discord', title: 'Save failed', message: (err as Error).message }),
           500,
         );
       }
 
-      return c.html(
-        htmlPage(
-          'Discord connected',
-          `<h1 class="ok">Discord bot installed</h1>
-           <p>Guild: <code>${guildId}</code></p>
-           <p>Channel: <code>${channelId}</code></p>
-           <p>Consent recorded at <code>${nowIso}</code>.</p>
-           <p>You can close this tab.</p>`,
-        ),
-      );
+      return c.redirect(webAppUrl('/integrations?connected=discord&status=ok'), 302);
     },
   }),
 
@@ -273,7 +240,7 @@ export const oauthRoutes = [
       const stateRaw = c.req.query('state');
       if (!code || !shopIdRaw) {
         return c.html(
-          htmlPage('Shopee OAuth error', '<h1 class="err">Missing code or shop_id.</h1>'),
+          oauthErrorPage({ platform: 'Shopee', title: 'Missing parameters', message: 'The authorization code or shop_id is missing.' }),
           400,
         );
       }
@@ -286,7 +253,7 @@ export const oauthRoutes = [
           tenantId = state.tenantId ?? null;
         } catch (err) {
           return c.html(
-            htmlPage('Shopee OAuth error', `<h1 class="err">Invalid state.</h1><p>${(err as Error).message}</p>`),
+            oauthErrorPage({ platform: 'Shopee', title: 'Invalid state', message: (err as Error).message }),
             400,
           );
         }
@@ -298,10 +265,7 @@ export const oauthRoutes = [
             tenantId = await resolveTenantId(fallbackTenant);
           } catch (err) {
             return c.html(
-              htmlPage(
-                'Shopee OAuth error',
-                `<h1 class="err">Invalid tenantId.</h1><p>${(err as Error).message}</p>`,
-              ),
+              oauthErrorPage({ platform: 'Shopee', title: 'Invalid tenantId', message: (err as Error).message }),
               400,
             );
           }
@@ -309,10 +273,7 @@ export const oauthRoutes = [
       }
       if (!tenantId) {
         return c.html(
-          htmlPage(
-            'Shopee OAuth error',
-            '<h1 class="err">Missing tenant context.</h1><p>Pass tenantId on /oauth/:platform/start, or include tenantId in callback query.</p>',
-          ),
+          oauthErrorPage({ platform: 'Shopee', title: 'Missing tenant context', message: 'No tenant could be resolved from the request.', hint: 'Pass tenantId on /oauth/:platform/start, or include tenantId in the callback query.' }),
           400,
         );
       }
@@ -334,9 +295,11 @@ export const oauthRoutes = [
             merchant_id_list: tokens.merchant_id_list ?? null,
           },
         });
+        let shopName: string | null = null;
         try {
           const client = await getShopeeClient(String(shopId));
           const info = await getShopeeShopInfo(client);
+          shopName = info.shopName;
           await patchConnectionProfile('shopee', String(shopId), {
             shop_name: info.shopName,
             region: info.region ?? cfg.region,
@@ -344,16 +307,13 @@ export const oauthRoutes = [
         } catch {
           // Shop still connected; list-marketplace-shops will retry get_shop_info when name is missing.
         }
-        return c.html(
-          htmlPage(
-            'Shopee connected',
-            `<h1 class="ok">Shopee shop connected</h1><p>Shop ID: <code>${shopId}</code></p><p>You can close this tab.</p>`,
-          ),
-        );
+        void notifyTenantOfConnectionEvent({ tenantId, integration: 'shopee', status: 'connected', shopName });
+        return c.redirect(webAppUrl('/integrations?connected=shopee&status=ok'), 302);
       } catch (err) {
-        return c.html(
-          htmlPage('Shopee OAuth failed', `<h1 class="err">Token exchange failed</h1><p>${(err as Error).message}</p>`),
-          500,
+        void notifyTenantOfConnectionEvent({ tenantId, integration: 'shopee', status: 'failed', errorMessage: (err as Error).message });
+        return c.redirect(
+          webAppUrl(`/integrations?connected=shopee&status=error&message=${encodeURIComponent((err as Error).message)}`),
+          302,
         );
       }
     },
@@ -376,7 +336,7 @@ export const oauthRoutes = [
       const stateRaw = c.req.query('state');
       if (!code || !stateRaw) {
         return c.html(
-          htmlPage('TikTok OAuth error', '<h1 class="err">Missing code or state.</h1>'),
+          oauthErrorPage({ platform: 'TikTok Shop', title: 'Missing parameters', message: 'The authorization code or state parameter is missing.' }),
           400,
         );
       }
@@ -388,16 +348,13 @@ export const oauthRoutes = [
         tenantId = state.tenantId ?? null;
       } catch (err) {
         return c.html(
-          htmlPage('TikTok OAuth error', `<h1 class="err">Invalid state.</h1><p>${(err as Error).message}</p>`),
+          oauthErrorPage({ platform: 'TikTok Shop', title: 'Invalid state', message: (err as Error).message }),
           400,
         );
       }
       if (!tenantId) {
         return c.html(
-          htmlPage(
-            'TikTok OAuth error',
-            '<h1 class="err">Missing tenant context in state.</h1><p>Start auth with /oauth/tiktok/start?tenantId=&lt;slug-or-uuid&gt;.</p>',
-          ),
+          oauthErrorPage({ platform: 'TikTok Shop', title: 'Missing tenant context', message: 'No tenant was found in the OAuth state.', hint: 'Start auth with /oauth/tiktok/start?tenantId=<slug-or-uuid>.' }),
           400,
         );
       }
@@ -439,19 +396,13 @@ export const oauthRoutes = [
             shops_fetch_error: shopsFetchError,
           },
         });
-        return c.html(
-          htmlPage(
-            'TikTok connected',
-            `<h1 class="ok">TikTok seller connected</h1>
-             <p>Open ID: <code>${externalShopId}</code></p>
-             <p>Shop cipher: <code>${shopCipher ?? 'not available (missing scope)'}</code></p>
-             <p>You can close this tab.</p>`,
-          ),
-        );
+        void notifyTenantOfConnectionEvent({ tenantId, integration: 'tiktok', status: 'connected', shopName: tokens.seller_name ?? null });
+        return c.redirect(webAppUrl('/integrations?connected=tiktok&status=ok'), 302);
       } catch (err) {
-        return c.html(
-          htmlPage('TikTok OAuth failed', `<h1 class="err">Token exchange failed</h1><p>${(err as Error).message}</p>`),
-          500,
+        void notifyTenantOfConnectionEvent({ tenantId, integration: 'tiktok', status: 'failed', errorMessage: (err as Error).message });
+        return c.redirect(
+          webAppUrl(`/integrations?connected=tiktok&status=error&message=${encodeURIComponent((err as Error).message)}`),
+          302,
         );
       }
     },

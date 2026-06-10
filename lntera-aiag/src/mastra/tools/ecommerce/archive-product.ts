@@ -100,7 +100,7 @@ export const archiveProductTool = createTool({
   id: TOOL_ID,
   strict: false,
   description:
-    `Hide, restore, or delete a product. ${TOOL_TWO_STEP_CONFIRM_DESC} **Input:** \`{ platform, productId, shopId, action, confirm? }\` — **shopId** required (from **search-products**).`,
+    `Hide, restore, or delete a product. ${TOOL_TWO_STEP_CONFIRM_DESC} shopId from search-products.`,
   requestContextSchema: z.object({
     [TENANT_MASTER_ID_KEY]: z.string().uuid(),
   }),

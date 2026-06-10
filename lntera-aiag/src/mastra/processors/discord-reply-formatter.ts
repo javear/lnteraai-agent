@@ -14,6 +14,7 @@ Input is the assistant's final answer after any tool calls (text, tool results, 
 
 Rules:
 - Prefer 1–3 ops. Use "text" for normal replies (markdown allowed, max 2000 chars per op).
+- Do not use markdown tables — Discord cannot render them. Use bullet lists, numbered lines, or an embed with fields for tabular data (orders, products).
 - Use "embed" for orders, products, or shipments (title, description, optional fields).
 - Use "reaction" only with a valid "to_message_id" when a single emoji acknowledgment is enough.
 - Use "image" or "file" only when the input includes a real URL from a tool result.

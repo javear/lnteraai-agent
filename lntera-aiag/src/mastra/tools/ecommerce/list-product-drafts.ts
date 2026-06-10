@@ -18,7 +18,7 @@ const inputSchema = z
 export const listProductDraftsTool = createTool({
   id: 'list-product-drafts',
   description:
-    'List open product drafts for this tenant. Without filters returns drafts across both platforms (TikTok native drafts + local Shopee drafts). Use this when the user asks "show my drafts" or wants to resume one. **Input:** `{ platform?, shopId? }`. Returns `drafts[]` with `draftId`, `platform`, `shopId`, `data.title` and `updatedAt`.',
+    'List open product drafts for the tenant. Optional platform/shopId filters.',
   requestContextSchema: z.object({
     [TENANT_MASTER_ID_KEY]: z.string().uuid(),
   }),

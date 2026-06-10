@@ -112,7 +112,7 @@ function parseArgs(input: unknown): ConfirmFulfillmentArgs {
 export const confirmOrderFulfillmentTool = createTool({
   id: 'confirm-order-fulfillment',
   description:
-    'Confirm ship / fulfill orders in bulk for the tenant. **Input:** `{ orders: [{ id, platform, shopId?, shopeeHandover? }], includeRaw? }`. **`orders`** must be a JSON array (a JSON string that parses to an array is also accepted). **workflow:** for **Shopee**, prefer running **create-fulfillment-package** first to read **`needs_handover_choice`** and pickup slots; then call this tool with **`shopeeHandover`** only when both pickup and drop-off are available. **shopId** = **`shopId`** from **search-orders** when there are multiple Shopee/TikTok connections. **TikTok:** **id** = order id or **package id** from **packageIds** on search/detail; scopes come from the connection. **Shopee:** **id** = order SN. **Instant** channels: omit **`shopeeHandover`**. On success, **`details`** summarizes submitted logistics (including human-readable pickup times). **`includeRaw`**: optional, default **true** here—set **false** to omit heavy **`raw`** in results.',
+    'Confirm ship/fulfill orders in bulk. Input: orders[{ id, platform, shopId?, shopeeHandover? }]. Pass shopId from search-orders when multiple shops. For Shopee handover choice, run create-fulfillment-package first. includeRaw default true here.',
   requestContextSchema: z.object({
     [TENANT_MASTER_ID_KEY]: z.string().uuid(),
   }),

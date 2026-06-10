@@ -9,6 +9,9 @@ import {
   groqAllModelsCoolingMessage,
   isGroqRateLimitError,
 } from '../../models/groq-model-chain';
+import { resolveAgentTextFromResult } from '../shared/agent-result-text';
+import { sanitizeMarkdownTablesForDiscord } from '../../processors/discord-markdown-sanitize';
+import { buildGeneralAgentMemoryBinding } from '../../agents/general-agent-memory';
 import { parseDiscordReplyFromUnknown } from '../../processors/discord-reply-formatter';
 import { TENANT_MASTER_ID_KEY } from '../shared/marketplace-auth';
 import { dispatchDiscordOps, type DispatchContext } from './dispatcher';
@@ -153,24 +156,25 @@ export async function handleDiscordMessage(args: HandleDiscordMessageArgs): Prom
     // either the JSON Schema or tool_use_failed when forced to format JSON.
     const answer = await generalAgent.generate(userText, {
       requestContext,
-      memory: { thread: target.thread, resource: target.resource },
+      memory: buildGeneralAgentMemoryBinding({
+        thread: target.thread,
+        resource: target.resource,
+      }),
       maxSteps: 6,
     });
 
-    const answerText =
-      typeof (answer as { text?: unknown }).text === 'string'
-        ? (answer as { text: string }).text.trim()
-        : '';
+    const answerText = resolveAgentTextFromResult(answer as { text?: unknown; tripwire?: { reason?: unknown } });
 
     if (answerText) {
+      const discordText = sanitizeMarkdownTablesForDiscord(answerText);
       // If the model already emitted a Discord ops object (e.g. agent instructions told
       // it to), reuse it. Otherwise fall back to a single text op so the user always
       // sees the answer instead of raw JSON.
-      const opportunistic = parseDiscordReplyFromUnknown(answerText);
+      const opportunistic = parseDiscordReplyFromUnknown(discordText);
       if (opportunistic.success) {
         reply = opportunistic.data;
       } else {
-        fallbackText = answerText;
+        fallbackText = discordText;
       }
     } else {
       fallbackText = 'Sorry, I could not produce a response. Please try again.';

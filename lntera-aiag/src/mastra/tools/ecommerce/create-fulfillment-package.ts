@@ -73,7 +73,7 @@ function parseArgs(input: unknown): Args {
 export const createFulfillmentPackageTool = createTool({
   id: 'create-fulfillment-package',
   description:
-    'Prepare shipment context in bulk: **TikTok** may **create fulfillment packages** when the order has no packages yet (**id** = order id). **Shopee** does not mirror TikTok create-package; instead it loads **`get_shipping_parameter`** and returns **`details.handover`**: pickup vs drop-off availability, **`needs_handover_choice`**, and **human-readable pickup time slots** when Shopee exposes them—use this tool when the user asks for pickup times or which handover modes exist. Then call **confirm-order-fulfillment** (with **`shopeeHandover`** `pickup` or `dropoff` only if both are offered—e.g. J&T). **Instant** carriers (e.g. SPX Instant) usually expose pickup only: omit **`shopeeHandover`** on confirm. **shopId** = **`shopId`** from **search-orders** when multiple marketplace connections exist. **`includeRaw`**: optional, default **true** in this tool—set **false** to trim large API payloads in **raw**.',
+    'Prepare shipment context in bulk. TikTok may create packages (order id). Shopee returns get_shipping_parameter / pickup slots — use before confirm-order-fulfillment. Pass shopId from search-orders when multiple shops.',
   requestContextSchema: z.object({
     [TENANT_MASTER_ID_KEY]: z.string().uuid(),
   }),

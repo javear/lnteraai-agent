@@ -85,7 +85,7 @@ function parseArgs(input: unknown): Args {
 export const getShippingLabelsTool = createTool({
   id: 'get-shipping-labels',
   description:
-    'Download shipping labels (AWB / shipping documents) in bulk. **Input:** `{ orders: [{ id, platform, shopId? }], includeRaw?, embedDocument?, tiktokDocumentType?, tiktokDocumentSize? }`. **Always pass `shopId`** from the **search-orders** row when more than one Shopee or TikTok shop is connected—otherwise Shopee may return "order not found" for the wrong token. **Shopee:** **id** = order SN; runs document parameter → create → poll → download (order must be logistics-ready). **TikTok:** **id** = order id or package id; uses [Get Package Shipping Document](https://partner.tiktokshop.com/docv2/page/get-package-shipping-document-202309). **`tiktokDocumentSize`**: optional **`A5`** or **`A6`** (TikTok API requirement)—defaults to **`A6`** when omitted. **`includeRaw`** default **false**. **`embedDocument`: true** base64-embeds Shopee PDFs when under ~750KB.',
+    'Get/print bulk shipping labels (AWB / tracking number / waybill). Input: orders[{ id, platform, shopId? }]. Pass shopId from search-orders when multiple shops. Shopee: order SN, logistics-ready. TikTok: order or package id; tiktokDocumentSize A5|A6 (default A6). includeRaw default false.',
   requestContextSchema: z.object({
     [TENANT_MASTER_ID_KEY]: z.string().uuid(),
   }),

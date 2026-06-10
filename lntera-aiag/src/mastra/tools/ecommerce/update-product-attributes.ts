@@ -90,7 +90,7 @@ export const updateProductAttributesTool = createTool({
   id: 'update-product-attributes',
   strict: false,
   description:
-    `Patch a published product's top-level attributes (title, description, category, brand, package weight/dimensions, images, custom attributes). **Pricing and stock have dedicated tools — do not call this for them.** Image URLs are uploaded eagerly before patching. ${DISCORD_IMAGE_URL_TOOL_HINT} **Input:** \`{ platform, productId, shopId, … }\` — **shopId** required (from **search-products**). Only fields you include are updated.`,
+    `Patch published product attributes (not price/stock). shopId from search-products. ${DISCORD_IMAGE_URL_TOOL_HINT}`,
   requestContextSchema: z.object({
     [TENANT_MASTER_ID_KEY]: z.string().uuid(),
   }),

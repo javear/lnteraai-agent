@@ -50,3 +50,9 @@ redirect URI in the Discord application.
 tenant row may reference a **different** bot token in **Supabase Vault** as JSON (`{"token":"..."}`)
 via `vaultSecretRef`; the worker resolves secrets with RPC `resolve_integration_vault_secret`
 (service role only).
+
+**Groq (General Agent):** each tenant connects their own Groq key via Portkey. Row
+(`integration_code = groq`) stores **Portkey slugs/IDs only** — never the Groq API key.
+Onboarding: `GET /integrations/groq/onboard?tenantId=<slug>&token=<signed>` or Open API
+`PUT /svc/v1/integrations/groq`. See migration
+[`0007_tenant_groq_portkey.sql`](./migrations/0007_tenant_groq_portkey.sql).

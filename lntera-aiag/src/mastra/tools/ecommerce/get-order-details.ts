@@ -204,7 +204,7 @@ export const getOrderDetailsTool = createTool({
   id: 'get-order-details',
   strict: false,
   description:
-    'Fetch full order details for the connected tenant. **Input:** `orders: [{ id, platform, shopId? }]` plus optional **`includeRaw`** (default **false**). **id** = Shopee order SN or TikTok order id (TikTok must be a **JSON string** so large ids are not rounded). **shopId** = same **`shopId`** field as **search-orders** (Shopee `external_shop_id`; TikTok shop_cipher on the row)—omit only if the tenant has a single shop on that platform; otherwise pass it to avoid wrong-shop "order not found" errors. You may send one order as **top-level** `id`, `platform`, optional `shopId` instead of wrapping in `orders`. When **`includeRaw`: true**, successful rows include marketplace **`order.raw`** and top-level **`raw`** for debugging only. Each successful **`order`** includes **`statusMeaning`** explaining the normalized **status**.',
+    'Order details for connected shops. Input: orders[{ id, platform, shopId? }] or top-level id/platform/shopId. Shopee id=order SN; TikTok id=order id (string). Pass shopId from search-orders when multiple shops. includeRaw default false.',
   requestContextSchema: z.object({
     [TENANT_MASTER_ID_KEY]: z.string().uuid(),
   }),

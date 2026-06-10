@@ -110,3 +110,22 @@ export async function upsertTenantIntegration(input: {
   assertIntegrationCode(String((data as { integration_code: string }).integration_code));
   return data as TenantIntegration;
 }
+
+/** Delete a tenant's integration row (disconnect). Returns true if a row was removed. */
+export async function deleteTenantIntegration(
+  tenantId: Uuid,
+  integrationCode: IntegrationCode,
+): Promise<boolean> {
+  const { data, error } = await getSupabase()
+    .from(TABLE)
+    .delete()
+    .eq('tenant_id', tenantId)
+    .eq('integration_code', integrationCode)
+    .select('id');
+  if (error) {
+    throw new Error(
+      `Failed to delete tenant integration (${tenantId}/${integrationCode}): ${error.message}`,
+    );
+  }
+  return ((data as unknown[] | null)?.length ?? 0) > 0;
+}

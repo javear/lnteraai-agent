@@ -18,7 +18,7 @@ const inputSchema = z
 export const getProductDraftTool = createTool({
   id: 'get-product-draft',
   description:
-    'Fetch a draft by id. Returns the full draft `data`, current `status`, and `readiness.missing[]` showing which required fields are still unset for the target platform. **Input:** `{ draftId }`.',
+    'Fetch draft by id with data, status, and readiness.missing[].',
   requestContextSchema: z.object({
     [TENANT_MASTER_ID_KEY]: z.string().uuid(),
   }),

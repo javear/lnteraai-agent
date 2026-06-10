@@ -83,7 +83,7 @@ export const updateProductStockTool = createTool({
   /** Groq: strict tool input forces all schema properties to be sent; disable for optional filters. */
   strict: false,
   description:
-    'Set absolute stock for a product. **For a non-variant product**, pass `stock` (an integer). **For a variant product**, pass `updates: [{ skuId, stock, warehouseId? }, ...]`. **Input:** `{ platform, productId, shopId, stock? | updates? }` — **shopId** required (from **search-products**).',
+    'Update product stock / inventory quantity (set absolute). Non-variant: stock. Variant: updates[{ skuId, stock }]. shopId from search-products.',
   requestContextSchema: z.object({
     [TENANT_MASTER_ID_KEY]: z.string().uuid(),
   }),

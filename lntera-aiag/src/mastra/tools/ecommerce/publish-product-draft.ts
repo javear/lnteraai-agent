@@ -50,7 +50,7 @@ const TOOL_ID = 'publish-product-draft';
 export const publishProductDraftTool = createTool({
   id: TOOL_ID,
   description:
-    `Publish a draft to the marketplace. ${TOOL_TWO_STEP_CONFIRM_DESC} Preview includes title, price, variants, and missing fields. Fails fast with \`missing[]\` if required fields are unset — fix with **update-product-draft** and retry. **TikTok**: full edit then activate (\`activate: false\` keeps draft). **Shopee**: add_item (+ add_model when variants). **Input:** \`{ draftId, confirm?, activate? }\`.`,
+    `Publish draft to marketplace. ${TOOL_TWO_STEP_CONFIRM_DESC} Fix missing[] via update-product-draft first.`,
   requestContextSchema: z.object({
     [TENANT_MASTER_ID_KEY]: z.string().uuid(),
   }),

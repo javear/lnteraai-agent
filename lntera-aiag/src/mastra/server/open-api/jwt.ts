@@ -7,7 +7,12 @@ import {
 
 const encoder = new TextEncoder();
 
-function requireJwtSecret(): Uint8Array {
+/**
+ * The raw `OPENAPI_JWT_SECRET` string. Single source of truth for the shared
+ * HS256 secret used to sign/verify our tenant JWTs — also consumed by the Mastra
+ * server auth provider (MastraJwtAuth) so one secret guards /svc/v1 and /api/*.
+ */
+export function getOpenApiJwtSecret(): string {
   const name = 'OPENAPI_JWT_SECRET';
   const raw = process.env[name]?.trim();
   if (!raw) {
@@ -20,7 +25,11 @@ function requireJwtSecret(): Uint8Array {
       `${name} is too short (${raw.length} chars after trim; need at least 16). Example: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`,
     );
   }
-  return encoder.encode(raw);
+  return raw;
+}
+
+function requireJwtSecret(): Uint8Array {
+  return encoder.encode(getOpenApiJwtSecret());
 }
 
 export interface OpenApiAccessClaims extends JWTPayload {
