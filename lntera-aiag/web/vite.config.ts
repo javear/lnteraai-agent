@@ -82,13 +82,15 @@ export default defineConfig(({ mode }) => {
               },
             },
             {
-              // Chat sessions + message pages — secondary offline layer behind the IndexedDB cache.
-              // GET-only: thread create/rename/delete (POST/PATCH/DELETE) and the agent stream stay uncached.
+              // Chat sessions + message pages. NetworkFirst (not SWR): when online we always show the
+              // fresh list/messages — so a just-created session or turn appears immediately on reload —
+              // and the cache is only an offline fallback. GET-only; mutations + the stream stay uncached.
               urlPattern: ({ url }) => url.pathname.startsWith('/svc/v1/chat/threads'),
-              handler: 'StaleWhileRevalidate',
+              handler: 'NetworkFirst',
               method: 'GET',
               options: {
                 cacheName: 'lntera-chat',
+                networkTimeoutSeconds: 3,
                 expiration: { maxEntries: 64, maxAgeSeconds: 60 * 60 * 24 },
               },
             },

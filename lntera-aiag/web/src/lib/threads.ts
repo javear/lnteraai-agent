@@ -13,7 +13,7 @@ export interface HistoryMessage {
   role: 'user' | 'assistant';
   content: string;
   createdAt: string;
-  /** "Provider · model" that produced an assistant turn — cached client-side (server omits it). */
+  /** "Provider · model" that produced an assistant turn — served from history (Mastra message metadata). */
   model?: string;
 }
 
@@ -57,8 +57,26 @@ export async function getMessages(
   const q = new URLSearchParams({ limit: String(limit) });
   if (before) q.set('before', before);
   const res = await api(`${BASE}/${encodeURIComponent(threadId)}/messages?${q.toString()}`);
+  // A brand-new or not-yet-owned thread has no server messages — that's "empty", not an error.
+  // Returning an empty page (instead of throwing) keeps optimistic/cached messages and avoids a
+  // noisy 404 during the create→send→reload window.
+  if (res.status === 404) return { messages: [], hasMore: false, nextBefore: null };
   if (!res.ok) throw new Error(`Failed to load messages (${res.status}).`);
   return (await res.json()) as MessagesPage;
+}
+
+/**
+ * Ask the server to generate a short, summary title for a session from its first exchange.
+ * Best-effort: returns the (possibly unchanged) thread; never throws on a non-OK response.
+ */
+export async function generateTitle(api: Api, threadId: string): Promise<ChatThread | null> {
+  try {
+    const res = await api(`${BASE}/${encodeURIComponent(threadId)}/title`, { method: 'POST' });
+    if (!res.ok) return null;
+    return (await res.json()) as ChatThread;
+  } catch {
+    return null;
+  }
 }
 
 export async function renameThread(api: Api, threadId: string, title: string): Promise<ChatThread> {

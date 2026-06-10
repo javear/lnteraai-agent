@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { registerApiRoute } from '@mastra/core/server';
+import { RequestContext } from '@mastra/core/request-context';
 import { generalAgent } from '../../../agents/general-agent';
+import { extractModelIdentity } from '../../../integrations/portkey/model-config';
+import { llmModelLabel } from '../../../models/llm-providers';
+import { TENANT_MASTER_ID_KEY } from '../../../integrations/shared/marketplace-auth';
+import { resolveAgentTextFromResult } from '../../../integrations/shared/agent-result-text';
 import { OPEN_API_PREFIX, OPENAPI_TAGS } from '../constants';
 import { openApiJsonError, resolveTenantFromBearer, type OpenApiHandlerContext } from '../middleware/bearer-tenant';
 
@@ -59,6 +64,29 @@ function threadDTO(t: { id: string; title?: string; createdAt: Date; updatedAt: 
     createdAt: new Date(t.createdAt).toISOString(),
     updatedAt: new Date(t.updatedAt).toISOString(),
   };
+}
+
+/**
+ * "Provider · model" label for an assistant message, from Mastra's stored `content.metadata.modelId`
+ * (e.g. `@{slug}/{segment}`). Reuses the same parsing as the live stream so labels match.
+ */
+function messageModelLabel(content: unknown): string | undefined {
+  const meta = (content as { metadata?: { modelId?: unknown } } | null)?.metadata;
+  const modelId = meta && typeof meta.modelId === 'string' ? meta.modelId.trim() : '';
+  if (!modelId) return undefined;
+  const identity = extractModelIdentity(modelId);
+  return identity ? llmModelLabel(identity) : undefined;
+}
+
+/** Normalize an LLM-generated title: single line, no surrounding quotes/trailing punctuation, capped. */
+function sanitizeTitle(raw: string): string {
+  return raw
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/^["'`\s]+/, '')
+    .replace(/["'`\s.]+$/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60);
 }
 
 /** Flatten a stored message's content parts to plain display text. */
@@ -201,6 +229,9 @@ const listMessagesRoute = registerApiRoute(`${OPEN_API_PREFIX}/chat/threads/:id/
         role: m.role as 'user' | 'assistant',
         content: messageText(m.content),
         createdAt: new Date(m.createdAt).toISOString(),
+        // The provider+model that produced this answer, served from Mastra's stored message metadata
+        // so the label shows on reload and on any device (not just the live stream).
+        model: m.role === 'assistant' ? messageModelLabel(m.content) : undefined,
       }))
       .filter((m) => m.content.length > 0);
 
@@ -267,10 +298,80 @@ const deleteThreadRoute = registerApiRoute(`${OPEN_API_PREFIX}/chat/threads/:id`
   },
 });
 
+/**
+ * POST /svc/v1/chat/threads/:id/title — generate a short, Claude-style title from the opening of the
+ * conversation. Reuses the tenant's own LLM (via generalAgent) with a pinned small model and NO memory
+ * binding (so the title prompt never lands in the conversation). Idempotent: returns the thread either
+ * way; on any failure it keeps the existing title.
+ */
+const generateTitleRoute = registerApiRoute(`${OPEN_API_PREFIX}/chat/threads/:id/title`, {
+  method: 'POST',
+  requiresAuth: false,
+  openapi: {
+    summary: 'Generate a short title for a chat session from its first exchange',
+    tags: [...OPENAPI_TAGS.root],
+    parameters: [authHeaderParam],
+    responses: { 200: { description: 'Updated session' }, 401: { description: 'Unauthorized' }, 404: { description: 'Not found' } },
+  },
+  handler: async (c: ChatContext) => {
+    const who = await requireUser(c);
+    if (who instanceof Response) return who;
+    const memory = await getMemory(c);
+    if (memory instanceof Response) return memory;
+
+    const threadId = c.req.param('id');
+    const thread = threadId ? await ownedThread(memory, threadId, who.tenantId, who.userId) : null;
+    if (!thread) return openApiJsonError(c, 404, 'not_found', 'Chat session not found.');
+
+    // Oldest-first opening of the conversation (a few messages is enough for a title).
+    const recalled = await memory.recall({
+      threadId: thread.id,
+      resourceId: who.tenantId,
+      perPage: 6,
+      page: 0,
+      orderBy: { field: 'createdAt', direction: 'ASC' },
+    });
+    const opening = recalled.messages
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .slice(0, 4)
+      .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${messageText(m.content)}`)
+      .filter((l) => l.length > 6)
+      .join('\n')
+      .slice(0, 2000);
+    if (!opening) return c.json(threadDTO(thread)); // nothing to summarize yet
+
+    // Pinned small model; no memory option → stateless (does not write to the thread).
+    const requestContext = new RequestContext();
+    requestContext.set(TENANT_MASTER_ID_KEY, who.tenantId);
+    requestContext.set('channel', 'web');
+    requestContext.set('groqModel', 'llama-3.1-8b-instant');
+
+    const prompt =
+      `Create a very short title (3-6 words, Title Case, no quotes, no trailing punctuation) for this ` +
+      `conversation. Reply with ONLY the title.\n\n${opening}`;
+
+    let title = '';
+    try {
+      const answer = await generalAgent.generate(prompt, { requestContext, maxSteps: 1 });
+      title = sanitizeTitle(
+        resolveAgentTextFromResult(answer as { text?: unknown; tripwire?: { reason?: unknown } }),
+      );
+    } catch {
+      return c.json(threadDTO(thread)); // keep existing title on failure
+    }
+    if (!title) return c.json(threadDTO(thread));
+
+    const updatedAt = new Date();
+    await memory.saveThread({ thread: { ...thread, title, updatedAt } });
+    return c.json(threadDTO({ ...thread, title, updatedAt }));
+  },
+});
+
 export const chatHistoryRoutes = [
   listThreadsRoute,
   createThreadRoute,
   listMessagesRoute,
   renameThreadRoute,
   deleteThreadRoute,
+  generateTitleRoute,
 ];

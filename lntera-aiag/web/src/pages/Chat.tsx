@@ -8,7 +8,7 @@ import { parseSuggestions, streamChat } from '../lib/chat';
 import { apiErrorMessage, isAnyLlmActive } from '../lib/integrations';
 import { useChats } from '../lib/chat-store';
 import { useNotifications, type TenantNotification } from '../lib/notifications';
-import { getMessages, type HistoryMessage } from '../lib/threads';
+import { generateTitle, getMessages, type HistoryMessage } from '../lib/threads';
 import { appendCachedMessages, getCachedMessages, setCachedMessages } from '../lib/chat-cache';
 import { useOnlineStatus } from '../lib/pwa';
 import { ProviderConnect, PROVIDER_CONNECT_CONFIGS } from '../components/ProviderConnect';
@@ -71,6 +71,9 @@ export default function Chat() {
   // In-memory per-thread messages (persistent only) so switching back to a visited thread restores
   // instantly — no blank/flash while IndexedDB + server revalidate.
   const memCacheRef = useRef<Map<string, ChatMessage[]>>(new Map());
+  // Threads created in THIS browser session: their first turn may not be on the server yet, so an
+  // empty server response shouldn't blank the optimistic messages.
+  const createdThisSessionRef = useRef<Set<string>>(new Set());
   // Keep latest values addressable from stable callbacks / event handlers.
   const apiRef = useRef(api);
   apiRef.current = api;
@@ -120,15 +123,25 @@ export default function Chat() {
       try {
         const page = await getMessages(apiRef.current, threadId, null, PAGE);
         if (historyForRef.current !== threadId) return;
-        // The server doesn't store the per-message "Provider · model" label — graft it back from the
-        // client cache / in-memory turns by id so it survives reloads and background revalidation.
+        // A just-created thread whose first turn isn't on the server yet → keep the optimistic
+        // messages instead of blanking to an empty list.
+        if (
+          page.messages.length === 0 &&
+          createdThisSessionRef.current.has(threadId) &&
+          (memCacheRef.current.get(threadId)?.length ?? 0) > 0
+        ) {
+          setLoadingHistory(false);
+          return;
+        }
+        // The model label is served from history (Mastra message metadata); fall back to the client
+        // cache / in-memory turns by id only when the server didn't include it.
         const cachedNow = await getCachedMessages(scope, threadId);
         if (historyForRef.current !== threadId) return;
         const modelById = new Map<string, string>();
         for (const m of cachedNow ?? []) if (m.model) modelById.set(m.id, m.model);
         for (const m of memCacheRef.current.get(threadId) ?? []) if (m.model) modelById.set(m.id, m.model);
         const merged = page.messages.map((m) =>
-          m.role === 'assistant' && modelById.has(m.id) ? { ...m, model: modelById.get(m.id) } : m,
+          m.role === 'assistant' && !m.model && modelById.has(m.id) ? { ...m, model: modelById.get(m.id) } : m,
         );
         setMessages(merged);
         setSuggestions(trailingSuggestionsOf(merged));
@@ -289,12 +302,14 @@ export default function Chat() {
     setStreaming(true);
     stopRef.current = false;
 
-    // A fresh session has no thread yet — create it (with a title) before streaming.
+    // A fresh session has no thread yet — create it (with a provisional title) before streaming.
+    const isNewSession = !routeThreadId;
     let threadId = routeThreadId;
     if (!threadId) {
       try {
         const created = await createSession(deriveTitle(content));
         threadId = created.id;
+        createdThisSessionRef.current.add(created.id); // keep optimistic messages if reloaded early
         historyForRef.current = created.id; // suppress the route-change reload below
         navigate(`/c/${created.id}`, { replace: true });
       } catch {
@@ -349,6 +364,14 @@ export default function Chat() {
     }
     void appendCachedMessages(scope, threadId, turn);
     touchThread(threadId, { updatedAt: completedAt });
+
+    // First turn of a new session → generate a short summary title (Claude-style) and apply it.
+    if (isNewSession && body.trim()) {
+      const tid = threadId;
+      void generateTitle(apiRef.current, tid).then((updated) => {
+        if (updated?.title) touchThread(tid, { title: updated.title, updatedAt: updated.updatedAt });
+      });
+    }
   }
 
   function pick(s: string) {
