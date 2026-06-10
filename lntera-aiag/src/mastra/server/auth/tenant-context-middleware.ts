@@ -33,31 +33,27 @@ interface AuthedUser {
 export const tenantContextMiddleware: MiddlewareHandler = async (c, next) => {
   const rc = c.get('requestContext') as RequestContextLike | undefined;
   if (rc) {
+    // 1) Preferred: the tenant from the user the auth provider attached to requestContext.
     const user = rc.get('user') as AuthedUser | undefined;
-    const tenant = user?.app_metadata?.tenant_id ?? user?.sub;
+    let tenant = user?.app_metadata?.tenant_id ?? user?.sub;
+    let authUserId = user?.app_metadata?.tenant_id ? (user.id ?? user.sub) : undefined;
+
+    // 2) Fallback: verify the bearer token ourselves (same path /svc/v1 uses). This is the source
+    //    of truth when the auth'd user isn't surfaced on requestContext (some deploy/auth setups),
+    //    and in local dev where /api auth is off. The token is verified here, so this never trusts
+    //    a client-supplied value. Studio playground (no token) → MASTRA_DEV_TENANT_ID.
+    if (!(typeof tenant === 'string' && tenant.trim() !== '')) {
+      const bearer = /^Bearer\s+(.+)$/i.exec(c.req.header('Authorization') ?? '')?.[1]?.trim();
+      const resolved = bearer ? await tenantFromBearerToken(bearer).catch(() => null) : null;
+      tenant = resolved?.tenantId ?? process.env.MASTRA_DEV_TENANT_ID?.trim();
+      if (resolved?.authUserId) authUserId = resolved.authUserId;
+    }
+
     if (typeof tenant === 'string' && tenant.trim() !== '') {
-      // Production path: the auth provider already authenticated the request.
       rc.set(TENANT_MASTER_ID_KEY, tenant.trim());
       rc.set(MASTRA_RESOURCE_ID_KEY, tenant.trim());
-      if (user?.app_metadata?.tenant_id) {
-        const userId = user.id ?? user.sub;
-        if (typeof userId === 'string' && userId.trim() !== '') {
-          rc.set(AUTH_USER_ID_KEY, userId.trim());
-        }
-      }
-    } else if (process.env.MASTRA_DEV === 'true') {
-      const existing = rc.get(TENANT_MASTER_ID_KEY);
-      if (typeof existing !== 'string' || existing.trim() === '') {
-        // Dev: /api auth is off. Prefer the logged-in tenant from the bearer the web app
-        // sends; only the Studio playground (no token) falls back to MASTRA_DEV_TENANT_ID.
-        const bearer = /^Bearer\s+(.+)$/i.exec(c.req.header('Authorization') ?? '')?.[1]?.trim();
-        const resolved = bearer ? await tenantFromBearerToken(bearer).catch(() => null) : null;
-        const tenantId = resolved?.tenantId ?? process.env.MASTRA_DEV_TENANT_ID?.trim();
-        if (tenantId) {
-          rc.set(TENANT_MASTER_ID_KEY, tenantId);
-          rc.set(MASTRA_RESOURCE_ID_KEY, tenantId);
-          if (resolved?.authUserId) rc.set(AUTH_USER_ID_KEY, resolved.authUserId);
-        }
+      if (typeof authUserId === 'string' && authUserId.trim() !== '') {
+        rc.set(AUTH_USER_ID_KEY, authUserId.trim());
       }
     }
   }
