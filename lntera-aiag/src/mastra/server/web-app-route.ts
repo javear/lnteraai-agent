@@ -96,11 +96,18 @@ function buildMonolithRoutes() {
 
 /** Standalone frontend: redirect any /app/* hit on the API origin to the real app (no SPA served). */
 function buildRedirectRoutes(origin: string) {
-  const redirect = (c: { req: { path: string }; redirect: (u: string, s?: number) => Response }) =>
-    c.redirect(`${origin}${c.req.path.replace(/^\/app/, '') || '/'}`, 308);
+  const target = (path: string) => `${origin}${path.replace(/^\/app/, '') || '/'}`;
   return [
-    registerApiRoute('/app', { method: 'GET', requiresAuth: false, handler: async (c) => redirect(c) }),
-    registerApiRoute('/app/*', { method: 'GET', requiresAuth: false, handler: async (c) => redirect(c) }),
+    registerApiRoute('/app', {
+      method: 'GET',
+      requiresAuth: false,
+      handler: async (c) => c.redirect(target(c.req.path), 308),
+    }),
+    registerApiRoute('/app/*', {
+      method: 'GET',
+      requiresAuth: false,
+      handler: async (c) => c.redirect(target(c.req.path), 308),
+    }),
   ];
 }
 
