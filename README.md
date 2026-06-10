@@ -11,6 +11,7 @@ lntera-aiag/        # Mastra backend (agents, tools, server API) → deploys to 
 ## Where to start
 
 - **Backend setup, env, and deployment** → [`lntera-aiag/README.md`](lntera-aiag/README.md)
+- **Backend → Railway (Docker) deploy** → [`lntera-aiag/RAILWAY.md`](lntera-aiag/RAILWAY.md)
 - **Frontend → Vercel deploy** → [`lntera-aiag/web/VERCEL.md`](lntera-aiag/web/VERCEL.md)
 - **Native (Capacitor/Electron)** → [`lntera-aiag/web/NATIVE.md`](lntera-aiag/web/NATIVE.md)
 
@@ -22,6 +23,6 @@ npm run dev              # backend (Mastra Studio at http://localhost:4111)
 npm run dev:web          # frontend (in another terminal)
 ```
 
-In production the backend runs on **Mastra Cloud** and the frontend on **Vercel** (separate origins,
-Bearer-token auth). See the backend README's *Deployment* section for the full runbook and required
-environment variables.
+In production the backend runs on **Railway** (Docker) and the frontend on **Vercel** (separate
+origins, Bearer-token auth); pushing to `main` auto-deploys both. See the backend README's
+*Deployment* section + [`RAILWAY.md`](lntera-aiag/RAILWAY.md) for the full runbook and required env vars.

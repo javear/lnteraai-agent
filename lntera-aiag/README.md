@@ -97,39 +97,36 @@ If you're new to AI agents, check out our [course](https://mastra.ai/learn) and 
 
 ## Deployment
 
-Backend → **Mastra Cloud**, frontend → **Vercel**. They run on separate origins and talk
-cross-origin (Bearer-token auth, no cookies).
+Backend → **Railway** (Docker), frontend → **Vercel**. They run on separate origins and talk
+cross-origin (Bearer-token auth, no cookies). Pushing to `main` auto-deploys both.
 
-### Backend — Mastra Cloud
+### Backend — Railway (Docker)
 
-Point Mastra Cloud at this package (`lntera-aiag/`). Build command is `mastra build` (the `build`
-script; the SPA is built separately on Vercel). Node `>=22.13.0` is already pinned in `package.json`.
+The backend ships as a container built by [`Dockerfile.mastra-server`](./Dockerfile.mastra-server).
+Create a Railway service from this repo with **Root Directory = `lntera-aiag`**; it auto-detects
+[`railway.json`](./railway.json) (Dockerfile build + `/svc/v1/public-config` healthcheck). The image
+builds with `mastra build` and runs `node .mastra/output/index.mjs`; `PORT` is injected by Railway and
+the container binds `0.0.0.0` (`MASTRA_HOST`). Full runbook + the chicken-and-egg URL wiring:
+[`RAILWAY.md`](./RAILWAY.md).
 
-Required environment variables (set in the Mastra Cloud dashboard — see `.env.example` for the full,
-grouped list):
+Required env vars (Railway dashboard — see `.env.example` for the full grouped list):
 
 - `DATABASE_URL` — Supabase **session pooler (port 5432)**, *not* the transaction pooler (6543).
 - `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (service role), `SUPABASE_PUBLISHABLE_KEY` (anon).
 - `PORTKEY_API_KEY` (+ `PORTKEY_ADMIN_API_KEY` to provision tenant LLM keys).
 - `OPENAPI_JWT_SECRET`, `OPENAPI_SERVICE_API_KEY`, `OAUTH_STATE_SECRET`.
-- `MASTRA_PUBLIC_BASE_URL` = the deployed backend URL (drives OAuth callbacks + push deep-links).
-- `MASTRA_CORS_ORIGINS` = your Vercel origin; `WEB_APP_ORIGIN` = your Vercel origin.
-- Optional per feature: marketplace OAuth (Shopee/TikTok/Discord), `ONESIGNAL_*`.
+- `NODE_ENV=production` (enables auth; do **not** set `MASTRA_DEV`).
+- `MASTRA_PUBLIC_BASE_URL` = the Railway URL (OAuth callbacks + push deep-links).
+- `MASTRA_CORS_ORIGINS` + `WEB_APP_ORIGIN` = your Vercel URL.
+- Optional per feature: `OPENAI_API_KEY`, marketplace OAuth (Shopee/TikTok/Discord), `ONESIGNAL_*`.
+  On Railway's persistent container `DISCORD_EMBEDDED=1` is viable (or run `npm run discord` separately).
 
-Gotchas:
-
-- Set `NODE_ENV=production` (enables auth). Do **not** set `MASTRA_DEV` (it disables auth for the
-  local Studio playground) or `DISCORD_EMBEDDED` (embedded Discord is opt-in; leaving it unset keeps
-  the build/runtime from opening a Gateway connection).
-- The SPA route `/app` returns `503` (not a crash) when no built SPA is present — expected on Cloud,
-  since the frontend lives on Vercel.
+The SPA route `/app` returns `503` (not a crash) when no built SPA is present — expected, since the
+frontend lives on Vercel. (Mastra Cloud also works as an alternative target via the same `mastra build`.)
 
 ### Frontend — Vercel
 
 Import the repo in Vercel with **Root Directory = `lntera-aiag/web`** (`web/vercel.json` sets the
-build command, output dir, and SPA rewrite). Set `VITE_API_BASE_URL` to the backend URL. Add the
-Vercel origin to the backend's `MASTRA_CORS_ORIGINS`/`WEB_APP_ORIGIN`, and to the Supabase + OneSignal
-dashboards. Full runbook: `web/VERCEL.md`.
-
-> The [Mastra platform docs](https://mastra.ai/docs/mastra-platform/overview) cover Studio (hosted
-> agent testing/traces) and Server (the production API deploy target) in more detail.
+build command, output dir, and SPA rewrite). Set `VITE_API_BASE_URL` to the Railway backend URL. Add
+the Vercel origin to the backend's `MASTRA_CORS_ORIGINS`/`WEB_APP_ORIGIN`, and to the Supabase +
+OneSignal dashboards. Full runbook: [`web/VERCEL.md`](./web/VERCEL.md).
