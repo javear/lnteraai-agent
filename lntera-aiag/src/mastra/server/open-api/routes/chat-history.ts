@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { registerApiRoute } from '@mastra/core/server';
 import { RequestContext } from '@mastra/core/request-context';
 import { generalAgent } from '../../../agents/general-agent';
+import { titleAgent } from '../../../agents/title-agent';
 import { extractModelIdentity } from '../../../integrations/portkey/model-config';
 import { llmModelLabel } from '../../../models/llm-providers';
 import { TENANT_MASTER_ID_KEY } from '../../../integrations/shared/marketplace-auth';
@@ -352,7 +353,8 @@ const generateTitleRoute = registerApiRoute(`${OPEN_API_PREFIX}/chat/threads/:id
 
     let title = '';
     try {
-      const answer = await generalAgent.generate(prompt, { requestContext, maxSteps: 1 });
+      // Use the dedicated title agent (no guard/tools/security prompt) so a refusal never becomes a title.
+      const answer = await titleAgent.generate(prompt, { requestContext, maxSteps: 1 });
       title = sanitizeTitle(
         resolveAgentTextFromResult(answer as { text?: unknown; tripwire?: { reason?: unknown } }),
       );
