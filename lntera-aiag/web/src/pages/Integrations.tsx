@@ -97,7 +97,7 @@ export default function Integrations() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-5 py-8 sm:px-6 sm:py-10">
+    <div className="mx-auto w-full max-w-2xl px-5 pb-16 pt-8 sm:px-6 sm:pb-24 sm:pt-10">
       <h1 className="text-2xl font-semibold tracking-tight sm:text-[26px]">Integrations</h1>
       <p className="mt-2 text-[15px] text-muted-foreground">
         Connect the channels and models your agent works with.

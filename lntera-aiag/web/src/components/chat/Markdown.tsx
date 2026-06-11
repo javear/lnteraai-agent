@@ -5,7 +5,7 @@ import type { Components } from 'react-markdown';
 // Token-styled markdown — no Tailwind typography plugin. Loosely-typed component overrides
 // (react-markdown passes extra props we ignore) cast to Components.
 const components = {
-  p: (p: any) => <p className="my-2 leading-relaxed first:mt-0 last:mb-0">{p.children}</p>,
+  p: (p: any) => <p className="my-2 break-words leading-relaxed first:mt-0 last:mb-0">{p.children}</p>,
   ul: (p: any) => <ul className="my-2 list-disc space-y-1 pl-5">{p.children}</ul>,
   ol: (p: any) => <ol className="my-2 list-decimal space-y-1 pl-5">{p.children}</ol>,
   li: (p: any) => <li className="marker:text-muted-foreground">{p.children}</li>,
@@ -14,7 +14,7 @@ const components = {
       href={p.href}
       target="_blank"
       rel="noreferrer"
-      className="font-medium text-foreground underline decoration-muted-foreground/50 underline-offset-2 hover:decoration-foreground"
+      className="font-medium text-foreground underline decoration-muted-foreground/50 underline-offset-2 [overflow-wrap:anywhere] hover:decoration-foreground"
     >
       {p.children}
     </a>
@@ -27,10 +27,10 @@ const components = {
     p.className ? (
       <code className={p.className}>{p.children}</code>
     ) : (
-      <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[13px] text-foreground">{p.children}</code>
+      <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[13px] text-foreground [overflow-wrap:anywhere]">{p.children}</code>
     ),
   pre: (p: any) => (
-    <pre className="my-2.5 overflow-x-auto rounded-lg border bg-muted p-3 font-mono text-[13px] leading-relaxed text-foreground">
+    <pre className="my-2.5 max-w-full overflow-x-auto rounded-lg border bg-muted p-3 font-mono text-[13px] leading-relaxed text-foreground">
       {p.children}
     </pre>
   ),
@@ -39,7 +39,7 @@ const components = {
   ),
   hr: () => <hr className="my-3" />,
   table: (p: any) => (
-    <div className="my-2.5 overflow-x-auto rounded-lg border">
+    <div className="my-2.5 max-w-full overflow-x-auto rounded-lg border">
       <table className="w-full border-collapse text-[13px]">{p.children}</table>
     </div>
   ),
@@ -51,7 +51,7 @@ const components = {
 
 export function Markdown({ children }: { children: string }) {
   return (
-    <div className="text-[15px] leading-relaxed text-foreground">
+    <div className="min-w-0 break-words text-[15px] leading-relaxed text-foreground">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {children}
       </ReactMarkdown>

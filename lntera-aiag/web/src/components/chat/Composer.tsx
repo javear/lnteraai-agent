@@ -38,7 +38,7 @@ export function Composer({
   }
 
   return (
-    <div className="safe-b border-t bg-background px-3 py-3 sm:px-4">
+    <div className="border-t bg-background px-3 pt-3 pb-[max(0.85rem,env(safe-area-inset-bottom))] sm:px-4">
       <div className="mx-auto max-w-3xl">
         <div
           className={cn(

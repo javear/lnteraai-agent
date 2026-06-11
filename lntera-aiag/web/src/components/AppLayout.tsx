@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type TouchEvent } from 'react';
 import { NavLink, Outlet, useLocation, useMatch, useNavigate, useOutletContext } from 'react-router-dom';
 import { Bell, ChevronsUpDown, LogOut, Menu, Plug, Sparkles, SquarePen, Trash2, WifiOff } from 'lucide-react';
 import { toast } from 'sonner';
@@ -183,87 +183,92 @@ function SidebarContent({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="px-2">
+      {/* Brand bar — height-aligned with the app header so the drawer feels continuous. */}
+      <div className="flex h-14 shrink-0 items-center px-4 safe-t">
         <Logo />
       </div>
 
-      <div className="mt-6 flex flex-col gap-1">
-        <NavLink to="/" end onClick={onNavigate} className={navItemClass}>
-          <SquarePen />
-          New chat
-        </NavLink>
-        <NavLink to="/integrations" onClick={onNavigate} className={navItemClass}>
-          <Plug />
-          Integrations
-        </NavLink>
-      </div>
-
-      <div className="mt-6 flex min-h-0 flex-1 flex-col">
-        <div className="mb-1.5 px-3 font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-          Chats
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
-          <ChatSessionList activeId={activeThreadId} onNavigate={onNavigate} />
-        </div>
-      </div>
-
-      <div className="mt-3 shrink-0 border-t px-3 pt-3">
-        <div className="mb-2 font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-          Connections
-        </div>
-        {loading ? (
-          <SidebarSkeleton />
-        ) : (
-          <div className="flex flex-col gap-2">
-            {connectionRows(status).map((c) => (
-              <Tooltip key={c.key}>
-                <TooltipTrigger asChild>
-                  <div className="flex cursor-default items-center gap-2 text-[13px]">
-                    <span
-                      className={cn('h-1.5 w-1.5 rounded-full', c.on ? 'bg-success' : 'bg-muted-foreground/40')}
-                    />
-                    <span className={c.on ? 'text-foreground' : 'text-muted-foreground'}>{c.label}</span>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="right">{c.on ? 'Connected' : 'Not connected'}</TooltipContent>
-              </Tooltip>
-            ))}
+      {/* One scroll region: every item stays reachable on short screens (account anchors to the bottom). */}
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="flex min-h-full flex-col px-3 pb-3">
+          <div className="flex flex-col gap-1">
+            <NavLink to="/" end onClick={onNavigate} className={navItemClass}>
+              <SquarePen />
+              New chat
+            </NavLink>
+            <NavLink to="/integrations" onClick={onNavigate} className={navItemClass}>
+              <Plug />
+              Integrations
+            </NavLink>
           </div>
-        )}
-      </div>
 
-      <div className="mt-3 shrink-0 border-t pt-3">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
-              <Avatar label={email} />
-              <span className="min-w-0 flex-1 truncate text-[13px] text-foreground" title={email}>
-                {email}
-              </span>
-              <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-[--radix-dropdown-menu-trigger-width] min-w-56">
-            <DropdownMenuItem onSelect={openSettings}>
-              <Bell className="text-muted-foreground" />
-              Notification settings
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>Theme</DropdownMenuLabel>
-            {THEME_OPTIONS.map((opt) => (
-              <DropdownMenuItem key={opt.value} onSelect={() => setTheme(opt.value)}>
-                <opt.icon className="text-muted-foreground" />
-                <span className="flex-1">{opt.label}</span>
-                {theme === opt.value ? <span className="h-1.5 w-1.5 rounded-full bg-foreground" /> : null}
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={onSignOut} className="text-destructive focus:text-destructive">
-              <LogOut />
-              Sign out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+          <div className="mt-6">
+            <div className="mb-1.5 px-3 font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              Chats
+            </div>
+            <ChatSessionList activeId={activeThreadId} onNavigate={onNavigate} />
+          </div>
+
+          <div className="mt-6 border-t px-3 pt-4">
+            <div className="mb-2 font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              Connections
+            </div>
+            {loading ? (
+              <SidebarSkeleton />
+            ) : (
+              <div className="flex flex-col gap-2">
+                {connectionRows(status).map((c) => (
+                  <Tooltip key={c.key}>
+                    <TooltipTrigger asChild>
+                      <div className="flex cursor-default items-center gap-2 text-[13px]">
+                        <span
+                          className={cn('h-1.5 w-1.5 rounded-full', c.on ? 'bg-success' : 'bg-muted-foreground/40')}
+                        />
+                        <span className={c.on ? 'text-foreground' : 'text-muted-foreground'}>{c.label}</span>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">{c.on ? 'Connected' : 'Not connected'}</TooltipContent>
+                  </Tooltip>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Account — bottom-anchored when there's room, scrolls into reach when cramped. */}
+          <div className="mt-auto border-t pt-3">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
+                  <Avatar label={email} />
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-foreground" title={email}>
+                    {email}
+                  </span>
+                  <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-[--radix-dropdown-menu-trigger-width] min-w-56">
+                <DropdownMenuItem onSelect={openSettings}>
+                  <Bell className="text-muted-foreground" />
+                  Notification settings
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Theme</DropdownMenuLabel>
+                {THEME_OPTIONS.map((opt) => (
+                  <DropdownMenuItem key={opt.value} onSelect={() => setTheme(opt.value)}>
+                    <opt.icon className="text-muted-foreground" />
+                    <span className="flex-1">{opt.label}</span>
+                    {theme === opt.value ? <span className="h-1.5 w-1.5 rounded-full bg-foreground" /> : null}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={onSignOut} className="text-destructive focus:text-destructive">
+                  <LogOut />
+                  Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -277,6 +282,34 @@ export function AppLayout() {
   const location = useLocation();
   const online = useOnlineStatus();
   const activeThreadId = useMatch('/c/:threadId')?.params.threadId;
+
+  // Drawer gestures (mobile): swipe the open drawer left to close; swipe in from the left edge to open.
+  const drawerTouch = useRef({ x: 0, y: 0, active: false });
+  const edgeTouch = useRef({ x: 0, y: 0, active: false });
+  function onDrawerTouchStart(e: TouchEvent) {
+    const t = e.touches[0];
+    drawerTouch.current = { x: t.clientX, y: t.clientY, active: true };
+  }
+  function onDrawerTouchEnd(e: TouchEvent) {
+    if (!drawerTouch.current.active) return;
+    drawerTouch.current.active = false;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - drawerTouch.current.x;
+    const dy = t.clientY - drawerTouch.current.y;
+    if (dx < -50 && Math.abs(dx) > Math.abs(dy) * 1.4) setDrawerOpen(false);
+  }
+  function onEdgeTouchStart(e: TouchEvent) {
+    const t = e.touches[0];
+    edgeTouch.current = { x: t.clientX, y: t.clientY, active: true };
+  }
+  function onEdgeTouchEnd(e: TouchEvent) {
+    if (!edgeTouch.current.active) return;
+    edgeTouch.current.active = false;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - edgeTouch.current.x;
+    const dy = t.clientY - edgeTouch.current.y;
+    if (dx > 40 && Math.abs(dx) > Math.abs(dy) * 1.4) setDrawerOpen(true);
+  }
 
   const refreshStatus = useCallback(async (fresh = false) => {
     try {
@@ -306,7 +339,7 @@ export function AppLayout() {
         <TooltipProvider delayDuration={200}>
         <div className="flex h-dvh overflow-hidden">
           {/* Desktop sidebar */}
-          <aside className="hidden w-64 shrink-0 border-r bg-muted/40 px-4 py-6 sm:flex sm:flex-col">
+          <aside className="hidden w-64 shrink-0 border-r bg-muted/40 sm:flex sm:flex-col">
             <SidebarContent
               status={status}
               loading={loadingStatus}
@@ -316,9 +349,24 @@ export function AppLayout() {
             />
           </aside>
 
+          {/* Left-edge swipe-to-open zone (mobile only, when the drawer is closed). */}
+          {!drawerOpen ? (
+            <div
+              aria-hidden
+              className="fixed inset-y-0 left-0 z-30 w-4 sm:hidden"
+              onTouchStart={onEdgeTouchStart}
+              onTouchEnd={onEdgeTouchEnd}
+            />
+          ) : null}
+
           {/* Mobile drawer */}
           <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-            <SheetContent side="left" className="flex flex-col px-4 py-6 safe-t">
+            <SheetContent
+              side="left"
+              className="gap-0 p-0"
+              onTouchStart={onDrawerTouchStart}
+              onTouchEnd={onDrawerTouchEnd}
+            >
               <SheetTitle className="sr-only">Navigation</SheetTitle>
               <SidebarContent
                 status={status}
@@ -362,7 +410,7 @@ export function AppLayout() {
               </div>
             ) : null}
 
-            <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <main className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
               <Outlet context={{ status, loadingStatus, refreshStatus } satisfies AppOutletContext} />
             </main>
           </div>
