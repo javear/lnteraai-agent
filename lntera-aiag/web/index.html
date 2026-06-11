@@ -72,7 +72,7 @@
     <script>
       (function () {
         try {
-          var t = localStorage.getItem('lntera-theme') || 'system';
+          var t = localStorage.getItem('lntera-theme') || 'light';
           var dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
           var el = document.documentElement;
           el.classList.toggle('dark', dark);

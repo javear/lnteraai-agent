@@ -1,26 +1,26 @@
 import { useNavigate } from 'react-router-dom';
-import { Logo } from '../../ui';
 import { Container } from './Container';
+import { BrandMark } from './BrandMark';
 
-/** Minimal marketing footer — no fabricated links. */
+/** Minimal footer — no fabricated pages. */
 export function LandingFooter() {
   const navigate = useNavigate();
-  const scrollToForm = () =>
+  const toForm = () =>
     document.getElementById('get-started')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
   return (
-    <footer className="border-t bg-muted/30">
-      <Container className="flex flex-col items-center gap-5 py-10 text-center sm:flex-row sm:justify-between sm:text-left">
-        <Logo size="sm" />
-        <p className="order-last text-[13px] text-muted-foreground sm:order-none">
-          © 2026 Lntera — your business agent for Shopee &amp; TikTok Shop.
+    <footer className="border-t">
+      <Container className="flex flex-col items-center gap-6 py-10 sm:flex-row sm:justify-between">
+        <BrandMark size="sm" />
+        <p className="lp-mono text-[0.7rem] uppercase tracking-[0.14em] text-[hsl(var(--fg-soft))]">
+          Your business agent · est. 2026
         </p>
-        <nav className="flex items-center gap-5 text-[13px] font-medium text-muted-foreground">
-          <button onClick={() => navigate('/login')} className="transition-colors hover:text-foreground">
+        <nav className="flex items-center gap-6">
+          <button onClick={() => navigate('/login')} className="lp-link">
             Sign in
           </button>
-          <button onClick={scrollToForm} className="transition-colors hover:text-foreground">
-            Get started
+          <button onClick={toForm} className="lp-link">
+            Start free
           </button>
         </nav>
       </Container>

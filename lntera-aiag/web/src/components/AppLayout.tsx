@@ -56,7 +56,7 @@ const navItemClass = ({ isActive }: { isActive: boolean }) =>
   cn(
     'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors [&_svg]:size-4 [&_svg]:shrink-0',
     isActive
-      ? 'bg-background text-foreground shadow-sm ring-1 ring-border'
+      ? 'bg-background text-foreground shadow-sm ring-1 ring-border [&_svg]:text-[hsl(var(--brand))]'
       : 'text-muted-foreground hover:bg-accent hover:text-foreground',
   );
 
@@ -109,7 +109,7 @@ function ChatSessionList({ activeId, onNavigate }: { activeId?: string; onNaviga
               : 'text-muted-foreground hover:bg-accent hover:text-foreground',
           )}
         >
-          <Sparkles />
+          <Sparkles className="text-[hsl(var(--brand))]" />
           <span className="flex-1 truncate font-medium">Active Agent</span>
         </NavLink>
       ) : null}
@@ -199,7 +199,7 @@ function SidebarContent({
       </div>
 
       <div className="mt-6 flex min-h-0 flex-1 flex-col">
-        <div className="mb-1.5 px-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        <div className="mb-1.5 px-3 font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           Chats
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
@@ -208,7 +208,7 @@ function SidebarContent({
       </div>
 
       <div className="mt-3 shrink-0 border-t px-3 pt-3">
-        <div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        <div className="mb-2 font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           Connections
         </div>
         {loading ? (

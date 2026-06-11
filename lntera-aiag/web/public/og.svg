@@ -1,23 +1,27 @@
 <svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <radialGradient id="glow" cx="50%" cy="2%" r="75%">
-      <stop offset="0%" stop-color="#6366F1" stop-opacity="0.32" />
-      <stop offset="100%" stop-color="#6366F1" stop-opacity="0" />
+    <radialGradient id="glow" cx="82%" cy="6%" r="60%">
+      <stop offset="0%" stop-color="#F24A18" stop-opacity="0.14" />
+      <stop offset="100%" stop-color="#F24A18" stop-opacity="0" />
     </radialGradient>
   </defs>
 
-  <rect width="1200" height="630" fill="#0a0a0a" />
+  <rect width="1200" height="630" fill="#FFFFFF" />
   <rect width="1200" height="630" fill="url(#glow)" />
 
-  <!-- Logo tile + monogram (24-unit artwork scaled ×6.667 → 160px) -->
-  <g transform="translate(120, 200) scale(6.667)">
-    <rect width="24" height="24" rx="5.25" fill="#6366F1" />
-    <path d="M8 5.5a1.4 1.4 0 0 1 2.8 0v9.1h5.1a1.4 1.4 0 0 1 0 2.8H8z" fill="#FFFFFF" />
-    <path d="M17 5.2l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8L14.5 7.7l1.8-.7z" fill="#FFFFFF" fill-opacity="0.7" />
+  <!-- brand lockup -->
+  <g transform="translate(96,92)">
+    <rect width="56" height="56" rx="14" fill="#F24A18" />
+    <g transform="translate(12,12) scale(1.33)">
+      <path d="M8 5.5a1.4 1.4 0 0 1 2.8 0v9.1h5.1a1.4 1.4 0 0 1 0 2.8H8z" fill="#FFFFFF" />
+      <path d="M17 5.2l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8L14.5 7.7l1.8-.7z" fill="#FFFFFF" fill-opacity="0.8" />
+    </g>
+    <text x="74" y="38" style="font-family:Helvetica,Arial,sans-serif;font-size:30px;font-weight:600;fill:#171514">Lntera</text>
   </g>
 
-  <text x="322" y="305" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="128" font-weight="700" letter-spacing="-3" fill="#FFFFFF">Lntera</text>
+  <text x="96" y="328" style="font-family:Helvetica,Arial,sans-serif;font-size:62px;font-weight:600;letter-spacing:-1.5px;fill:#171514">Run your shops from</text>
+  <text x="96" y="400" style="font-family:Helvetica,Arial,sans-serif;font-size:62px;font-weight:600;letter-spacing:-1.5px;fill:#F24A18">one calm chat.</text>
+  <text x="96" y="468" style="font-family:Helvetica,Arial,sans-serif;font-size:27px;fill:#5C574F">Orders, fulfillment, products &amp; pricing — bring your own LLM key.</text>
 
-  <text x="124" y="450" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="40" font-weight="500" fill="#E4E4E7">The AI agent for Shopee &amp; TikTok Shop sellers.</text>
-  <text x="124" y="508" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="30" font-weight="400" fill="#A1A1AA">Orders, fulfillment, products and pricing — from one chat.</text>
+  <text x="96" y="560" style="font-family:'Courier New',monospace;font-size:18px;letter-spacing:2px;fill:#8A8378">SHOPEE · TIKTOK SHOP · DISCORD · GROQ · GEMINI</text>
 </svg>

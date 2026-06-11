@@ -1,5 +1,5 @@
 // Hand-authored Lottie — three breathing dots for the chat empty-state hero.
-const INDIGO = [0.388, 0.4, 0.945, 1];
+const ORANGE = [0.949, 0.29, 0.094, 1];
 
 function dot(ind: number, cx: number, phase: number) {
   const o1 = { i: { x: [0.4], y: [1] }, o: { x: [0.6], y: [0] } };
@@ -37,7 +37,7 @@ function dot(ind: number, cx: number, phase: number) {
         ty: 'gr',
         it: [
           { ty: 'el', d: 1, s: { a: 0, k: [26, 26] }, p: { a: 0, k: [0, 0] } },
-          { ty: 'fl', c: { a: 0, k: INDIGO }, o: { a: 0, k: 100 }, r: 1 },
+          { ty: 'fl', c: { a: 0, k: ORANGE }, o: { a: 0, k: 100 }, r: 1 },
           {
             ty: 'tr',
             p: { a: 0, k: [0, 0] },
