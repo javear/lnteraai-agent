@@ -1,0 +1,238 @@
+/*
+ * Lntera pre-login skin — clean, light-default, one orange accent (Groq/Browserbase family).
+ * Scoped under `.lp`. Aliases the APP's own design tokens so the landing and the signed-in app
+ * share exactly one palette (light + dark, theme-toggleable); only the orange `--brand` is the accent.
+ */
+
+.lp {
+  /* neutrals: alias the app tokens so colors stay identical across landing + app */
+  --bg: var(--background);
+  --bg-2: var(--muted);
+  --bg-3: var(--secondary);
+  --fg: var(--foreground);
+  --fg-soft: var(--muted-foreground);
+  --line: var(--border);
+
+  position: relative;
+  min-height: 100dvh;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: 'Geist Variable', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.lp * {
+  border-color: hsl(var(--line));
+}
+.lp ::selection {
+  background: hsl(var(--brand));
+  color: hsl(var(--brand-foreground));
+}
+
+/* ── Type ─────────────────────────────────────────────── */
+.lp-mono {
+  font-family: 'Geist Mono Variable', ui-monospace, 'SF Mono', monospace;
+}
+.lp-eyebrow {
+  font-family: 'Geist Mono Variable', ui-monospace, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: hsl(var(--brand));
+}
+.lp-display {
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.02;
+}
+.lp-soft {
+  color: hsl(var(--fg-soft));
+}
+
+/* ── Controls ─────────────────────────────────────────── */
+.lp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: hsl(var(--brand-foreground));
+  background: hsl(var(--brand));
+  border: 1px solid transparent;
+  border-radius: 0.65rem;
+  padding: 0.72rem 1.25rem;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.3s ease, background 0.2s ease, filter 0.2s ease;
+}
+.lp-btn:hover {
+  transform: translateY(-1px);
+  filter: saturate(1.05);
+  background: color-mix(in srgb, hsl(var(--brand)) 90%, #000);
+  box-shadow: 0 12px 30px -12px hsl(var(--brand) / 0.6);
+}
+.lp-btn:active {
+  transform: translateY(0);
+}
+.lp-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.lp-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: hsl(var(--fg));
+  background: transparent;
+  border: 1px solid hsl(var(--line));
+  border-radius: 0.65rem;
+  padding: 0.7rem 1.1rem;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.lp-btn-ghost:hover {
+  border-color: hsl(var(--fg-soft) / 0.5);
+  background: hsl(var(--bg-2));
+}
+
+.lp-link {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: hsl(var(--fg-soft));
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+.lp-link:hover {
+  color: hsl(var(--fg));
+}
+
+.lp-field {
+  width: 100%;
+  font-size: 0.95rem;
+  color: hsl(var(--fg));
+  background: hsl(var(--bg));
+  border: 1px solid hsl(var(--input));
+  border-radius: 0.65rem;
+  padding: 0.72rem 0.85rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.lp-field::placeholder {
+  color: hsl(var(--fg-soft) / 0.6);
+}
+.lp-field:focus {
+  outline: none;
+  border-color: hsl(var(--brand));
+  box-shadow: 0 0 0 3px hsl(var(--brand) / 0.16);
+}
+
+/* ── Surfaces ─────────────────────────────────────────── */
+.lp-card {
+  background: hsl(var(--bg));
+  border: 1px solid hsl(var(--line));
+  border-radius: 1rem;
+  box-shadow: 0 1px 2px hsl(var(--fg) / 0.04), 0 12px 30px -22px hsl(var(--fg) / 0.25);
+}
+.lp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: 'Geist Mono Variable', monospace;
+  font-size: 0.72rem;
+  color: hsl(var(--fg-soft));
+  background: hsl(var(--bg-2));
+  border: 1px solid hsl(var(--line));
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+}
+
+/* calm caret for the typing demo */
+@keyframes lp-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.lp-caret {
+  display: inline-block;
+  width: 0.5ch;
+  margin-left: 1px;
+  background: currentColor;
+  animation: lp-blink 1.1s steps(1) infinite;
+}
+
+/* Elevated hero product frame — the ONE shadowed surface on the page. */
+.lp-frame {
+  position: relative;
+  background: hsl(var(--bg));
+  border: 1px solid hsl(var(--line));
+  border-radius: 1rem;
+  box-shadow: 0 1px 2px hsl(var(--fg) / 0.05), 0 40px 80px -32px hsl(var(--fg) / 0.3);
+}
+
+/* ── Agent cursor overlay (Browserbase-style, calm) ─────── */
+.lp-cursor-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: visible; /* let the cursor glide off the card edge */
+  pointer-events: none;
+  contain: layout style;
+}
+.lp-cursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  opacity: 0; /* WAAPI drives opacity once it starts; avoids a first-frame flash */
+  will-change: transform;
+  transform: translate3d(0, 0, 0);
+}
+.lp-cursor-arrow {
+  display: block;
+  width: 18px;
+  height: 18px;
+  color: hsl(var(--fg));
+  filter: drop-shadow(0 1px 2px hsl(var(--fg) / 0.28));
+}
+.lp-cursor-tag {
+  position: absolute;
+  top: 14px;
+  left: 13px;
+  white-space: nowrap;
+  font-family: 'Geist Mono Variable', ui-monospace, monospace;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: hsl(var(--brand-foreground));
+  background: hsl(var(--brand));
+  box-shadow: 0 2px 8px -2px hsl(var(--brand) / 0.55);
+}
+.lp-cursor-ripple {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  border: 1.5px solid hsl(var(--brand));
+  border-radius: 999px;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-caret {
+    animation: none;
+  }
+  .lp-cursor-layer {
+    display: none;
+  }
+}

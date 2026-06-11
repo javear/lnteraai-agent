@@ -1,282 +1,292 @@
-import type { ComponentType } from 'react';
-import {
-  ArrowRight,
-  BellRing,
-  Boxes,
-  KeyRound,
-  RefreshCw,
-  Rocket,
-  ShieldCheck,
-  ShoppingBag,
-  Smartphone,
-  Sparkles,
-  Store,
-  Zap,
-} from 'lucide-react';
-import { AuthPanel } from '../components/auth/AuthPanel';
 import { Container } from '../components/landing/Container';
-import { Section } from '../components/landing/Section';
 import { Reveal } from '../components/landing/Reveal';
 import { MockChat } from '../components/landing/MockChat';
-import { HighlightRotator } from '../components/landing/HighlightRotator';
+import { AgentCursor } from '../components/landing/AgentCursor';
+import { BrandAuth } from '../components/landing/BrandAuth';
 import { LandingNav } from '../components/landing/LandingNav';
 import { LandingFooter } from '../components/landing/LandingFooter';
-import { Button, Card, Code, Step, Steps } from '../ui';
-import { cn } from '@/lib/utils';
+import '../styles/landing.css';
 
-const HERO_HIGHLIGHTS = [
-  "Track today's orders",
-  'Confirm fulfillment & print labels',
-  'Update price & stock',
-  'Publish a product draft',
-  'Realtime order alerts',
+const CAPS: { title: string; desc: string; chips?: string[]; featured?: boolean }[] = [
+  {
+    title: 'Run orders like you have a backroom team',
+    desc: 'Say "ship today’s orders" — Lntera finds them across every shop, builds the packages, and pulls the labels. No tab-switching.',
+    chips: ['search-orders', 'create-package', 'get-shipping-labels'],
+    featured: true,
+  },
+  { title: 'Price & stock, by sentence', desc: '"Drop the linen shirts 10%." Done — across SKUs and shops at once.' },
+  { title: 'List once, sell everywhere', desc: 'Draft a product, refine it, push it live to Shopee or TikTok Shop.' },
+  { title: 'Every shop, one brain', desc: 'Connect as many Shopee and TikTok Shop stores as you run.' },
+  { title: 'Bring your own model', desc: 'Your free Groq or Gemini key. Add both and never hit a rate wall.' },
+  { title: 'It watches while you sleep', desc: 'Orders, shipments, returns → in-app, Discord, push. Reply to act.' },
 ];
 
-const FEATURES: { icon: ComponentType<{ className?: string }>; title: string; desc: string }[] = [
+const STEPS: { title: string; body: string; chips?: string[] }[] = [
+  { title: 'Bring a key', body: 'Connect your free Groq or Gemini key via Portkey — stored securely.' },
+  { title: 'Connect a shop', body: 'Link Shopee or TikTok Shop in a click. Add as many as you run.' },
   {
-    icon: ShoppingBag,
-    title: 'Orders & fulfillment',
-    desc: 'Search orders, confirm fulfillment, create packages and pull shipping labels — without leaving the chat.',
+    title: 'Just ask',
+    body: 'Talk to your storefront in plain language:',
+    chips: ["Show today’s orders", 'Search my products', 'List my shops'],
   },
-  {
-    icon: Boxes,
-    title: 'Products & pricing',
-    desc: 'Find products and update attributes, price or stock — or archive a listing — across every shop at once.',
-  },
-  {
-    icon: Rocket,
-    title: 'Listings & drafts',
-    desc: 'Draft a product, refine it, then publish to Shopee or TikTok Shop — or discard the draft.',
-  },
-  {
-    icon: Store,
-    title: 'Multi-store',
-    desc: 'Connect as many Shopee and TikTok Shop stores as you run. The agent works across all of them.',
-  },
-  {
-    icon: KeyRound,
-    title: 'Bring your own LLM',
-    desc: 'Use your free Groq or Gemini key via Portkey. Add both and the agent rolls across them automatically.',
-  },
-  {
-    icon: BellRing,
-    title: 'Realtime Active Agent',
-    desc: 'Order and event updates arrive in-app, on Discord and as push — reply to ask the agent for details.',
-  },
+  { title: 'Go Active', body: 'Flip on realtime alerts — in-app, on Discord, and as push.' },
 ];
 
-const DIFFERENTIATORS: { icon: ComponentType<{ className?: string }>; title: string; desc: string }[] = [
+const WHY: { title: string; desc: string }[] = [
   {
-    icon: ShieldCheck,
-    title: 'No model markup',
+    title: 'No card, no markup',
     desc: 'You pay your LLM provider directly with your own free key. We never resell or mark up tokens.',
   },
   {
-    icon: RefreshCw,
-    title: 'Never blocked by limits',
-    desc: 'Connect Groq and Gemini together and the agent automatically rolls over when one hits a rate limit.',
+    title: 'Never hits a wall',
+    desc: 'Connect Groq and Gemini together; the agent rolls over the moment one rate-limits.',
   },
   {
-    icon: Zap,
     title: 'Realtime, everywhere',
-    desc: 'Webhook events become notifications in-app, in Discord, and as push the moment they happen.',
+    desc: 'Webhook events become alerts in-app, in Discord and as push — the instant they happen.',
   },
   {
-    icon: Smartphone,
-    title: 'Installable PWA',
-    desc: 'Install Lntera on your phone or desktop. It works offline with your last-known data cached.',
+    title: 'Yours on every device',
+    desc: 'Install it as an app on phone and desktop. Works offline with your last data cached.',
   },
 ];
 
-// Sample Active-Agent feed — mirrors the real minimal notifications the backend delivers.
 const FEED = [
-  { emoji: '🛒', title: 'New order on Shopee', meta: 'Main Store · 2 items', tone: 'brand' as const },
-  { emoji: '📦', title: 'Shipping update on TikTok Shop', meta: 'Outlet · 1 package ready', tone: 'muted' as const },
-  { emoji: '↩️', title: 'Return requested on Shopee', meta: 'Main Store · awaiting review', tone: 'muted' as const },
+  { emoji: '🛒', title: 'New order on Shopee', meta: 'Main Store · 2 items' },
+  { emoji: '📦', title: 'Shipping update on TikTok Shop', meta: 'Outlet · 1 package ready' },
+  { emoji: '↩️', title: 'Return requested on Shopee', meta: 'Main Store · awaiting review' },
 ];
 
-function scrollToForm() {
+function toForm() {
   document.getElementById('get-started')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
+const n2 = (i: number) => String(i + 1).padStart(2, '0');
+
 export default function Landing() {
   return (
-    <div className="min-h-dvh bg-background text-foreground">
+    <div className="lp">
       <LandingNav />
 
       <main>
-        {/* ───────────────────────── Hero ───────────────────────── */}
-        <section className="relative overflow-hidden">
-          <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-            <div className="absolute left-1/2 top-[-12%] h-[460px] w-[min(880px,95vw)] -translate-x-1/2 rounded-full bg-brand/10 blur-3xl" />
-          </div>
-
-          <Container className="grid items-center gap-12 py-14 sm:py-20 lg:grid-cols-2 lg:gap-12">
-            {/* Left — pitch + auth */}
-            <div className="max-w-xl">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-brand/25 bg-brand/10 px-3 py-1 text-xs font-medium text-brand">
-                <Sparkles className="h-3.5 w-3.5" />
-                For Shopee &amp; TikTok Shop sellers
-              </span>
-              <h1 className="mt-5 text-4xl font-semibold leading-[1.08] tracking-tight sm:text-5xl">
-                Run your shops from <span className="text-brand">one chat.</span>
+        {/* ───────── Hero — asymmetric 7/5, offset, one off-center wash ───────── */}
+        <section className="relative overflow-hidden pb-16 pt-10 sm:pb-24 sm:pt-16">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute right-[-12%] top-[-20%] h-[560px] w-[680px] max-w-[120vw] rounded-full bg-[hsl(var(--brand)/0.07)] blur-[150px]"
+          />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute left-[-8%] top-[22%] h-[380px] w-[420px] rounded-full bg-[hsl(var(--fg)/0.025)] blur-[140px]"
+          />
+          <Container className="grid items-start gap-12 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:gap-16">
+            <Reveal className="lg:pt-6">
+              <div className="lp-eyebrow">The business agent · Shopee &amp; TikTok Shop</div>
+              <h1 className="lp-display mt-5 text-[2.6rem] leading-[1.02] sm:text-[3.4rem] lg:text-[4.2rem]">
+                Run your shops
+                <br />
+                from <span className="text-[hsl(var(--brand))]">one calm chat.</span>
               </h1>
-              <p className="mt-4 text-[17px] leading-relaxed text-muted-foreground">
-                Lntera is an AI agent that handles orders, fulfillment, products and pricing across your
-                Shopee and TikTok Shop stores. Bring your own free Groq or Gemini key — no model markup.
+              <p className="mt-6 max-w-md text-[1.05rem] leading-relaxed text-[hsl(var(--fg-soft))]">
+                Ask in plain language — "ship today&apos;s orders", "drop the linen shirts 10%" — and Lntera
+                works your Shopee and TikTok Shop stores for you. Your own free LLM key. No card, no markup.
               </p>
-              <div id="get-started" className="mt-8 max-w-sm scroll-mt-24">
-                <AuthPanel variant="bare" defaultMode="signup" showLogo={false} />
+              <div id="get-started" className="mt-8 max-w-sm scroll-mt-28">
+                <BrandAuth />
               </div>
-            </div>
+            </Reveal>
 
-            {/* Right — live demo + slider */}
-            <div className="w-full">
-              <Reveal>
+            <Reveal delay={140} className="lg:mt-12">
+              <div className="relative">
                 <MockChat />
-              </Reveal>
-              <HighlightRotator className="mt-6" items={HERO_HIGHLIGHTS} />
-            </div>
+                <AgentCursor label="Lntera" />
+              </div>
+              <p className="lp-mono mt-4 text-[0.7rem] uppercase tracking-[0.14em] text-[hsl(var(--fg-soft))]">
+                18 marketplace tools · Groq + Gemini · Discord + push
+              </p>
+            </Reveal>
           </Container>
         </section>
 
-        {/* ──────────────────────── Trust strip ──────────────────────── */}
-        <section className="border-y bg-muted/30 py-8">
-          <Container>
-            <p className="text-center text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Connects with
-            </p>
-            <div className="mt-5 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-[15px] font-semibold text-muted-foreground">
-              {['Shopee', 'TikTok Shop', 'Discord', 'Groq', 'Gemini', 'Portkey'].map((name) => (
-                <span key={name} className="inline-flex items-center gap-2">
-                  <span className="h-1.5 w-1.5 rounded-full bg-brand/50" />
-                  {name}
+        {/* ───────── Trust — muted, left-aligned ───────── */}
+        <section className="border-y bg-[hsl(var(--bg-2)/0.4)]">
+          <Container className="flex flex-col gap-3 py-6 sm:flex-row sm:items-center sm:gap-9">
+            <span className="lp-mono shrink-0 text-[0.7rem] uppercase tracking-[0.16em] text-[hsl(var(--fg-soft))]">
+              Works with
+            </span>
+            <div className="flex flex-wrap items-center gap-x-7 gap-y-2">
+              {['Shopee', 'TikTok Shop', 'Discord', 'Groq', 'Gemini', 'Portkey'].map((nm) => (
+                <span key={nm} className="text-[14px] text-[hsl(var(--fg)/0.55)]">
+                  {nm}
                 </span>
               ))}
             </div>
           </Container>
         </section>
 
-        {/* ──────────────────────── Features ──────────────────────── */}
-        <Section
-          id="features"
-          eyebrow="Capabilities"
-          title="One agent for the whole storefront"
-          subtitle="Lntera turns the things you'd click through dashboards for into a sentence. It runs the real marketplace APIs for you."
-        >
-          <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {FEATURES.map((f, i) => (
-              <Reveal key={f.title} delay={i * 60}>
-                <Card className="h-full">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand/10 text-brand">
-                    <f.icon className="h-5 w-5" />
-                  </div>
-                  <h3 className="mt-4 text-[15px] font-semibold">{f.title}</h3>
-                  <p className="mt-1.5 text-[13.5px] leading-relaxed text-muted-foreground">{f.desc}</p>
-                </Card>
-              </Reveal>
-            ))}
-          </div>
-        </Section>
-
-        {/* ──────────────────────── How it works ──────────────────────── */}
-        <section className="border-t bg-muted/20 py-16 sm:py-24">
-          <Container className="grid gap-12 lg:grid-cols-2 lg:items-center lg:gap-16">
-            <div className="max-w-md">
-              <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-brand">Setup</div>
-              <h2 className="text-2xl font-semibold tracking-tight sm:text-4xl">Live in minutes</h2>
-              <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground sm:text-base">
-                No infrastructure, no model bills. Connect a key, connect a shop, and start asking.
-              </p>
+        {/* ───────── Capabilities — sticky label + hairline bento ───────── */}
+        <section className="py-20 sm:py-28">
+          <Container className="grid gap-8 lg:grid-cols-[200px_1fr] lg:gap-16">
+            <div className="lg:sticky lg:top-28 lg:self-start">
+              <div className="lp-eyebrow">Capabilities</div>
+              <h2 className="lp-display mt-3 text-[1.7rem] leading-[1.05]">The whole storefront, in one chat.</h2>
             </div>
-            <Reveal as="div" className="rounded-2xl border bg-card p-6 shadow-sm sm:p-8">
-              <Steps>
-                <Step n={1} title="Connect your LLM key">
-                  Add Groq or Gemini via Portkey — your own free key, stored securely.
-                </Step>
-                <Step n={2} title="Connect a shop">
-                  Link your Shopee or TikTok Shop store with one click. Add as many as you run.
-                </Step>
-                <Step n={3} title="Just ask">
-                  <span className="flex flex-wrap gap-1.5">
-                    <Code>List my connected shops</Code>
-                    <Code>Show today's orders</Code>
-                    <Code>Search my products</Code>
-                  </span>
-                </Step>
-                <Step n={4} title="Turn on Active mode">
-                  Get realtime order and event alerts in-app, on Discord, and via push.
-                </Step>
-              </Steps>
+            <Reveal className="grid grid-cols-1 gap-px overflow-hidden rounded-2xl border bg-[hsl(var(--line))] lg:grid-cols-3">
+              {CAPS.map((c) => (
+                <div
+                  key={c.title}
+                  className={
+                    c.featured
+                      ? 'bg-[hsl(var(--brand)/0.06)] p-7 lg:col-span-2 lg:row-span-2'
+                      : 'bg-[hsl(var(--bg))] p-7'
+                  }
+                >
+                  <h3 className={c.featured ? 'text-[1.3rem] font-semibold leading-snug' : 'text-[1.02rem] font-semibold'}>
+                    {c.title}
+                  </h3>
+                  <p
+                    className={`mt-2 text-[13.5px] leading-relaxed text-[hsl(var(--fg-soft))] ${
+                      c.featured ? 'max-w-md' : ''
+                    }`}
+                  >
+                    {c.desc}
+                  </p>
+                  {c.chips ? (
+                    <div className="mt-5 flex flex-wrap gap-1.5">
+                      {c.chips.map((ch) => (
+                        <span key={ch} className="lp-chip">
+                          {ch}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
             </Reveal>
           </Container>
         </section>
 
-        {/* ──────────────────────── Product preview (Active Agent) ──────────────────────── */}
-        <Section
-          id="realtime"
-          eyebrow="Active Agent"
-          title="Your shops, in real time"
-          subtitle="The moment an order, shipment or return happens, Lntera tells you — and you can reply to dig in."
-        >
-          <div className="mx-auto mt-12 grid max-w-4xl gap-8 lg:grid-cols-2 lg:items-center">
-            <div className="space-y-4">
-              {DIFFERENTIATORS.slice(2).map((d) => (
-                <div key={d.title} className="flex gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
-                    <d.icon className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-[15px] font-semibold">{d.title}</h3>
-                    <p className="mt-1 text-[13.5px] leading-relaxed text-muted-foreground">{d.desc}</p>
-                  </div>
-                </div>
-              ))}
+        {/* ───────── Stat band ───────── */}
+        <section className="border-y bg-[hsl(var(--bg-2)/0.4)] py-14 sm:py-20">
+          <Container className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-9">
+            <div className="lp-display text-[4.5rem] leading-[0.82] text-[hsl(var(--brand))] sm:text-[6.5rem]">18</div>
+            <div className="sm:pb-3">
+              <div className="text-[1.15rem] font-semibold leading-tight">marketplace tools, one calm chat</div>
+              <div className="lp-mono mt-1.5 text-[0.72rem] uppercase tracking-[0.14em] text-[hsl(var(--fg-soft))]">
+                orders · fulfillment · products · pricing · drafts
+              </div>
             </div>
-            <Reveal>
-              <div className="overflow-hidden rounded-2xl border bg-card shadow-sm">
-                <div className="flex items-center gap-2 border-b px-4 py-2.5">
-                  <Sparkles className="h-4 w-4 text-brand" />
-                  <span className="text-[13px] font-medium">Active Agent</span>
+          </Container>
+        </section>
+
+        {/* ───────── Setup — sticky label + steps ───────── */}
+        <section className="py-20 sm:py-28">
+          <Container className="grid gap-10 lg:grid-cols-[200px_1fr] lg:gap-16">
+            <div className="lg:sticky lg:top-28 lg:self-start">
+              <div className="lp-eyebrow">Setup</div>
+              <h2 className="lp-display mt-3 text-[1.7rem] leading-[1.05]">Live in minutes.</h2>
+              <p className="mt-3 text-[14px] leading-relaxed text-[hsl(var(--fg-soft))]">
+                No infra, no model bills. A key, a shop, and you&apos;re asking.
+              </p>
+            </div>
+            <ol className="space-y-7">
+              {STEPS.map((s, i) => (
+                <li key={s.title} className="flex gap-5">
+                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-[1.5px] border-[hsl(var(--brand)/0.5)] text-[0.85rem] font-semibold text-[hsl(var(--brand))]">
+                    {i + 1}
+                  </span>
+                  <div className="border-b pb-6">
+                    <h3 className="text-[1.05rem] font-semibold">{s.title}</h3>
+                    <p className="mt-1.5 text-[14px] leading-relaxed text-[hsl(var(--fg-soft))]">{s.body}</p>
+                    {s.chips ? (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {s.chips.map((ch) => (
+                          <span key={ch} className="lp-chip">
+                            {ch}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </Container>
+        </section>
+
+        {/* ───────── Active Agent — mirrored: feed left, copy right ───────── */}
+        <section className="border-y bg-[hsl(var(--bg-2)/0.4)] py-20 sm:py-28">
+          <Container className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
+            <Reveal className="lg:order-1">
+              <div className="lp-frame overflow-hidden">
+                <div className="flex items-center justify-between border-b px-4 py-3">
+                  <span className="lp-mono text-[11px] uppercase tracking-[0.14em] text-[hsl(var(--fg-soft))]">
+                    Active Agent
+                  </span>
+                  <span className="lp-mono inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-[hsl(var(--fg-soft))]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--brand))]" />
+                    live
+                  </span>
                 </div>
                 <ul className="divide-y">
                   {FEED.map((e) => (
-                    <li key={e.title} className="flex items-start gap-3 px-4 py-3">
+                    <li key={e.title} className="flex items-start gap-3 px-4 py-3.5">
                       <span className="text-lg leading-none">{e.emoji}</span>
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="text-[13.5px] font-medium">{e.title}</div>
-                        <div className="text-[12px] text-muted-foreground">{e.meta}</div>
+                        <div className="lp-mono text-[11px] text-[hsl(var(--fg-soft))]">{e.meta}</div>
                       </div>
-                      <span
-                        className={cn(
-                          'ml-auto mt-1 h-1.5 w-1.5 shrink-0 rounded-full',
-                          e.tone === 'brand' ? 'bg-brand' : 'bg-muted-foreground/30',
-                        )}
-                      />
+                      <span className="lp-mono text-[10px] uppercase tracking-wide text-[hsl(var(--brand))]">now</span>
                     </li>
                   ))}
                 </ul>
               </div>
             </Reveal>
-          </div>
-        </Section>
+            <div className="lg:order-2">
+              <div className="lp-eyebrow">Active Agent</div>
+              <h2 className="lp-display mt-3 text-[1.9rem] leading-[1.05] sm:text-[2.6rem]">
+                It keeps working when you close the laptop.
+              </h2>
+              <p className="mt-4 max-w-md text-[15px] leading-relaxed text-[hsl(var(--fg-soft))]">
+                Orders, shipments and returns surface the instant they happen — in the app, in Discord, and as a
+                push. Reply right there and the agent handles it.
+              </p>
+              <div className="mt-7 space-y-5">
+                <div className="border-l-2 border-[hsl(var(--brand))] pl-4">
+                  <h3 className="font-semibold">Realtime, everywhere</h3>
+                  <p className="mt-1 text-[13.5px] leading-relaxed text-[hsl(var(--fg-soft))]">
+                    One webhook → in-app popup, Discord message, and phone push at once.
+                  </p>
+                </div>
+                <div className="border-l-2 border-[hsl(var(--brand))] pl-4">
+                  <h3 className="font-semibold">Reply to act</h3>
+                  <p className="mt-1 text-[13.5px] leading-relaxed text-[hsl(var(--fg-soft))]">
+                    "Ship it" or "refund this" — answer the alert and it&apos;s done.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </Container>
+        </section>
 
-        {/* ──────────────────────── Differentiators ──────────────────────── */}
-        <section className="border-t bg-muted/20 py-16 sm:py-24">
+        {/* ───────── Why — centered emotional beat ───────── */}
+        <section className="py-20 sm:py-28">
           <Container>
             <div className="mx-auto max-w-2xl text-center">
-              <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-brand">Why Lntera</div>
-              <h2 className="text-2xl font-semibold tracking-tight sm:text-4xl">Built for sellers, priced like a tool</h2>
+              <div className="lp-eyebrow">Why Lntera</div>
+              <h2 className="lp-display mt-3 text-[1.9rem] leading-[1.04] sm:text-[2.8rem]">
+                A power tool, priced like a tool.
+              </h2>
             </div>
-            <div className="mx-auto mt-12 grid max-w-4xl gap-x-8 gap-y-6 sm:grid-cols-2">
-              {DIFFERENTIATORS.map((d) => (
-                <div key={d.title} className="flex gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
-                    <d.icon className="h-4 w-4" />
-                  </div>
+            <div className="mx-auto mt-12 grid max-w-3xl gap-x-12 gap-y-9 sm:grid-cols-2">
+              {WHY.map((d, i) => (
+                <div key={d.title} className="flex gap-4">
+                  <span className="lp-mono mt-1 shrink-0 text-[0.72rem] tracking-widest text-[hsl(var(--brand))]">
+                    {n2(i)}
+                  </span>
                   <div>
-                    <h3 className="text-[15px] font-semibold">{d.title}</h3>
-                    <p className="mt-1 text-[13.5px] leading-relaxed text-muted-foreground">{d.desc}</p>
+                    <h3 className="font-semibold">{d.title}</h3>
+                    <p className="mt-1.5 text-[13.5px] leading-relaxed text-[hsl(var(--fg-soft))]">{d.desc}</p>
                   </div>
                 </div>
               ))}
@@ -284,24 +294,22 @@ export default function Landing() {
           </Container>
         </section>
 
-        {/* ──────────────────────── Final CTA ──────────────────────── */}
-        <Section>
-          <div className="relative overflow-hidden rounded-3xl border bg-card px-6 py-14 text-center shadow-sm sm:px-12">
-            <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-              <div className="absolute left-1/2 top-1/2 h-[300px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand/10 blur-3xl" />
-            </div>
-            <h2 className="text-2xl font-semibold tracking-tight sm:text-4xl">Bring your own key. Start free.</h2>
-            <p className="mx-auto mt-3 max-w-md text-[15px] leading-relaxed text-muted-foreground">
-              Create your workspace, connect a shop, and put your storefront on autopilot today.
+        {/* ───────── CTA — edge-to-edge, oversized, left-aligned ───────── */}
+        <section className="border-t py-24 sm:py-32">
+          <Container className="grid items-end gap-8 lg:grid-cols-[1fr_auto]">
+            <h2 className="lp-display max-w-[16ch] text-[2.6rem] leading-[1.0] sm:text-[3.8rem]">
+              Put your storefront on autopilot.
+            </h2>
+            <button onClick={toForm} className="lp-btn shrink-0 !px-6 !py-3.5 !text-[0.95rem]">
+              Start free →
+            </button>
+          </Container>
+          <Container className="mt-6">
+            <p className="lp-mono text-[0.72rem] uppercase tracking-[0.14em] text-[hsl(var(--fg-soft))]">
+              Bring your own key · no card · cancel anytime
             </p>
-            <div className="mt-7 flex justify-center">
-              <Button onClick={scrollToForm}>
-                Get started
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </Section>
+          </Container>
+        </section>
       </main>
 
       <LandingFooter />

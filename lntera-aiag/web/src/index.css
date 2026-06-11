@@ -24,10 +24,10 @@
     --success-foreground: 0 0% 98%;
     --border: 0 0% 90%;
     --input: 0 0% 90%;
-    --ring: 0 0% 9%;
+    --ring: 14 89% 52%;
     --radius: 0.65rem;
-    /* Brand accent (indigo #6366F1) — used only on the marketing landing; the app stays monochrome. */
-    --brand: 239 84% 67%;
+    /* Brand accent (orange) — the logo spark + the pre-login landing accent. */
+    --brand: 14 89% 52%;
     --brand-foreground: 0 0% 100%;
   }
 
@@ -52,8 +52,8 @@
     --success-foreground: 0 0% 9%;
     --border: 0 0% 16%;
     --input: 0 0% 18%;
-    --ring: 0 0% 83%;
-    --brand: 239 84% 70%;
+    --ring: 18 95% 60%;
+    --brand: 18 95% 60%;
     --brand-foreground: 0 0% 100%;
   }
 

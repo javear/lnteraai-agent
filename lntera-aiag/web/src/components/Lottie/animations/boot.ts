@@ -41,7 +41,7 @@ export const bootAnimation: Record<string, unknown> = {
           nm: 'g',
           it: [
             { ty: 'rc', d: 1, s: { a: 0, k: [78, 78] }, p: { a: 0, k: [0, 0] }, r: { a: 0, k: 22 } },
-            { ty: 'fl', c: { a: 0, k: [0.388, 0.4, 0.945, 1] }, o: { a: 0, k: 100 }, r: 1 },
+            { ty: 'fl', c: { a: 0, k: [0.949, 0.29, 0.094, 1] }, o: { a: 0, k: 100 }, r: 1 },
             {
               ty: 'tr',
               p: { a: 0, k: [0, 0] },

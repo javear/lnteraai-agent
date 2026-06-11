@@ -34,18 +34,15 @@ export function Logo({
   const s = LOGO_SIZES[size];
   return (
     <div className={cn('flex items-center', s.gap, className)}>
-      <div className={cn('flex shrink-0 items-center justify-center bg-primary', s.tile)}>
+      <div className={cn('flex shrink-0 items-center justify-center bg-brand', s.tile)}>
         <svg width={s.svg} height={s.svg} viewBox="0 0 24 24" fill="none" aria-hidden="true">
           {/* "L" monogram */}
-          <path
-            d="M8 5.5a1.4 1.4 0 0 1 2.8 0v9.1h5.1a1.4 1.4 0 0 1 0 2.8H8z"
-            className="fill-primary-foreground"
-          />
+          <path d="M8 5.5a1.4 1.4 0 0 1 2.8 0v9.1h5.1a1.4 1.4 0 0 1 0 2.8H8z" className="fill-white" />
           {/* spark */}
           <path
             d="M17 5.2l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8L14.5 7.7l1.8-.7z"
-            className="fill-primary-foreground"
-            opacity="0.7"
+            className="fill-white"
+            opacity="0.72"
           />
         </svg>
       </div>
