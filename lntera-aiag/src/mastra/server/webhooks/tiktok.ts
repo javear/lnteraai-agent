@@ -8,9 +8,11 @@ import { getTiktokConfig } from '../../integrations/tiktok/config';
 import { findTiktokConnectionByShopId } from '../../integrations/shared/marketplace-resolve';
 import {
   classifyWebhookEvent,
-  shouldForwardToAgent,
+  isProductEvent,
+  shouldProcessEvent,
 } from '../../integrations/shared/webhook-event-classifier';
 import { notifyTenantOfMarketplaceEvent } from '../../active-mode/notifier';
+import { ingestMarketplaceProductEvent } from '../../sync/ingest-product-event';
 
 const WEBHOOK_PATH = '/webhooks/tiktok';
 
@@ -68,7 +70,7 @@ export const tiktokWebhookRoute = registerApiRoute(WEBHOOK_PATH, {
     }
 
     const event = classifyWebhookEvent('tiktok', payload);
-    if (!shouldForwardToAgent(event)) {
+    if (!shouldProcessEvent(event)) {
       return c.json({ ok: true, ignored: true, code: event.code });
     }
 
@@ -90,6 +92,18 @@ export const tiktokWebhookRoute = registerApiRoute(WEBHOOK_PATH, {
         `[webhook] tiktok tenant_not_found (shop_id=${identity.shopId ?? '-'}, cipher=${identity.shopCipher ? 'set' : '-'})`,
       );
       return c.json({ ok: true, tenant_not_found: true });
+    }
+
+    // Product events → deterministic ingest + re-score path (no LLM). Fire-and-forget, ack now.
+    if (isProductEvent(event)) {
+      void ingestMarketplaceProductEvent({
+        tenantId: connection.tenant_id,
+        connection,
+        platform: 'tiktok',
+        code: event.code,
+        payload,
+      }).catch((err) => logErrorBrief('[webhook] tiktok product ingest threw', err));
+      return c.json({ ok: true, tenant_id: connection.tenant_id, code: event.code, product: true });
     }
 
     // Fire-and-forget: TikTok retries on non-2xx; the agent + Discord write can take seconds.

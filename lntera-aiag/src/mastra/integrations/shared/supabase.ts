@@ -88,6 +88,14 @@ export async function requireConnection(
   return conn;
 }
 
+export async function getConnectionById(id: string): Promise<MarketplaceConnection | null> {
+  const { data, error } = await getSupabase().from(TABLE).select('*').eq('id', id).maybeSingle();
+  if (error) {
+    throw new Error(`Failed to read connection by id (${id}): ${error.message}`);
+  }
+  return (data as MarketplaceConnection | null) ?? null;
+}
+
 /**
  * List marketplace_connections for a tenant, optionally filtered by platforms.
  * Returns rows ordered by platform then created_at ASC for stable iteration.

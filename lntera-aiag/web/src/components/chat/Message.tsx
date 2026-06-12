@@ -1,7 +1,9 @@
 import { Sparkles } from 'lucide-react';
 import { Avatar, TypingDots } from '../../ui';
 import { parseSuggestions } from '../../lib/chat';
+import type { NotificationAction, NotificationContextRef } from '../../lib/notifications';
 import { Markdown } from './Markdown';
+import { NotificationActions } from './NotificationActions';
 
 export interface ChatMessage {
   id: string;
@@ -19,6 +21,9 @@ export interface ChatMessage {
   transient?: boolean;
   /** "Provider · model" that produced this answer (live turns only; absent on history reload). */
   model?: string;
+  /** Token-free product-sync action buttons (deterministic notifications). */
+  actions?: NotificationAction[];
+  contextRef?: NotificationContextRef;
 }
 
 function ToolActivity({ tool }: { tool: string }) {
@@ -57,6 +62,9 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
           <Markdown>{parseSuggestions(message.content).body}</Markdown>
         ) : message.pending ? (
           <TypingDots />
+        ) : null}
+        {message.actions && message.actions.length > 0 ? (
+          <NotificationActions actions={message.actions} contextRef={message.contextRef} />
         ) : null}
         {message.model && message.content ? (
           <div className="mt-1.5 font-mono text-[11px] text-muted-foreground/70">{message.model}</div>

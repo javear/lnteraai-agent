@@ -25,8 +25,41 @@ if (playgroundDevMode) {
       'Never set MASTRA_DEV in a deployed environment; set NODE_ENV=production as a guard.',
   );
 }
+
+// @mastra/pg can fail to initialize storage when the Postgres handshake times out on a slow network
+// (EAUTHTIMEOUT / SQLSTATE 08006) — notably the observability DefaultExporter creating its spans
+// table. The PostgresStore itself retries lazily on the next call, but that init rejection is
+// otherwise UNCAUGHT and kills the process. Swallow STORAGE-domain failures (log + continue); let
+// every other error fail fast so real bugs still surface.
+function isStorageInitError(err: unknown): boolean {
+  const e = err as { domain?: unknown; id?: unknown } | null;
+  const id = typeof e?.id === 'string' ? e.id : '';
+  return e?.domain === 'STORAGE' || id.startsWith('MASTRA_STORAGE');
+}
+process.on('unhandledRejection', (reason) => {
+  if (isStorageInitError(reason)) {
+    // eslint-disable-next-line no-console
+    console.error(
+      '[storage] async init failed — continuing; storage retries on the next call:',
+      reason instanceof Error ? reason.message : reason,
+    );
+    return;
+  }
+  throw reason; // becomes an uncaughtException → default crash for genuine errors
+});
+process.on('uncaughtException', (err) => {
+  if (isStorageInitError(err)) {
+    // eslint-disable-next-line no-console
+    console.error('[storage] init failed — continuing; storage retries on the next call:', err.message);
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.error(err);
+  process.exit(1);
+});
 import {
   searchProductsTool,
+  syncMarketplaceProductsTool,
   searchOrdersTool,
   confirmOrderFulfillmentTool,
   createFulfillmentPackageTool,
@@ -59,6 +92,9 @@ function createMastraStorage(): PostgresStore {
     schemaName: 'mastra',
     max: Number(process.env.DATABASE_POOL_MAX) || 8,
     idleTimeoutMillis: 20_000,
+    // Slow/corporate networks (e.g. behind a proxy) can take >10s for the Postgres TLS+auth
+    // handshake; a short connect timeout surfaces as EAUTHTIMEOUT and aborts startup table creation.
+    connectionTimeoutMillis: Number(process.env.DATABASE_CONNECT_TIMEOUT_MS) || 30_000,
   });
 }
 
@@ -67,6 +103,7 @@ export const mastra = new Mastra({
   agents: { weatherAgent, generalAgent, titleAgent },
   tools: {
     [searchProductsTool.id]: searchProductsTool,
+    [syncMarketplaceProductsTool.id]: syncMarketplaceProductsTool,
     [searchOrdersTool.id]: searchOrdersTool,
     [confirmOrderFulfillmentTool.id]: confirmOrderFulfillmentTool,
     [createFulfillmentPackageTool.id]: createFulfillmentPackageTool,

@@ -90,6 +90,16 @@ function sanitizeTitle(raw: string): string {
     .slice(0, 60);
 }
 
+/** Re-hydrate token-free product-sync action buttons from a stored notification's metadata. */
+function messageActions(content: unknown): { actions?: unknown; contextRef?: unknown } {
+  const meta = (content as { metadata?: { actions?: unknown; contextRef?: unknown } } | null)?.metadata;
+  if (!meta) return {};
+  const out: { actions?: unknown; contextRef?: unknown } = {};
+  if (Array.isArray(meta.actions) && meta.actions.length > 0) out.actions = meta.actions;
+  if (meta.contextRef && typeof meta.contextRef === 'object') out.contextRef = meta.contextRef;
+  return out;
+}
+
 /** Flatten a stored message's content parts to plain display text. */
 function messageText(content: unknown): string {
   const c = content as { parts?: Array<{ type?: string; text?: string }>; content?: string };
@@ -233,6 +243,8 @@ const listMessagesRoute = registerApiRoute(`${OPEN_API_PREFIX}/chat/threads/:id/
         // The provider+model that produced this answer, served from Mastra's stored message metadata
         // so the label shows on reload and on any device (not just the live stream).
         model: m.role === 'assistant' ? messageModelLabel(m.content) : undefined,
+        // Token-free product-sync buttons re-render on reload from the stored metadata.
+        ...(m.role === 'assistant' ? messageActions(m.content) : {}),
       }))
       .filter((m) => m.content.length > 0);
 

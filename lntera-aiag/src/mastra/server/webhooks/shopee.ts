@@ -8,9 +8,11 @@ import {
 import { findShopeeConnectionByShopId } from '../../integrations/shared/marketplace-resolve';
 import {
   classifyWebhookEvent,
-  shouldForwardToAgent,
+  isProductEvent,
+  shouldProcessEvent,
 } from '../../integrations/shared/webhook-event-classifier';
 import { notifyTenantOfMarketplaceEvent } from '../../active-mode/notifier';
+import { ingestMarketplaceProductEvent } from '../../sync/ingest-product-event';
 
 const WEBHOOK_PATH = '/webhooks/shopee';
 
@@ -70,7 +72,7 @@ export const shopeeWebhookRoute = registerApiRoute(WEBHOOK_PATH, {
     }
 
     const event = classifyWebhookEvent('shopee', payload);
-    if (!shouldForwardToAgent(event)) {
+    if (!shouldProcessEvent(event)) {
       return c.json({ ok: true, ignored: true, code: event.code });
     }
 
@@ -87,6 +89,18 @@ export const shopeeWebhookRoute = registerApiRoute(WEBHOOK_PATH, {
     if (!connection) {
       console.info(`[webhook] shopee tenant_not_found (shop_id=${shopId})`);
       return c.json({ ok: true, tenant_not_found: true });
+    }
+
+    // Product events → deterministic ingest + re-score path (no LLM). Fire-and-forget, ack now.
+    if (isProductEvent(event)) {
+      void ingestMarketplaceProductEvent({
+        tenantId: connection.tenant_id,
+        connection,
+        platform: 'shopee',
+        code: event.code,
+        payload,
+      }).catch((err) => logErrorBrief('[webhook] shopee product ingest threw', err));
+      return c.json({ ok: true, tenant_id: connection.tenant_id, code: event.code, product: true });
     }
 
     // Fire-and-forget: ack immediately so Shopee does not retry on slow LLM responses.

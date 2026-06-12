@@ -13,7 +13,9 @@
     "discord": "tsx src/mastra/integrations/discord/run.ts",
     "mint-open-api-token": "node scripts/mint-open-api-token.mjs",
     "send-sample-webhook": "node scripts/send-sample-webhook.mjs",
-    "tunnel": "node scripts/tunnel.mjs"
+    "tunnel": "node scripts/tunnel.mjs",
+    "mock:sync": "tsx scripts/mock/mock-product-sync.ts",
+    "mock:clean": "tsx scripts/mock/mock-cleanup.ts"
   },
   "keywords": [],
   "author": "",

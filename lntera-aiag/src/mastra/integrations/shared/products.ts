@@ -19,6 +19,9 @@ export interface NormalizedProductVariant {
   price?: number;
   currency?: string;
   stock?: number;
+  /** Per-warehouse inventory (TikTok `sku.inventory[]`); when absent, `stock` is the summary total
+   *  and maps to a single synthetic default warehouse. */
+  inventoryByWarehouse?: Array<{ warehouseId?: string; quantity: number }>;
   imageUrl?: string;
   /** TikTok-specific image URI (when the SKU has its own image). */
   imageUri?: string;

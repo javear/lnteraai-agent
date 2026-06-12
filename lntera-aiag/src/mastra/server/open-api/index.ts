@@ -8,6 +8,7 @@ import {
 import { meIntegrationsRoutes } from './routes/me-integrations';
 import { publicConfigRoute } from './routes/public-config';
 import { chatHistoryRoutes } from './routes/chat-history';
+import { productSyncActionRoutes } from './routes/product-sync-actions';
 
 /** Public Open API routes (namespace `/svc/v1`). Append new route modules here. */
 export const openApiRoutes = [
@@ -19,4 +20,5 @@ export const openApiRoutes = [
   publicConfigRoute,
   ...meIntegrationsRoutes,
   ...chatHistoryRoutes,
+  ...productSyncActionRoutes,
 ];

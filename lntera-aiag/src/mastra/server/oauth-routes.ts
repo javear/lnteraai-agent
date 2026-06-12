@@ -16,6 +16,7 @@ import { getShopeeConfig } from '../integrations/shopee/config';
 import { getShopeeShopInfo } from '../integrations/shopee/shop-info';
 import { buildTiktokAuthUrl, exchangeTiktokCode, getTiktokAuthorizedShops } from '../integrations/tiktok/auth';
 import { notifyTenantOfConnectionEvent } from '../active-mode/notifier';
+import { notifyConnectedOfferSync } from '../sync/product-sync-notifier';
 import { oauthErrorPage } from './html-pages';
 
 export const oauthRoutes = [
@@ -308,6 +309,8 @@ export const oauthRoutes = [
           // Shop still connected; list-marketplace-shops will retry get_shop_info when name is missing.
         }
         void notifyTenantOfConnectionEvent({ tenantId, integration: 'shopee', status: 'connected', shopName });
+        // Deterministic (no-LLM) "import your products now?" offer with token-free action buttons.
+        void notifyConnectedOfferSync(tenantId, 'shopee', shopName);
         return c.redirect(webAppUrl('/integrations?connected=shopee&status=ok'), 302);
       } catch (err) {
         void notifyTenantOfConnectionEvent({ tenantId, integration: 'shopee', status: 'failed', errorMessage: (err as Error).message });
@@ -397,6 +400,8 @@ export const oauthRoutes = [
           },
         });
         void notifyTenantOfConnectionEvent({ tenantId, integration: 'tiktok', status: 'connected', shopName: tokens.seller_name ?? null });
+        // Deterministic (no-LLM) "import your products now?" offer with token-free action buttons.
+        void notifyConnectedOfferSync(tenantId, 'tiktok', tokens.seller_name ?? null);
         return c.redirect(webAppUrl('/integrations?connected=tiktok&status=ok'), 302);
       } catch (err) {
         void notifyTenantOfConnectionEvent({ tenantId, integration: 'tiktok', status: 'failed', errorMessage: (err as Error).message });

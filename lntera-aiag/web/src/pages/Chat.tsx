@@ -240,7 +240,17 @@ export default function Chat() {
           ? m
           : [
               ...m,
-              { id, role: 'assistant', content: '', proactive: true, transient, pending: true, createdAt: n.createdAt },
+              {
+                id,
+                role: 'assistant',
+                content: '',
+                proactive: true,
+                transient,
+                pending: true,
+                createdAt: n.createdAt,
+                actions: n.actions,
+                contextRef: n.contextRef,
+              },
             ],
       );
 

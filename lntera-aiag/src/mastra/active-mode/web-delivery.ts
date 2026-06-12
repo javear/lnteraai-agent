@@ -2,7 +2,12 @@ import { randomUUID } from 'node:crypto';
 import type { MastraDBMessage } from '@mastra/core/agent';
 import { generalAgent } from '../agents/general-agent';
 import { logErrorBrief } from '../logger/compact-error';
-import { broadcastTenantNotification, type TenantNotificationPayload } from '../integrations/realtime/broadcast';
+import {
+  broadcastTenantNotification,
+  type NotificationAction,
+  type NotificationContextRef,
+  type TenantNotificationPayload,
+} from '../integrations/realtime/broadcast';
 import { sendTenantPush } from '../integrations/onesignal/push';
 import { webAppAbsoluteUrl } from '../server/web-app-origin';
 
@@ -13,7 +18,15 @@ export interface DeliverTenantWebNotificationInput {
   /** Short title for the OS push (defaults derived from the event). */
   heading?: string;
   marketplace?: { platform?: string; category?: string; code?: string };
-  kind?: 'marketplace' | 'connection';
+  kind?: 'marketplace' | 'connection' | 'product_sync';
+  /** Token-free action buttons (product-sync prompts). */
+  actions?: NotificationAction[];
+  contextRef?: NotificationContextRef;
+  deterministic?: boolean;
+  /** Realtime broadcast (in-app popup). Default true; set false for coalesced persist-only writes. */
+  broadcast?: boolean;
+  /** OS push. Default true; set false for coalesced persist-only writes. */
+  push?: boolean;
 }
 
 /** Per-tenant "Notifications" thread — the dedicated chat where proactive notifications persist. */
@@ -37,18 +50,24 @@ export async function deliverTenantWebNotification(input: DeliverTenantWebNotifi
     category: input.marketplace?.category,
     code: input.marketplace?.code,
     createdAt: new Date().toISOString(),
+    actions: input.actions,
+    contextRef: input.contextRef,
+    deterministic: input.deterministic,
   };
 
-  await Promise.allSettled([
-    persistWebNotification(input.tenantId, payload),
-    broadcastTenantNotification(input.tenantId, payload),
-    sendTenantPush(input.tenantId, {
-      heading: input.heading ?? 'Lntera',
-      content: input.text,
-      url: notificationsUrl(input.tenantId),
-      data: { kind: payload.kind, platform: payload.platform, category: payload.category, code: payload.code },
-    }),
-  ]);
+  const tasks: Array<Promise<unknown>> = [persistWebNotification(input.tenantId, payload)];
+  if (input.broadcast !== false) tasks.push(broadcastTenantNotification(input.tenantId, payload));
+  if (input.push !== false) {
+    tasks.push(
+      sendTenantPush(input.tenantId, {
+        heading: input.heading ?? 'Lntera',
+        content: input.text,
+        url: notificationsUrl(input.tenantId),
+        data: { kind: payload.kind, platform: payload.platform, category: payload.category, code: payload.code },
+      }),
+    );
+  }
+  await Promise.allSettled(tasks);
 }
 
 /**
@@ -91,6 +110,10 @@ async function persistWebNotification(tenantId: string, payload: TenantNotificat
           platform: payload.platform,
           category: payload.category,
           code: payload.code,
+          // Persisted so the web client re-renders the action buttons on history reload.
+          actions: payload.actions,
+          contextRef: payload.contextRef,
+          deterministic: payload.deterministic,
         },
       },
     };
