@@ -19,15 +19,38 @@ import { NotificationSettings } from '../components/NotificationSettings';
 
 const INAPP_PREF_KEY = 'lntera-inapp-alerts';
 
+/** Token-free action button (mirrors server broadcast.ts NotificationAction). */
+export type NotificationActionKind = 'sync_action' | 'resync' | 'list_on_marketplace' | 'link' | 'dismiss';
+
+export interface NotificationAction {
+  id: string;
+  label: string;
+  kind: NotificationActionKind;
+  style?: 'primary' | 'default' | 'danger';
+  href?: string;
+}
+
+export interface NotificationContextRef {
+  linkId?: string;
+  internalProductId?: string;
+  platform?: string;
+  productId?: string;
+  shopId?: string;
+}
+
 /** A tenant notification pushed from the server over Supabase Realtime (see server broadcast.ts). */
 export interface TenantNotification {
   id: string;
   text: string;
-  kind: 'marketplace' | 'connection';
+  kind: 'marketplace' | 'connection' | 'product_sync';
   platform?: string;
   category?: string;
   code?: string;
   createdAt: string;
+  /** Token-free interactive buttons (product-sync prompts). */
+  actions?: NotificationAction[];
+  contextRef?: NotificationContextRef;
+  deterministic?: boolean;
 }
 
 type Listener = (n: TenantNotification) => void;

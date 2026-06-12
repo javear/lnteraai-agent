@@ -8,6 +8,7 @@ import { Memory } from '@mastra/memory';
 import {
   listMarketplaceShopsTool,
   searchProductsTool,
+  syncMarketplaceProductsTool,
   searchOrdersTool,
   confirmOrderFulfillmentTool,
   createFulfillmentPackageTool,
@@ -57,6 +58,7 @@ const LLM_INACTIVE_MODEL_PLACEHOLDER = [{ model: 'openai/gpt-5-mini' as const, m
 const ALL_TOOLS = {
   [listMarketplaceShopsTool.id]: listMarketplaceShopsTool,
   [searchProductsTool.id]: searchProductsTool,
+  [syncMarketplaceProductsTool.id]: syncMarketplaceProductsTool,
   [searchOrdersTool.id]: searchOrdersTool,
   [confirmOrderFulfillmentTool.id]: confirmOrderFulfillmentTool,
   [createFulfillmentPackageTool.id]: createFulfillmentPackageTool,

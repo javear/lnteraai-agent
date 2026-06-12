@@ -118,7 +118,12 @@ function variantFromSku(sku: TiktokSku, fallbackImageUrl?: string): NormalizedPr
   const priceRaw = sku.price?.sale_price ?? sku.price?.tax_exclusive_price;
   const price = priceRaw != null && Number.isFinite(Number(priceRaw)) ? Number(priceRaw) : undefined;
   let stock = 0;
-  for (const inv of sku.inventory ?? []) stock += inv.quantity ?? 0;
+  const inventoryByWarehouse: Array<{ warehouseId?: string; quantity: number }> = [];
+  for (const inv of sku.inventory ?? []) {
+    const qty = inv.quantity ?? 0;
+    stock += qty;
+    inventoryByWarehouse.push({ warehouseId: inv.warehouse_id?.trim() || undefined, quantity: qty });
+  }
   const { label, attributes } = buildVariantLabel(sku.sales_attributes);
   const img = pickVariantImage(sku);
   return {
@@ -129,6 +134,7 @@ function variantFromSku(sku: TiktokSku, fallbackImageUrl?: string): NormalizedPr
     price,
     currency: sku.price?.currency,
     stock: stock > 0 ? stock : 0,
+    inventoryByWarehouse: inventoryByWarehouse.length > 0 ? inventoryByWarehouse : undefined,
     imageUrl: img.url ?? fallbackImageUrl,
     imageUri: img.uri,
     tiktokPriceFields: sku.price

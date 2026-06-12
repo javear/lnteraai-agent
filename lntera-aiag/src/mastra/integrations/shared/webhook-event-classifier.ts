@@ -8,7 +8,7 @@
 
 import type { Platform } from './types';
 
-export type EventCategory = 'orders' | 'fulfillment' | 'returns' | 'other';
+export type EventCategory = 'orders' | 'fulfillment' | 'returns' | 'products' | 'other';
 
 export interface ClassifiedEvent {
   category: EventCategory;
@@ -41,6 +41,12 @@ const TIKTOK_RETURNS_CODES = new Set([
   'CANCELLATION_UPDATE',
   'CANCELLATION_STATUS_UPDATE',
   'REVERSE_ORDER_UPDATE',
+]);
+const TIKTOK_PRODUCT_CODES = new Set([
+  'PRODUCT_STATUS_CHANGE',
+  'PRODUCT_INFO_CHANGE',
+  'PRODUCT_CREATE',
+  'PRODUCT_UPDATE',
 ]);
 
 /**
@@ -97,6 +103,12 @@ const SHOPEE_TYPE_TO_CATEGORY: Record<string, EventCategory> = {
   return_status_update: 'returns',
   refund_update: 'returns',
   order_cancel: 'returns',
+  item_update: 'products',
+  item_add: 'products',
+  item_delete: 'products',
+  item_status_update: 'products',
+  reserved_stock_change: 'products',
+  promotion_stock_change: 'products',
 };
 
 function classifyTiktok(typeRaw: unknown): ClassifiedEvent {
@@ -109,6 +121,9 @@ function classifyTiktok(typeRaw: unknown): ClassifiedEvent {
     if (TIKTOK_ORDER_CODES.has(upper)) return { category: 'orders', code: upper };
     if (TIKTOK_FULFILLMENT_CODES.has(upper)) return { category: 'fulfillment', code: upper };
     if (TIKTOK_RETURNS_CODES.has(upper)) return { category: 'returns', code: upper };
+    if (TIKTOK_PRODUCT_CODES.has(upper) || upper.startsWith('PRODUCT')) {
+      return { category: 'products', code: upper };
+    }
     if (upper.startsWith('CANCELLATION') || upper.startsWith('REFUND') || upper.startsWith('RETURN')) {
       return { category: 'returns', code: upper };
     }
@@ -130,6 +145,7 @@ function classifyShopee(codeRaw: unknown, typeRaw: unknown): ClassifiedEvent {
     const lower = typeRaw.trim().toLowerCase();
     const cat = SHOPEE_TYPE_TO_CATEGORY[lower];
     if (cat) return { category: cat, code: lower };
+    if (lower.startsWith('item')) return { category: 'products', code: lower };
   }
   if (typeof codeRaw === 'number') {
     return { category: 'other', code: `code:${codeRaw}` };
@@ -159,7 +175,19 @@ export function classifyWebhookEvent(platform: Platform, payload: unknown): Clas
 
 /**
  * Convenience predicate used by the webhook handlers to short-circuit before tenant resolution.
+ * Products are handled by the deterministic ingest path, NOT the LLM agent — so they are excluded
+ * here and routed via `isProductEvent` instead.
  */
 export function shouldForwardToAgent(event: ClassifiedEvent): boolean {
-  return event.category !== 'other';
+  return event.category === 'orders' || event.category === 'fulfillment' || event.category === 'returns';
+}
+
+/** Product create/update/delete/stock events → the token-free ingest + re-score path. */
+export function isProductEvent(event: ClassifiedEvent): boolean {
+  return event.category === 'products';
+}
+
+/** Whether the handler should do any work at all (forward to agent OR ingest a product). */
+export function shouldProcessEvent(event: ClassifiedEvent): boolean {
+  return shouldForwardToAgent(event) || isProductEvent(event);
 }

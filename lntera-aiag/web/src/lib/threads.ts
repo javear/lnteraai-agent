@@ -1,4 +1,6 @@
 // Typed client for the per-user chat-session endpoints (`/svc/v1/chat/*`).
+import type { NotificationAction, NotificationContextRef } from './notifications';
+
 type Api = (path: string, init?: RequestInit) => Promise<Response>;
 
 export interface ChatThread {
@@ -15,6 +17,9 @@ export interface HistoryMessage {
   createdAt: string;
   /** "Provider · model" that produced an assistant turn — served from history (Mastra message metadata). */
   model?: string;
+  /** Token-free product-sync buttons, re-hydrated from message metadata so they survive reload. */
+  actions?: NotificationAction[];
+  contextRef?: NotificationContextRef;
 }
 
 export interface MessagesPage {

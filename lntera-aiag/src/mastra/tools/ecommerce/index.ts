@@ -1,5 +1,6 @@
 export { listMarketplaceShopsTool } from './list-marketplace-shops';
 export { searchProductsTool } from './search-products';
+export { syncMarketplaceProductsTool } from './sync-marketplace-products';
 export { searchOrdersTool } from './search-orders';
 export { confirmOrderFulfillmentTool } from './confirm-order-fulfillment';
 export { createFulfillmentPackageTool } from './create-fulfillment-package';
