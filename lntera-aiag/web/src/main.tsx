@@ -13,7 +13,7 @@ import { PwaUpdater } from './components/PwaUpdater';
 import { Centered } from './ui';
 import { AppLayout } from './components/AppLayout';
 import { ChatRouteSkeleton, PageRouteSkeleton } from './components/Skeletons';
-import { BootSplashArt } from './components/Lottie';
+import { Logo } from './ui';
 import './index.css';
 
 // Route chunks load on demand — Login never pulls in the chat SDK/markdown bundles.
@@ -24,11 +24,19 @@ const Integrations = lazy(() => import('./pages/Integrations'));
 // dead-code-eliminates the dynamic import: the chunk never ships in the native (Capacitor) bundle.
 const Landing = import.meta.env.MODE === 'native' ? null : lazy(() => import('./pages/Landing'));
 
-/** Full-screen branded splash for boot/auth gaps (lazy Lottie, falls back to the logo). */
+// Chat is the default authed landing; warm its chunk while the network is idle during the auth
+// round-trip so the most common entry doesn't wait on a serial fetch behind the boot splash.
+if (!IS_NATIVE && typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+  requestIdleCallback(() => {
+    void import('./pages/Chat');
+  });
+}
+
+/** Full-screen branded splash for boot/auth gaps — the static brand mark (no heavy Lottie/WASM). */
 function BootScreen() {
   return (
     <div className="flex min-h-dvh items-center justify-center">
-      <BootSplashArt className="h-16 w-16" />
+      <Logo size="lg" wordmark={false} className="opacity-90 motion-safe:animate-fade-in" />
     </div>
   );
 }

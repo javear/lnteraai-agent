@@ -62,6 +62,21 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       seoAssets(),
+      // Preload the primary Geist (latin, variable-weight) woff2. fontsource injects its @font-face
+      // from JS, so the browser otherwise only discovers the font after parsing the main chunk →
+      // boot FOUT. We resolve the hashed filename from the emitted bundle and inject a <link preload>.
+      {
+        name: 'lntera-font-preload',
+        apply: 'build',
+        enforce: 'post',
+        transformIndexHtml(html, ctx) {
+          const files = ctx.bundle ? Object.keys(ctx.bundle) : [];
+          const woff2 = files.find((f) => /geist-latin-wght-normal[^/]*\.woff2$/i.test(f));
+          if (!woff2) return html;
+          const tag = `<link rel="preload" as="font" type="font/woff2" href="${base}${woff2}" crossorigin>`;
+          return html.replace('</head>', `    ${tag}\n  </head>`);
+        },
+      } as Plugin,
       react(),
       VitePWA({
         // Disabled in native shells (no service worker; the bundle is already local).

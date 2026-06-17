@@ -219,9 +219,11 @@ export default function Chat() {
     }
   }, [online, routeThreadId, loadHistory]);
 
-  // Autoscroll to the newest message only when the user is already near the bottom.
+  // Autoscroll to the newest message only when the user is already near the bottom. During a stream
+  // the message mutates per token, so track instantly (smooth would restart its animation dozens of
+  // times/sec → jitter); reserve smooth scrolling for discrete events (new turn, suggestions).
   useEffect(() => {
-    if (nearBottomRef.current) scrollToBottom('smooth');
+    if (nearBottomRef.current) scrollToBottom(streamingRef.current ? 'auto' : 'smooth');
   }, [messages, suggestions, scrollToBottom]);
 
   // Auto-write: an active-agent message types itself into the chat. In its home (the Active Agent

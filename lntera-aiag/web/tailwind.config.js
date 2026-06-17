@@ -42,16 +42,31 @@ export default {
           DEFAULT: 'hsl(var(--popover))',
           foreground: 'hsl(var(--popover-foreground))',
         },
-        // Brand accent (indigo) — landing-only; see index.css --brand.
+        // Brand accent (orange) — logo, primary buttons, focus ring, selection; see index.css --brand.
         brand: {
           DEFAULT: 'hsl(var(--brand))',
           foreground: 'hsl(var(--brand-foreground))',
+          hover: 'hsl(var(--brand-hover))',
+          active: 'hsl(var(--brand-active))',
         },
       },
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
+      },
+      // Low-opacity, layered shadows tinted from --shadow-color (warm hsl-24 in light, true black in
+      // dark — so dark elevation reads as shadow, not a light glow). Cards/buttons auto-upgrade.
+      boxShadow: {
+        xs: '0 1px 2px 0 hsl(var(--shadow-color) / 0.05)',
+        sm: '0 1px 2px -1px hsl(var(--shadow-color) / 0.06), 0 1px 3px 0 hsl(var(--shadow-color) / 0.05)',
+        DEFAULT: '0 1px 3px 0 hsl(var(--shadow-color) / 0.07), 0 6px 16px -4px hsl(var(--shadow-color) / 0.06)',
+        md: '0 2px 6px -1px hsl(var(--shadow-color) / 0.08), 0 10px 28px -6px hsl(var(--shadow-color) / 0.08)',
+        lg: '0 6px 18px -4px hsl(var(--shadow-color) / 0.10), 0 20px 48px -12px hsl(var(--shadow-color) / 0.10)',
+      },
+      transitionTimingFunction: {
+        // Gentle, slightly-overshooting ease for tasteful micro-interactions.
+        soft: 'cubic-bezier(0.22, 1, 0.36, 1)',
       },
       fontFamily: {
         sans: ['Geist Variable', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],

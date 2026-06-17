@@ -118,7 +118,7 @@ export function MockChat({ className }: { className?: string }) {
           Lntera agent
         </span>
         <span className="lp-mono inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-[hsl(var(--fg-soft))]">
-          <span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--brand))]" />
+          <span className="h-1.5 w-1.5 rounded-full bg-brand" />
           online
         </span>
       </div>
@@ -140,14 +140,14 @@ export function MockChat({ className }: { className?: string }) {
                 <div className="lp-mono mb-1.5 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-[hsl(var(--fg-soft))]">
                   <span
                     className={cn(
-                      'h-1.5 w-1.5 rounded-full bg-[hsl(var(--brand))]',
+                      'h-1.5 w-1.5 rounded-full bg-brand',
                       m.thinking && 'animate-pulse',
                     )}
                   />
                   {m.thinking ? `running ${m.tool}…` : m.tool}
                 </div>
               ) : null}
-              <div className="rounded-2xl rounded-bl-md border-l-2 border-[hsl(var(--brand))] bg-[hsl(var(--bg))] px-3.5 py-2 text-[13.5px] leading-relaxed text-[hsl(var(--fg))]">
+              <div className="rounded-2xl rounded-bl-md border-l-2 border-brand bg-[hsl(var(--bg))] px-3.5 py-2 text-[13.5px] leading-relaxed text-[hsl(var(--fg))]">
                 {m.thinking && !m.text ? <Dots /> : m.text}
               </div>
             </div>
@@ -159,7 +159,7 @@ export function MockChat({ className }: { className?: string }) {
       <div className="shrink-0 border-t px-3 py-2.5">
         <div className="flex items-center gap-2 rounded-full border bg-[hsl(var(--bg-2))] px-3.5 py-2">
           <span className="flex-1 truncate text-[12.5px] text-[hsl(var(--fg-soft))]">Ask your shops anything…</span>
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--brand))]">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
               <path
                 d="M12 19V5M5 12l7-7 7 7"

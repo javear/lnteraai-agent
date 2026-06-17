@@ -137,7 +137,7 @@
   background: hsl(var(--bg));
   border: 1px solid hsl(var(--line));
   border-radius: 1rem;
-  box-shadow: 0 1px 2px hsl(var(--fg) / 0.04), 0 12px 30px -22px hsl(var(--fg) / 0.25);
+  box-shadow: 0 1px 2px hsl(var(--shadow-color) / 0.05), 0 12px 30px -22px hsl(var(--shadow-color) / 0.28);
 }
 .lp-chip {
   display: inline-flex;
@@ -171,7 +171,7 @@
   background: hsl(var(--bg));
   border: 1px solid hsl(var(--line));
   border-radius: 1rem;
-  box-shadow: 0 1px 2px hsl(var(--fg) / 0.05), 0 40px 80px -32px hsl(var(--fg) / 0.3);
+  box-shadow: 0 1px 2px hsl(var(--shadow-color) / 0.06), 0 40px 80px -32px hsl(var(--shadow-color) / 0.32);
 }
 
 /* ── Agent cursor overlay (Browserbase-style, calm) ─────── */
@@ -198,7 +198,7 @@
   width: 18px;
   height: 18px;
   color: hsl(var(--fg));
-  filter: drop-shadow(0 1px 2px hsl(var(--fg) / 0.28));
+  filter: drop-shadow(0 1px 2px hsl(var(--shadow-color) / 0.3));
 }
 .lp-cursor-tag {
   position: absolute;
