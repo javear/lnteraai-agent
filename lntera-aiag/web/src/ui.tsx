@@ -36,13 +36,19 @@ export function Logo({
     <div className={cn('flex items-center', s.gap, className)}>
       <div className={cn('flex shrink-0 items-center justify-center bg-brand', s.tile)}>
         <svg width={s.svg} height={s.svg} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          {/* "L" monogram */}
-          <path d="M8 5.5a1.4 1.4 0 0 1 2.8 0v9.1h5.1a1.4 1.4 0 0 1 0 2.8H8z" className="fill-white" />
-          {/* spark */}
+          {/* Monoline "L" — a single rounded stroke: grounded, modern, minimal. */}
           <path
-            d="M17 5.2l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8L14.5 7.7l1.8-.7z"
+            d="M9 6.25V13.5a2.5 2.5 0 0 0 2.5 2.5H15.5"
+            className="stroke-white"
+            strokeWidth="2.75"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          {/* AI spark — the agent's signal of intelligence. */}
+          <path
+            d="M17 4.4C17.2 6.05 17.55 6.55 19.2 6.8C17.55 7.05 17.2 7.55 17 9.2C16.8 7.55 16.45 7.05 14.8 6.8C16.45 6.55 16.8 6.05 17 4.4Z"
             className="fill-white"
-            opacity="0.72"
+            fillOpacity="0.9"
           />
         </svg>
       </div>
