@@ -1,8 +1,8 @@
 <svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <radialGradient id="glow" cx="82%" cy="6%" r="60%">
-      <stop offset="0%" stop-color="#F24A18" stop-opacity="0.14" />
-      <stop offset="100%" stop-color="#F24A18" stop-opacity="0" />
+      <stop offset="0%" stop-color="#DC3E0E" stop-opacity="0.14" />
+      <stop offset="100%" stop-color="#DC3E0E" stop-opacity="0" />
     </radialGradient>
   </defs>
 
@@ -11,16 +11,16 @@
 
   <!-- brand lockup -->
   <g transform="translate(96,92)">
-    <rect width="56" height="56" rx="14" fill="#F24A18" />
+    <rect width="56" height="56" rx="14" fill="#DC3E0E" />
     <g transform="translate(12,12) scale(1.33)">
-      <path d="M8 5.5a1.4 1.4 0 0 1 2.8 0v9.1h5.1a1.4 1.4 0 0 1 0 2.8H8z" fill="#FFFFFF" />
-      <path d="M17 5.2l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8L14.5 7.7l1.8-.7z" fill="#FFFFFF" fill-opacity="0.8" />
+      <path d="M9 6.25V13.5a2.5 2.5 0 0 0 2.5 2.5H15.5" stroke="#FFFFFF" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" />
+      <path d="M17 4.4C17.2 6.05 17.55 6.55 19.2 6.8C17.55 7.05 17.2 7.55 17 9.2C16.8 7.55 16.45 7.05 14.8 6.8C16.45 6.55 16.8 6.05 17 4.4Z" fill="#FFFFFF" fill-opacity="0.9" />
     </g>
     <text x="74" y="38" style="font-family:Helvetica,Arial,sans-serif;font-size:30px;font-weight:600;fill:#171514">Lntera</text>
   </g>
 
   <text x="96" y="328" style="font-family:Helvetica,Arial,sans-serif;font-size:62px;font-weight:600;letter-spacing:-1.5px;fill:#171514">Run your shops from</text>
-  <text x="96" y="400" style="font-family:Helvetica,Arial,sans-serif;font-size:62px;font-weight:600;letter-spacing:-1.5px;fill:#F24A18">one calm chat.</text>
+  <text x="96" y="400" style="font-family:Helvetica,Arial,sans-serif;font-size:62px;font-weight:600;letter-spacing:-1.5px;fill:#DC3E0E">one calm chat.</text>
   <text x="96" y="468" style="font-family:Helvetica,Arial,sans-serif;font-size:27px;fill:#5C574F">Orders, fulfillment, products &amp; pricing — bring your own LLM key.</text>
 
   <text x="96" y="560" style="font-family:'Courier New',monospace;font-size:18px;letter-spacing:2px;fill:#8A8378">SHOPEE · TIKTOK SHOP · DISCORD · GROQ · GEMINI</text>

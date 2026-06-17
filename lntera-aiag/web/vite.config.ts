@@ -62,6 +62,21 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       seoAssets(),
+      // Vercel Speed Insights — ONLY on the Vercel deployment, where the /_vercel/speed-insights/*
+      // endpoints are injected by the platform (the Railway monolith + native shells have no such
+      // endpoint). Added as Vercel's official script rather than the @vercel/speed-insights npm
+      // package because the corporate proxy blocks installing new deps; the script is the
+      // dependency-free equivalent and auto-tracks SPA route changes via the History API.
+      vercel &&
+        ({
+          name: 'lntera-speed-insights',
+          transformIndexHtml(html: string) {
+            return html.replace(
+              '</head>',
+              `    <script defer src="/_vercel/speed-insights/script.js"></script>\n  </head>`,
+            );
+          },
+        } as Plugin),
       // Preload the primary Geist (latin, variable-weight) woff2. fontsource injects its @font-face
       // from JS, so the browser otherwise only discovers the font after parsing the main chunk →
       // boot FOUT. We resolve the hashed filename from the emitted bundle and inject a <link preload>.

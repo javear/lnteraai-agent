@@ -127,3 +127,41 @@
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ── Refined details ─────────────────────────────────────── */
+/* Thin, unobtrusive scrollbars. The 2px transparent border + padding-box clip makes the thumb read
+   as a ~4px pill inside the 8px gutter — far lighter than the default chrome. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--border));
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.45);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Lucide icons: 1.75 reads cleaner than the 2px default at UI sizes (the brand Logo is not .lucide). */
+svg.lucide {
+  stroke-width: 1.75px;
+}
+
+/* Remove the grey tap-flash on mobile; tint native form controls with the brand. */
+html {
+  -webkit-tap-highlight-color: transparent;
+  accent-color: hsl(var(--brand));
+}
