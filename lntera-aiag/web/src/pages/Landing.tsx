@@ -85,7 +85,7 @@ export default function Landing() {
               <h1 className="lp-display mt-5 text-[2.6rem] leading-[1.02] sm:text-[3.4rem] lg:text-[4.2rem]">
                 Run your shops
                 <br />
-                from <span className="text-[hsl(var(--brand))]">one calm chat.</span>
+                from <span className="text-brand">one calm chat.</span>
               </h1>
               <p className="mt-6 max-w-md text-[1.05rem] leading-relaxed text-[hsl(var(--fg-soft))]">
                 Ask in plain language — "ship today&apos;s orders", "drop the linen shirts 10%" — and Lntera
@@ -169,7 +169,7 @@ export default function Landing() {
         {/* ───────── Stat band ───────── */}
         <section className="border-y bg-[hsl(var(--bg-2)/0.4)] py-14 sm:py-20">
           <Container className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-9">
-            <div className="lp-display text-[4.5rem] leading-[0.82] text-[hsl(var(--brand))] sm:text-[6.5rem]">18</div>
+            <div className="lp-display text-[4.5rem] leading-[0.82] text-brand sm:text-[6.5rem]">18</div>
             <div className="sm:pb-3">
               <div className="text-[1.15rem] font-semibold leading-tight">marketplace tools, one calm chat</div>
               <div className="lp-mono mt-1.5 text-[0.72rem] uppercase tracking-[0.14em] text-[hsl(var(--fg-soft))]">
@@ -192,7 +192,7 @@ export default function Landing() {
             <ol className="space-y-7">
               {STEPS.map((s, i) => (
                 <li key={s.title} className="flex gap-5">
-                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-[1.5px] border-[hsl(var(--brand)/0.5)] text-[0.85rem] font-semibold text-[hsl(var(--brand))]">
+                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-[1.5px] border-[hsl(var(--brand)/0.5)] text-[0.85rem] font-semibold text-brand">
                     {i + 1}
                   </span>
                   <div className="border-b pb-6">
@@ -224,7 +224,7 @@ export default function Landing() {
                     Active Agent
                   </span>
                   <span className="lp-mono inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-[hsl(var(--fg-soft))]">
-                    <span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--brand))]" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-brand" />
                     live
                   </span>
                 </div>
@@ -236,7 +236,7 @@ export default function Landing() {
                         <div className="text-[13.5px] font-medium">{e.title}</div>
                         <div className="lp-mono text-[11px] text-[hsl(var(--fg-soft))]">{e.meta}</div>
                       </div>
-                      <span className="lp-mono text-[10px] uppercase tracking-wide text-[hsl(var(--brand))]">now</span>
+                      <span className="lp-mono text-[10px] uppercase tracking-wide text-brand">now</span>
                     </li>
                   ))}
                 </ul>
@@ -252,13 +252,13 @@ export default function Landing() {
                 push. Reply right there and the agent handles it.
               </p>
               <div className="mt-7 space-y-5">
-                <div className="border-l-2 border-[hsl(var(--brand))] pl-4">
+                <div className="border-l-2 border-brand pl-4">
                   <h3 className="font-semibold">Realtime, everywhere</h3>
                   <p className="mt-1 text-[13.5px] leading-relaxed text-[hsl(var(--fg-soft))]">
                     One webhook → in-app popup, Discord message, and phone push at once.
                   </p>
                 </div>
-                <div className="border-l-2 border-[hsl(var(--brand))] pl-4">
+                <div className="border-l-2 border-brand pl-4">
                   <h3 className="font-semibold">Reply to act</h3>
                   <p className="mt-1 text-[13.5px] leading-relaxed text-[hsl(var(--fg-soft))]">
                     "Ship it" or "refund this" — answer the alert and it&apos;s done.
@@ -281,7 +281,7 @@ export default function Landing() {
             <div className="mx-auto mt-12 grid max-w-3xl gap-x-12 gap-y-9 sm:grid-cols-2">
               {WHY.map((d, i) => (
                 <div key={d.title} className="flex gap-4">
-                  <span className="lp-mono mt-1 shrink-0 text-[0.72rem] tracking-widest text-[hsl(var(--brand))]">
+                  <span className="lp-mono mt-1 shrink-0 text-[0.72rem] tracking-widest text-brand">
                     {n2(i)}
                   </span>
                   <div>

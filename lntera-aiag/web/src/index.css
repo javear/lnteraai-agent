@@ -4,57 +4,68 @@
 
 @layer base {
   :root {
+    /* Neutrals carry a faint warm cast (hue ~30, very low sat) so the UI reads calm + warm while the
+       canvas stays clean white. The orange brand is the only saturated colour. */
     --background: 0 0% 100%;
-    --foreground: 0 0% 9%;
+    --foreground: 20 6% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 9%;
+    --card-foreground: 20 6% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 9%;
-    --primary: 0 0% 9%;
+    --popover-foreground: 20 6% 10%;
+    --primary: 20 6% 10%;
     --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 40%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
+    --secondary: 30 8% 95.5%;
+    --secondary-foreground: 20 6% 10%;
+    --muted: 30 8% 95.5%;
+    --muted-foreground: 25 6% 38%;
+    --accent: 30 8% 92.5%;
+    --accent-foreground: 20 6% 10%;
     --destructive: 0 72% 44%;
     --destructive-foreground: 0 0% 98%;
     --success: 142 71% 29%;
     --success-foreground: 0 0% 98%;
-    --border: 0 0% 90%;
-    --input: 0 0% 90%;
-    --ring: 14 89% 52%;
+    --border: 30 7% 89%;
+    --input: 30 7% 89%;
+    /* Focus ring is a step deeper than --brand so it clears 3:1 over muted/secondary surfaces. */
+    --ring: 14 90% 45%;
     --radius: 0.65rem;
-    /* Brand accent (orange) — the logo spark + the pre-login landing accent. */
-    --brand: 14 89% 52%;
+    /* Layered shadows tint from one source — warm in light, true black in dark. */
+    --shadow-color: 24 12% 12%;
+    /* Brand accent (orange). Light fill darkened so white-on-orange clears WCAG AA (≥4.5:1). */
+    --brand: 14 88% 46%;
     --brand-foreground: 0 0% 100%;
+    --brand-hover: 14 88% 41%;
+    --brand-active: 14 88% 36%;
   }
 
   .dark {
-    --background: 0 0% 4%;
-    --foreground: 0 0% 96%;
-    --card: 0 0% 6.5%;
-    --card-foreground: 0 0% 96%;
-    --popover: 0 0% 7%;
-    --popover-foreground: 0 0% 96%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14%;
-    --secondary-foreground: 0 0% 96%;
-    --muted: 0 0% 14%;
-    --muted-foreground: 0 0% 64%;
-    --accent: 0 0% 16%;
-    --accent-foreground: 0 0% 96%;
+    /* Warm charcoal: a hint of warmth on elevated surfaces keeps the dark theme from feeling cold. */
+    --background: 24 6% 5%;
+    --foreground: 30 8% 96%;
+    --card: 28 5% 8%;
+    --card-foreground: 30 8% 96%;
+    --popover: 28 5% 8.5%;
+    --popover-foreground: 30 8% 96%;
+    --primary: 30 8% 96%;
+    --primary-foreground: 24 6% 7%;
+    --secondary: 28 5% 15%;
+    --secondary-foreground: 30 8% 96%;
+    --muted: 28 5% 15%;
+    --muted-foreground: 28 6% 64%;
+    --accent: 28 5% 19%;
+    --accent-foreground: 30 8% 96%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
     --success: 142 64% 52%;
     --success-foreground: 0 0% 9%;
-    --border: 0 0% 16%;
-    --input: 0 0% 18%;
+    --border: 28 5% 18%;
+    --input: 28 5% 19%;
     --ring: 18 95% 60%;
+    --shadow-color: 0 0% 0%;
     --brand: 18 95% 60%;
     --brand-foreground: 0 0% 100%;
+    --brand-hover: 18 95% 64%;
+    --brand-active: 18 95% 68%;
   }
 
   * {
@@ -72,8 +83,30 @@
     color: hsl(var(--foreground));
     font-family: 'Geist Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-optical-sizing: auto;
     overscroll-behavior-y: none;
     -webkit-text-size-adjust: 100%;
+  }
+
+  /* Warm branded text selection. */
+  ::selection {
+    background-color: hsl(var(--brand) / 0.16);
+    color: hsl(var(--foreground));
+  }
+
+  /* Headings sit a touch tighter and wrap evenly; paragraphs avoid orphans. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    letter-spacing: -0.018em;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
   }
 }
 

@@ -54,9 +54,9 @@ function relativeTime(iso: string): string {
 
 const navItemClass = ({ isActive }: { isActive: boolean }) =>
   cn(
-    'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors [&_svg]:size-4 [&_svg]:shrink-0',
+    'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ease-soft [&_svg]:size-4 [&_svg]:shrink-0',
     isActive
-      ? 'bg-background text-foreground shadow-sm ring-1 ring-border [&_svg]:text-[hsl(var(--brand))]'
+      ? 'relative bg-background text-foreground shadow-sm ring-1 ring-border [&_svg]:text-brand before:absolute before:left-1 before:top-1/2 before:h-4 before:w-[3px] before:-translate-y-1/2 before:rounded-full before:bg-brand'
       : 'text-muted-foreground hover:bg-accent hover:text-foreground',
   );
 
@@ -103,13 +103,13 @@ function ChatSessionList({ activeId, onNavigate }: { activeId?: string; onNaviga
           to={`/c/${notifId}`}
           onClick={onNavigate}
           className={cn(
-            'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors [&_svg]:size-4 [&_svg]:shrink-0',
+            'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ease-soft [&_svg]:size-4 [&_svg]:shrink-0',
             activeId === notifId
-              ? 'bg-background text-foreground shadow-sm ring-1 ring-border'
+              ? 'relative bg-background text-foreground shadow-sm ring-1 ring-border before:absolute before:left-1 before:top-1/2 before:h-4 before:w-[3px] before:-translate-y-1/2 before:rounded-full before:bg-brand'
               : 'text-muted-foreground hover:bg-accent hover:text-foreground',
           )}
         >
-          <Sparkles className="text-[hsl(var(--brand))]" />
+          <Sparkles className="text-brand" />
           <span className="flex-1 truncate font-medium">Active Agent</span>
         </NavLink>
       ) : null}
@@ -129,8 +129,10 @@ function ChatSessionList({ activeId, onNavigate }: { activeId?: string; onNaviga
           <div
             key={t.id}
             className={cn(
-              'group flex items-center rounded-lg transition-colors',
-              active ? 'bg-background shadow-sm ring-1 ring-border' : 'hover:bg-accent',
+              'group relative flex items-center rounded-lg transition-colors ease-soft',
+              active
+                ? 'bg-background shadow-sm ring-1 ring-border before:absolute before:left-1 before:top-1/2 before:h-4 before:w-[3px] before:-translate-y-1/2 before:rounded-full before:bg-brand'
+                : 'hover:bg-accent',
             )}
           >
             <NavLink
@@ -332,6 +334,7 @@ export function AppLayout() {
 
   const email = session?.user.email ?? 'Workspace';
   const anyConnected = connectionRows(status).some((c) => c.on);
+  const routeLabel = location.pathname.startsWith('/integrations') ? 'Integrations' : 'Chat';
 
   return (
     <RealtimeNotificationsProvider>
@@ -398,6 +401,19 @@ export function AppLayout() {
                 <ThemeToggle />
                 <span
                   className={cn('ml-1 h-2 w-2 rounded-full', anyConnected ? 'bg-success' : 'bg-muted-foreground/40')}
+                  title={anyConnected ? 'Integrations connected' : 'No integrations connected'}
+                />
+              </div>
+            </header>
+
+            {/* Desktop header — balances the sidebar's h-14 brand bar; route label + global controls. */}
+            <header className="hidden h-14 shrink-0 items-center gap-2 border-b bg-background/80 px-5 backdrop-blur sm:flex">
+              <span className="truncate text-sm font-medium tracking-tight text-foreground">{routeLabel}</span>
+              <div className="ml-auto flex items-center gap-0.5">
+                <NotificationBell />
+                <ThemeToggle />
+                <span
+                  className={cn('ml-1.5 h-2 w-2 rounded-full', anyConnected ? 'bg-success' : 'bg-muted-foreground/40')}
                   title={anyConnected ? 'Integrations connected' : 'No integrations connected'}
                 />
               </div>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Check, Loader2 } from 'lucide-react';
 import { useAuth } from '../../auth';
 import { postResync, postSyncAction } from '../../lib/product-sync-actions';
 import type { NotificationAction, NotificationContextRef } from '../../lib/notifications';
@@ -19,7 +20,7 @@ export function NotificationActions({
   const { api } = useAuth();
   const navigate = useNavigate();
   const [busy, setBusy] = useState<string | null>(null);
-  const [done, setDone] = useState<{ message: string } | null>(null);
+  const [done, setDone] = useState<{ message: string; ok?: boolean } | null>(null);
 
   if (!actions || actions.length === 0) return null;
 
@@ -27,7 +28,7 @@ export function NotificationActions({
     if (done || busy) return;
 
     if (a.kind === 'dismiss') {
-      setDone({ message: '' });
+      setDone({ message: 'Dismissed' });
       return;
     }
     if (a.kind === 'link' || a.kind === 'list_on_marketplace') {
@@ -40,7 +41,7 @@ export function NotificationActions({
     try {
       if (a.kind === 'resync') {
         const r = await postResync(api, { platform: contextRef?.platform, mode: a.id });
-        setDone({ message: r.message });
+        setDone({ message: r.message, ok: true });
       } else {
         // sync_action — needs the mapping link id.
         if (!contextRef?.linkId) {
@@ -48,7 +49,7 @@ export function NotificationActions({
           return;
         }
         const r = await postSyncAction(api, contextRef.linkId, a.id);
-        setDone({ message: r.message });
+        setDone({ message: r.message, ok: true });
       }
     } catch {
       setDone({ message: 'Something went wrong. Please try again.' });
@@ -58,9 +59,13 @@ export function NotificationActions({
   }
 
   if (done) {
-    return done.message ? (
-      <div className="mt-2 animate-fade-in text-[13px] text-muted-foreground">{done.message}</div>
-    ) : null;
+    if (!done.message) return null;
+    return (
+      <div className="mt-2 inline-flex items-center gap-1.5 animate-fade-in text-[13px] text-muted-foreground">
+        {done.ok ? <Check className="h-3.5 w-3.5 text-success" /> : null}
+        {done.message}
+      </div>
+    );
   }
 
   return (
@@ -70,10 +75,12 @@ export function NotificationActions({
           key={a.id}
           type="button"
           disabled={busy !== null}
+          aria-busy={busy === a.id}
           onClick={() => onClick(a)}
           className={buttonClass(a.style)}
         >
-          {busy === a.id ? 'Working…' : a.label}
+          {busy === a.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+          {a.label}
         </button>
       ))}
     </div>
@@ -82,12 +89,12 @@ export function NotificationActions({
 
 function buttonClass(style?: string): string {
   const base =
-    'rounded-full border px-3.5 py-1.5 text-[13px] shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50';
+    'inline-flex items-center justify-center rounded-full border px-3.5 py-1.5 text-[13px] font-medium shadow-xs transition-[background-color,color,transform,opacity] duration-150 ease-soft active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50';
   if (style === 'primary') {
-    return `${base} border-transparent bg-[hsl(var(--brand))] text-white hover:opacity-90`;
+    return `${base} border-transparent bg-brand text-white hover:bg-brand-hover`;
   }
   if (style === 'danger') {
-    return `${base} border-transparent bg-destructive text-destructive-foreground hover:opacity-90`;
+    return `${base} border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/90`;
   }
-  return `${base} bg-background text-foreground hover:bg-accent hover:text-accent-foreground`;
+  return `${base} border-border bg-background text-foreground hover:bg-accent hover:text-accent-foreground`;
 }

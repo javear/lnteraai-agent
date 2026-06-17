@@ -58,13 +58,13 @@ export function Composer({
             className="flex-1 resize-none bg-transparent px-2.5 py-2 text-base leading-relaxed outline-none placeholder:text-muted-foreground disabled:opacity-60"
           />
           {streaming ? (
-            <Button size="icon" variant="secondary" className="rounded-xl" onClick={onStop} aria-label="Stop">
+            <Button size="icon" variant="secondary" className="rounded-xl [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11" onClick={onStop} aria-label="Stop">
               <Square className="h-4 w-4" />
             </Button>
           ) : (
             <Button
               size="icon"
-              className="rounded-xl"
+              className="rounded-xl [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
               onClick={onSend}
               disabled={!value.trim() || disabled}
               aria-label="Send"

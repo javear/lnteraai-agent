@@ -25,7 +25,7 @@ export function BrandAuth({
             className={cn(
               'rounded-full px-3.5 py-1.5 font-medium transition-colors',
               f.mode === m
-                ? 'bg-[hsl(var(--brand))] text-[hsl(var(--brand-foreground))]'
+                ? 'bg-brand text-brand-foreground'
                 : 'text-[hsl(var(--fg-soft))] hover:text-[hsl(var(--fg))]',
             )}
           >

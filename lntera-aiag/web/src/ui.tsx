@@ -116,7 +116,10 @@ export function Alert({ tone, children }: { tone: 'success' | 'error' | 'neutral
     neutral: 'border-border bg-muted text-foreground',
   };
   return (
-    <div className={cn('mt-4 rounded-lg border px-3.5 py-3 text-sm leading-relaxed', tones[tone])}>
+    <div
+      role={tone === 'error' ? 'alert' : 'status'}
+      className={cn('mt-4 rounded-lg border px-3.5 py-3 text-sm leading-relaxed', tones[tone])}
+    >
       {children}
     </div>
   );
@@ -254,10 +257,10 @@ export function Avatar({ label, tone = 'ink' }: { label: string; tone?: 'ink' | 
 
 export function TypingDots() {
   return (
-    <span className="inline-flex items-center gap-1 py-1" aria-label="Assistant is typing">
-      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.2s]" />
-      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.1s]" />
-      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground" />
+    <span className="inline-flex items-center gap-1 py-1" role="status" aria-label="Assistant is typing">
+      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.2s] motion-reduce:animate-none motion-reduce:opacity-60" />
+      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.1s] motion-reduce:animate-none motion-reduce:opacity-60" />
+      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground motion-reduce:animate-none motion-reduce:opacity-60" />
     </span>
   );
 }

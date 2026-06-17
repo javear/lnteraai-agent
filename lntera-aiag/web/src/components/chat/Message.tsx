@@ -29,7 +29,7 @@ export interface ChatMessage {
 function ToolActivity({ tool }: { tool: string }) {
   return (
     <div className="mb-1.5 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-      <span className="h-1 w-1 animate-pulse rounded-full bg-[hsl(var(--brand))]" />
+      <span className="h-1 w-1 animate-pulse rounded-full bg-brand" />
       Using {tool}…
     </div>
   );
@@ -50,7 +50,7 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
       <Avatar label="AI" />
       <div className="min-w-0 flex-1 pt-0.5">
         {message.proactive ? (
-          <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-[hsl(var(--brand)/0.12)] px-2 py-0.5 text-[11px] font-medium text-[hsl(var(--brand))]">
+          <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-[hsl(var(--brand)/0.12)] px-2 py-0.5 text-[11px] font-medium text-brand">
             <Sparkles className="h-3 w-3" />
             Active Agent
           </div>
