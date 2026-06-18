@@ -11,7 +11,7 @@ import {
   type InsightSchedulePatch,
   type ResolvedInsightSchedule,
 } from '../../../integrations/shared/insight-schedule-prefs';
-import { armNextRun } from '../../../inngest/arm-insight';
+import { armNextRun, cancelTenantRuns } from '../../../inngest/arm-insight';
 import { listProviders } from '../../../insights/providers';
 import { OPEN_API_PREFIX, OPENAPI_TAGS } from '../constants';
 import { resolveTenantFromBearer, type OpenApiHandlerContext } from '../middleware/bearer-tenant';
@@ -89,7 +89,8 @@ const putScheduleRoute = registerApiRoute(`${OPEN_API_PREFIX}/insights/schedule`
     }
 
     const schedule = await setInsightSchedule(auth.tenantId, patch);
-    await armNextRun(auth.tenantId, schedule); // (re)schedule the next run immediately on save
+    await cancelTenantRuns(auth.tenantId); // drop the superseded pending run, then schedule the new one
+    await armNextRun(auth.tenantId, schedule);
     return c.json({ schedule, nextRun: nextRunPayload(schedule) });
   },
 });

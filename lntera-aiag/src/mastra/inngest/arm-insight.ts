@@ -17,6 +17,21 @@ import {
 } from '../integrations/shared/insight-schedule-prefs';
 
 export const INSIGHT_RUN_EVENT = 'insight/run.requested';
+export const INSIGHT_CANCEL_EVENT = 'insight/run.canceled';
+
+/**
+ * Cancel a tenant's pending (scheduled/queued) run-insight runs. Sent on schedule edit/disable so the
+ * superseded run is dropped instead of lingering in the queue until it fires and no-ops. run-insight
+ * cancels on this via `cancelOn` (matched by data.tenantId). Best-effort — validate-on-fire is the
+ * safety net, so a missed cancel only means one harmless no-op run.
+ */
+export async function cancelTenantRuns(tenantId: string): Promise<void> {
+  try {
+    await inngest.send({ name: INSIGHT_CANCEL_EVENT, data: { tenantId } });
+  } catch (err) {
+    logErrorBrief(`[insights] cancelTenantRuns send failed tenant=${tenantId}`, err);
+  }
+}
 
 /**
  * Arm (or re-arm) the tenant's next scheduled run. Idempotent; returns the armed timestamp (ms) or

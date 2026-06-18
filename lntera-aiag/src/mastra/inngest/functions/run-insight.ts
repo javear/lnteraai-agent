@@ -33,6 +33,9 @@ export const runInsightFn = inngest.createFunction(
     // Under the free-tier 5: ≤4 tenants at once, and a single tenant never overlaps itself.
     concurrency: [{ limit: 4 }, { key: 'event.data.tenantId', limit: 1 }],
     retries: 4,
+    // A schedule edit/disable sends insight/run.canceled → drop this tenant's superseded pending run
+    // (validate-on-fire still guards anything not cancelled in time).
+    cancelOn: [{ event: 'insight/run.canceled', match: 'data.tenantId' }],
     triggers: [{ event: 'insight/run.requested' }],
   },
   async ({ event, step }) => {
