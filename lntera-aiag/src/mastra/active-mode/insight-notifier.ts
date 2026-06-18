@@ -14,6 +14,24 @@ import type { ChartSpec, InsightResult } from '../insights/types';
 const INSIGHT_CONTEXT_KEY = 'insight';
 const MAX_CHARTS = 6;
 
+/** Delays (ms) BEFORE retry attempts 2, 3, … — short so a delivered insight stays timely. */
+const NARRATE_RETRY_BACKOFF_MS = [2000, 6000, 12000];
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** How many narration attempts before settling for the deterministic fallback (env-tunable, 1–6). */
+function narrateMaxAttempts(): number {
+  const n = Number(process.env.INSIGHT_NARRATE_MAX_ATTEMPTS);
+  return Number.isInteger(n) && n >= 1 && n <= 6 ? n : 3;
+}
+
+/** Transient = worth waiting out (provider spike / 429 / 5xx / timeout); permanent → fall back now. */
+function isTransientLlmError(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err ?? '')).toLowerCase();
+  return /unavailable|high demand|temporar|overload|server error|try again|rate.?limit|too many requests|quota|timeout|timed out|econnreset|etimedout|fetch failed|\b(429|500|502|503|504)\b/.test(
+    msg,
+  );
+}
+
 export interface InsightNotifyResult {
   status: 'delivered' | 'no_connection' | 'no_insights' | 'no_data';
   insightsReported: number;
@@ -48,18 +66,12 @@ export async function notifyTenantOfInsights(
   requestContext.set(AGENT_MODE_KEY, 'active' satisfies AgentMode);
   requestContext.set(INSIGHT_CONTEXT_KEY, { keys: run.results.map((r) => r.key) });
 
-  let answerText = '';
-  try {
-    const answer = (await generalAgent.generate(buildInsightPrompt(facts), { requestContext, maxSteps: 1 })) as {
-      text?: unknown;
-      tripwire?: unknown;
-    };
-    // A tripwire (e.g. no LLM key, regex guard) means no usable narrative — fall back to the
-    // deterministic summary instead of posting the gate message next to the charts.
-    if (!answer.tripwire && typeof answer.text === 'string') answerText = answer.text.trim();
-  } catch (err) {
-    logErrorBrief(`[active] insight narrate failed tenant=${tenantId}`, err);
-  }
+  // Narrate with bounded retry. Each generate() already rolls across every connected model/provider
+  // (the Portkey model chain), so a thrown error means they were ALL unavailable at once. For a
+  // transient spike (Gemini "high demand", 429/5xx, timeout) we wait briefly and try again before
+  // settling for the deterministic fallback — a temporary blip shouldn't downgrade the user to plain
+  // text. Permanent errors (no LLM key, regex gate) skip the retries and fall back immediately.
+  const answerText = await narrateInsights(facts, requestContext, tenantId);
   const usedFallback = !answerText.trim();
 
   await deliverTenantWebNotification({
@@ -97,6 +109,41 @@ function buildInsightPrompt(facts: string): string {
     'Facts:',
     facts,
   ].join('\n');
+}
+
+/**
+ * Narrate the facts, retrying on TRANSIENT LLM errors (provider spikes/rate-limits) with backoff.
+ * Returns the narrative, or '' when the LLM is unavailable/gated after all attempts — the caller then
+ * delivers the deterministic fallback so the scheduled analysis is still delivered no matter what.
+ */
+async function narrateInsights(facts: string, requestContext: RequestContext, tenantId: string): Promise<string> {
+  const maxAttempts = narrateMaxAttempts();
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const answer = (await generalAgent.generate(buildInsightPrompt(facts), { requestContext, maxSteps: 1 })) as {
+        text?: unknown;
+        tripwire?: unknown;
+      };
+      // A tripwire (no LLM key, regex guard) is permanent — fall back now rather than burn retries.
+      if (answer.tripwire) return '';
+      if (typeof answer.text === 'string' && answer.text.trim()) return answer.text.trim();
+      return ''; // empty (non-error) response → deterministic fallback
+    } catch (err) {
+      lastErr = err;
+      if (!isTransientLlmError(err) || attempt === maxAttempts) break;
+      const delay = NARRATE_RETRY_BACKOFF_MS[attempt - 1] ?? NARRATE_RETRY_BACKOFF_MS.at(-1) ?? 6000;
+      logErrorBrief(
+        `[active] insight narrate attempt ${attempt}/${maxAttempts} hit a transient LLM error; retrying in ${delay}ms tenant=${tenantId}`,
+        err,
+      );
+      await sleep(delay);
+    }
+  }
+  if (lastErr) {
+    logErrorBrief(`[active] insight narrate failed after ${maxAttempts} attempt(s) tenant=${tenantId}`, lastErr);
+  }
+  return '';
 }
 
 function buildFallbackText(results: InsightResult[]): string {
