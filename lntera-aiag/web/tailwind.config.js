@@ -77,10 +77,13 @@ export default {
         'accordion-up': { from: { height: 'var(--radix-accordion-content-height)' }, to: { height: '0' } },
         'fade-in': { from: { opacity: '0' }, to: { opacity: '1' } },
         'fade-in-up': { from: { opacity: '0', transform: 'translateY(6px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
+        'reveal-up': { from: { opacity: '0', transform: 'translateY(18px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
       },
       animation: {
         'fade-in': 'fade-in 0.2s ease-out',
         'fade-in-up': 'fade-in-up 0.25s ease-out',
+        // Landing scroll reveal — larger lift + gentle overshoot for a more cinematic entrance.
+        'reveal-up': 'reveal-up 0.62s cubic-bezier(0.22, 1, 0.36, 1)',
       },
     },
   },

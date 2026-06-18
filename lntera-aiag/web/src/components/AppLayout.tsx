@@ -4,6 +4,7 @@ import { Bell, ChevronsUpDown, LogOut, Menu, Plug, Sparkles, SquarePen, Trash2, 
 import { toast } from 'sonner';
 import { useAuth } from '../auth';
 import { fetchIntegrationStatus, type AppOutletContext, type IntegrationStatus } from '../lib/integrations';
+import { getInsightSchedule } from '../lib/insights';
 import { useOnlineStatus } from '../lib/pwa';
 import { ChatSessionsProvider, useChats } from '../lib/chat-store';
 import { RealtimeNotificationsProvider, useNotifications } from '../lib/notifications';
@@ -326,6 +327,12 @@ export function AppLayout() {
   useEffect(() => {
     void refreshStatus();
   }, [refreshStatus]);
+
+  // On login, make sure the tenant has an automatic-analysis schedule (server provisions a
+  // load-balanced default for brand-new tenants). Fire-and-forget; settings can fine-tune it later.
+  useEffect(() => {
+    void getInsightSchedule(api).catch(() => {});
+  }, [api]);
 
   // Close the drawer on route change (Radix handles Escape + overlay + focus trap).
   useEffect(() => {

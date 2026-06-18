@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import { useAuth } from '../auth';
 import { useOnlineStatus } from '../lib/pwa';
 import { Button } from '../ui';
@@ -20,6 +21,71 @@ import {
 
 const DAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** 24h 'HH:MM' ⇄ 12h parts. 12 AM = 00:xx, 12 PM = 12:xx — handled explicitly so there's no ambiguity. */
+function split12(value: string): { h12: number; min: number; ap: 'AM' | 'PM' } {
+  const [h, m] = value.split(':').map(Number);
+  const hour = Number.isFinite(h) ? h : 9;
+  const min = Number.isFinite(m) ? m : 0;
+  return { h12: hour % 12 === 0 ? 12 : hour % 12, min, ap: hour < 12 ? 'AM' : 'PM' };
+}
+function join24(h12: number, min: number, ap: 'AM' | 'PM'): string {
+  let h = h12 % 12; // 12 → 0
+  if (ap === 'PM') h += 12; // 12 PM → 12, 1 PM → 13
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
+
+/** Explicit hour / minute / AM·PM picker — unambiguous (unlike a bare native time input). */
+function TimeField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { h12, min, ap } = split12(value);
+  const selectCls =
+    'h-10 rounded-md border border-input bg-background px-2 text-sm tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';
+  return (
+    <div className="inline-flex items-center gap-1.5">
+      <select
+        aria-label="Hour"
+        value={h12}
+        onChange={(e) => onChange(join24(Number(e.target.value), min, ap))}
+        className={selectCls}
+      >
+        {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => (
+          <option key={h} value={h}>
+            {h}
+          </option>
+        ))}
+      </select>
+      <span className="text-muted-foreground">:</span>
+      <select
+        aria-label="Minute"
+        value={min}
+        onChange={(e) => onChange(join24(h12, Number(e.target.value), ap))}
+        className={selectCls}
+      >
+        {Array.from({ length: 60 }, (_, m) => (
+          <option key={m} value={m}>
+            {String(m).padStart(2, '0')}
+          </option>
+        ))}
+      </select>
+      <div className="ml-1 inline-flex rounded-md border border-input p-0.5">
+        {(['AM', 'PM'] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            aria-pressed={ap === m}
+            onClick={() => onChange(join24(h12, min, m))}
+            className={cn(
+              'rounded px-2.5 py-1.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              ap === m ? 'bg-brand text-brand-foreground' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {m}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function InsightSettings() {
   const { api } = useAuth();
@@ -178,16 +244,13 @@ export function InsightSettings() {
           {/* Time — exact hour:minute */}
           <div>
             <div className="mb-2 text-[13px] font-medium">Time</div>
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                type="time"
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <TimeField
                 value={time}
-                onChange={(e) => {
-                  if (!e.target.value) return;
+                onChange={(v) => {
                   setNextRun(null);
-                  setTime(e.target.value);
+                  setTime(v);
                 }}
-                className="h-10 rounded-md border border-input bg-background px-3 text-sm tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               />
               <span className="text-[13px] text-muted-foreground">in {timezone} · runs once per day</span>
             </div>

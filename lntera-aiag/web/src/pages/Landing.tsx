@@ -3,6 +3,7 @@ import { Reveal } from '../components/landing/Reveal';
 import { MockChat } from '../components/landing/MockChat';
 import { AgentCursor } from '../components/landing/AgentCursor';
 import { BrandAuth } from '../components/landing/BrandAuth';
+import { SpaceBackdrop } from '../components/landing/SpaceBackdrop';
 import { LandingNav } from '../components/landing/LandingNav';
 import { LandingFooter } from '../components/landing/LandingFooter';
 import '../styles/landing.css';
@@ -69,17 +70,10 @@ export default function Landing() {
       <LandingNav />
 
       <main>
-        {/* ───────── Hero — asymmetric 7/5, offset, one off-center wash ───────── */}
-        <section className="relative overflow-hidden pb-16 pt-10 sm:pb-24 sm:pt-16">
-          <div
-            aria-hidden
-            className="pointer-events-none absolute right-[-12%] top-[-20%] h-[560px] w-[680px] max-w-[120vw] rounded-full bg-[hsl(var(--brand)/0.07)] blur-[150px]"
-          />
-          <div
-            aria-hidden
-            className="pointer-events-none absolute left-[-8%] top-[22%] h-[380px] w-[420px] rounded-full bg-[hsl(var(--fg)/0.025)] blur-[140px]"
-          />
-          <Container className="grid items-start gap-12 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:gap-16">
+        {/* ───────── Hero — deep-space: drifting starfield + warm glow, asymmetric 7/5 ───────── */}
+        <section className="lp-space relative overflow-hidden bg-[hsl(var(--bg))] pb-16 pt-10 text-[hsl(var(--fg))] sm:pb-24 sm:pt-16">
+          <SpaceBackdrop glow="top" />
+          <Container className="relative z-10 grid items-start gap-12 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:gap-16">
             <Reveal className="lg:pt-6">
               <div className="lp-eyebrow">The business agent · Shopee &amp; TikTok Shop</div>
               <h1 className="lp-display mt-5 text-[2.6rem] leading-[1.02] sm:text-[3.4rem] lg:text-[4.2rem]">
@@ -231,7 +225,7 @@ export default function Landing() {
                 <ul className="divide-y">
                   {FEED.map((e) => (
                     <li key={e.title} className="flex items-start gap-3 px-4 py-3.5">
-                      <span className="text-lg leading-none">{e.emoji}</span>
+                      <span className="text-lg leading-none" aria-hidden>{e.emoji}</span>
                       <div className="min-w-0 flex-1">
                         <div className="text-[13.5px] font-medium">{e.title}</div>
                         <div className="lp-mono text-[11px] text-[hsl(var(--fg-soft))]">{e.meta}</div>
@@ -294,9 +288,10 @@ export default function Landing() {
           </Container>
         </section>
 
-        {/* ───────── CTA — edge-to-edge, oversized, left-aligned ───────── */}
-        <section className="border-t py-24 sm:py-32">
-          <Container className="grid items-end gap-8 lg:grid-cols-[1fr_auto]">
+        {/* ───────── CTA — deep-space climax: oversized, glow behind the button ───────── */}
+        <section className="lp-space relative overflow-hidden border-t bg-[hsl(var(--bg))] py-24 text-[hsl(var(--fg))] sm:py-32">
+          <SpaceBackdrop glow="center" />
+          <Container className="relative z-10 grid items-end gap-8 lg:grid-cols-[1fr_auto]">
             <h2 className="lp-display max-w-[16ch] text-[2.6rem] leading-[1.0] sm:text-[3.8rem]">
               Put your storefront on autopilot.
             </h2>
@@ -304,7 +299,7 @@ export default function Landing() {
               Start free →
             </button>
           </Container>
-          <Container className="mt-6">
+          <Container className="relative z-10 mt-6">
             <p className="lp-mono text-[0.72rem] uppercase tracking-[0.14em] text-[hsl(var(--fg-soft))]">
               Bring your own key · no card · cancel anytime
             </p>

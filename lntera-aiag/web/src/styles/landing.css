@@ -113,6 +113,19 @@
   color: hsl(var(--fg));
 }
 
+/* Keyboard focus — a brand ring offset by the surface color so it reads on light AND deep-space. */
+.lp-btn:focus-visible,
+.lp-btn-ghost:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px hsl(var(--bg)), 0 0 0 4px hsl(var(--brand));
+}
+.lp-link:focus-visible {
+  outline: 2px solid hsl(var(--brand));
+  outline-offset: 3px;
+  border-radius: 4px;
+  color: hsl(var(--fg));
+}
+
 .lp-field {
   width: 100%;
   font-size: 0.95rem;
@@ -228,11 +241,119 @@
   will-change: transform, opacity;
 }
 
+/* ── Deep-space scope (inngest-style) ─────────────────────
+ * A local token override for any subtree marked `.lp-space`: a dark "galaxy" surface + off-white text
+ * + vivid orange. It's THEME-AWARE — a lighter charcoal-grey in light mode and a near-black in dark
+ * mode (`.dark .lp-space`) — so the space reads as intentional in both. We redefine the app tokens (so
+ * Tailwind utilities like border-b / bg-background follow) AND the .lp aliases that point at them.
+ * Note: we set NO color/background here so per-element text utilities still win — the section element
+ * opts in with `bg-[hsl(var(--bg))] text-[hsl(var(--fg))]`.
+ */
+.lp-space {
+  /* Light mode: a lighter, greyish charcoal galaxy (not pure black). */
+  --background: 222 13% 18%;
+  --foreground: 60 9% 97%;
+  --card: 222 12% 22%;
+  --card-foreground: 60 9% 97%;
+  --popover: 222 12% 22%;
+  --muted: 222 11% 25%;
+  --muted-foreground: 220 9% 76%;
+  --secondary: 222 11% 25%;
+  --secondary-foreground: 60 9% 97%;
+  --accent: 222 10% 29%;
+  --border: 220 9% 33%;
+  --input: 222 10% 27%;
+  --ring: 16 100% 58%;
+  --shadow-color: 222 35% 6%;
+  --brand: 16 100% 58%;
+  /* inngest-signature: near-black text on the vivid orange — keeps the orange bright AND clears
+   * WCAG AA where white-on-orange would only hit ~3:1. Scoped to the deep-space surfaces. */
+  --brand-foreground: 222 35% 12%;
+  --brand-hover: 16 100% 63%;
+  --brand-active: 16 100% 68%;
+  /* .lp aliases re-point at the overridden tokens (they auto-follow the .dark override below) */
+  --bg: var(--background);
+  --bg-2: var(--muted);
+  --bg-3: var(--secondary);
+  --fg: var(--foreground);
+  --fg-soft: var(--muted-foreground);
+  --line: var(--border);
+  color-scheme: dark;
+}
+
+/* Dark mode: the full near-black deep space (aliases above auto-follow these). */
+.dark .lp-space {
+  --background: 213 24% 4%;
+  --foreground: 60 9% 96%;
+  --card: 210 20% 7%;
+  --card-foreground: 60 9% 96%;
+  --popover: 210 20% 7%;
+  --muted: 210 18% 11%;
+  --muted-foreground: 214 9% 68%;
+  --secondary: 210 18% 12%;
+  --secondary-foreground: 60 9% 96%;
+  --accent: 210 16% 15%;
+  --border: 209 16% 16%;
+  --input: 210 16% 14%;
+  --shadow-color: 0 0% 0%;
+  --brand-foreground: 213 40% 8%;
+}
+
+/* Faint dot-grid, radially masked so it fades before the edges and drifts slowly upward. */
+.lp-space-grid {
+  background-image: radial-gradient(circle, hsl(0 0% 100% / 0.05) 1px, transparent 1.4px);
+  background-size: 30px 30px;
+  -webkit-mask-image: radial-gradient(125% 95% at 50% 0%, #000 32%, transparent 80%);
+  mask-image: radial-gradient(125% 95% at 50% 0%, #000 32%, transparent 80%);
+  opacity: 0.7;
+  animation: lp-grid-drift 60s linear infinite;
+}
+
+/* Warm orange glow that breathes (opacity only — never transform, so positioning is preserved).
+ * Kept soft and restrained so it never color-washes the headline; isolated for cheap compositing. */
+.lp-space-glow {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(24px);
+  background: radial-gradient(circle, hsl(var(--brand) / 0.2), transparent 70%);
+  opacity: 0.7;
+  will-change: opacity;
+  contain: paint;
+  animation: lp-glow-breathe 11s ease-in-out infinite;
+}
+.lp-space-glow--top {
+  top: -30%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(920px, 100vw);
+  height: 560px;
+}
+.lp-space-glow--center {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(820px, 100vw);
+  height: 520px;
+}
+
+@keyframes lp-grid-drift {
+  from { background-position: 0 0; }
+  to { background-position: 0 -300px; }
+}
+@keyframes lp-glow-breathe {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.82; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lp-caret {
     animation: none;
   }
   .lp-cursor-layer {
     display: none;
+  }
+  .lp-space-grid,
+  .lp-space-glow {
+    animation: none;
   }
 }
