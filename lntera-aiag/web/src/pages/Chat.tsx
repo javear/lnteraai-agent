@@ -12,7 +12,8 @@ import { generateTitle, getMessages, type HistoryMessage } from '../lib/threads'
 import { appendCachedMessages, getCachedMessages, setCachedMessages } from '../lib/chat-cache';
 import { useOnlineStatus } from '../lib/pwa';
 import { ProviderConnect, PROVIDER_CONNECT_CONFIGS } from '../components/ProviderConnect';
-import { Alert, Button, Logo } from '../ui';
+import { Alert, Button, Logo, Modal } from '../ui';
+import { InsightSettings } from '../components/InsightSettings';
 import { MessageBubble, type ChatMessage } from '../components/chat/Message';
 import { Suggestions } from '../components/chat/Suggestions';
 import { Composer } from '../components/chat/Composer';
@@ -56,6 +57,7 @@ export default function Chat() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [connectProvider, setConnectProvider] = useState<'groq' | 'gemini' | null>(null);
+  const [automationOpen, setAutomationOpen] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
 
@@ -252,6 +254,7 @@ export default function Chat() {
                 createdAt: n.createdAt,
                 actions: n.actions,
                 contextRef: n.contextRef,
+                charts: n.charts,
               },
             ],
       );
@@ -538,7 +541,16 @@ export default function Chat() {
           setStreaming(false);
         }}
         streaming={streaming}
+        onConfig={isNotificationsThread ? () => setAutomationOpen(true) : undefined}
       />
+      <Modal
+        open={automationOpen}
+        onClose={() => setAutomationOpen(false)}
+        title="Automatic analysis"
+        subtitle="Let your Active Agent analyze your shops on a schedule."
+      >
+        <InsightSettings />
+      </Modal>
     </div>
   );
 }

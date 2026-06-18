@@ -91,12 +91,13 @@ function sanitizeTitle(raw: string): string {
 }
 
 /** Re-hydrate token-free product-sync action buttons from a stored notification's metadata. */
-function messageActions(content: unknown): { actions?: unknown; contextRef?: unknown } {
-  const meta = (content as { metadata?: { actions?: unknown; contextRef?: unknown } } | null)?.metadata;
+function messageActions(content: unknown): { actions?: unknown; contextRef?: unknown; charts?: unknown } {
+  const meta = (content as { metadata?: { actions?: unknown; contextRef?: unknown; charts?: unknown } } | null)?.metadata;
   if (!meta) return {};
-  const out: { actions?: unknown; contextRef?: unknown } = {};
+  const out: { actions?: unknown; contextRef?: unknown; charts?: unknown } = {};
   if (Array.isArray(meta.actions) && meta.actions.length > 0) out.actions = meta.actions;
   if (meta.contextRef && typeof meta.contextRef === 'object') out.contextRef = meta.contextRef;
+  if (Array.isArray(meta.charts) && meta.charts.length > 0) out.charts = meta.charts;
   return out;
 }
 

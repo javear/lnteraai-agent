@@ -1,5 +1,6 @@
 // Typed client for the per-user chat-session endpoints (`/svc/v1/chat/*`).
 import type { NotificationAction, NotificationContextRef } from './notifications';
+import type { ChartSpec } from './insights';
 
 type Api = (path: string, init?: RequestInit) => Promise<Response>;
 
@@ -20,6 +21,8 @@ export interface HistoryMessage {
   /** Token-free product-sync buttons, re-hydrated from message metadata so they survive reload. */
   actions?: NotificationAction[];
   contextRef?: NotificationContextRef;
+  /** Insight charts, re-hydrated from message metadata so they survive reload. */
+  charts?: ChartSpec[];
 }
 
 export interface MessagesPage {

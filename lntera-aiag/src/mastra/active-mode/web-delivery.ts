@@ -8,6 +8,7 @@ import {
   type NotificationContextRef,
   type TenantNotificationPayload,
 } from '../integrations/realtime/broadcast';
+import type { ChartSpec } from '../insights/types';
 import { sendTenantPush } from '../integrations/onesignal/push';
 import { webAppAbsoluteUrl } from '../server/web-app-origin';
 
@@ -18,10 +19,12 @@ export interface DeliverTenantWebNotificationInput {
   /** Short title for the OS push (defaults derived from the event). */
   heading?: string;
   marketplace?: { platform?: string; category?: string; code?: string };
-  kind?: 'marketplace' | 'connection' | 'product_sync';
+  kind?: 'marketplace' | 'connection' | 'product_sync' | 'insight';
   /** Token-free action buttons (product-sync prompts). */
   actions?: NotificationAction[];
   contextRef?: NotificationContextRef;
+  /** Deterministic charts (scheduled business insights). */
+  charts?: ChartSpec[];
   deterministic?: boolean;
   /** Realtime broadcast (in-app popup). Default true; set false for coalesced persist-only writes. */
   broadcast?: boolean;
@@ -52,6 +55,7 @@ export async function deliverTenantWebNotification(input: DeliverTenantWebNotifi
     createdAt: new Date().toISOString(),
     actions: input.actions,
     contextRef: input.contextRef,
+    charts: input.charts,
     deterministic: input.deterministic,
   };
 
@@ -110,9 +114,10 @@ async function persistWebNotification(tenantId: string, payload: TenantNotificat
           platform: payload.platform,
           category: payload.category,
           code: payload.code,
-          // Persisted so the web client re-renders the action buttons on history reload.
+          // Persisted so the web client re-renders the action buttons + charts on history reload.
           actions: payload.actions,
           contextRef: payload.contextRef,
+          charts: payload.charts,
           deterministic: payload.deterministic,
         },
       },

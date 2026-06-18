@@ -5,6 +5,7 @@
   "scripts": {
     "test": "node scripts/verify-create-package-parsing.mjs",
     "dev": "node scripts/run-mastra-with-local-env.mjs dev",
+    "dev:clean": "rm -rf .mastra/output && (lsof -ti:4111 | xargs kill -9 2>/dev/null || true) && npm run dev",
     "dev:web": "npm --prefix web run dev",
     "build:web": "npm --prefix web run build",
     "build": "mastra build",
@@ -39,6 +40,7 @@
     "@mastra/pg": "^1.12.1",
     "@supabase/supabase-js": "^2.105.1",
     "discord.js": "14.26.4",
+    "inngest": "^4.6.0",
     "jose": "6.2.3",
     "json-bigint": "^1.0.0",
     "portkey-ai": "^3.1.0",
