@@ -1,8 +1,9 @@
 // Per-tenant "automatic insights" schedule: read/write the single schedule row (free tier = one per
-// tenant, mirroring sync-prefs.ts) and resolve which tenants are DUE on the current dispatcher tick.
-// Times are stored as an exact local 'HH:MM' (any hour:minute) + weekdays + IANA timezone; the due
-// check is DST-safe via Intl, fires once per local day at/after the chosen time, and a once/day guard
-// compares the last run's LOCAL date.
+// tenant, mirroring sync-prefs.ts) plus the helpers that compute WHEN it next fires. Times are an
+// exact local 'HH:MM' (any minute) + weekdays + IANA timezone; "next run" is DST-safe via Intl and
+// fires once per local day (the once/day guard compares the last run's LOCAL date). Scheduling itself
+// is event-driven — see inngest/arm-insight.ts (one delayed Inngest event per tenant); this module is
+// the source-of-truth it reads, and the DB `last_run_at` is the authority that prevents double-runs.
 import { getSupabase } from './supabase';
 
 const TABLE = 'tenant_insight_schedules';
@@ -224,18 +225,7 @@ export async function ensureDefaultInsightSchedule(tenantId: string): Promise<Re
   const existing = await getInsightSchedule(tenantId);
   if (existing) return existing;
 
-  let timezone: string | null = null;
-  try {
-    const { data } = await getSupabase()
-      .from('tenant_master')
-      .select('timezone')
-      .eq('id', tenantId)
-      .maybeSingle();
-    timezone = (data as { timezone: string | null } | null)?.timezone ?? null;
-  } catch {
-    /* dispatch-time timezone resolution falls back to DEFAULT_TIMEZONE */
-  }
-
+  const timezone = await resolveTenantTimezone(tenantId);
   const localTime = await pickSpreadLocalTime(tenantId);
   try {
     return await setInsightSchedule(tenantId, {
@@ -252,17 +242,43 @@ export async function ensureDefaultInsightSchedule(tenantId: string): Promise<Re
   }
 }
 
-export interface DueSchedule {
+/** The tenant_master IANA timezone (raw, nullable). Pass to nextRunFor / effectiveTimezone as the
+ *  fallback after the schedule's own timezone. */
+export async function resolveTenantTimezone(tenantId: string): Promise<string | null> {
+  try {
+    const { data } = await getSupabase().from('tenant_master').select('timezone').eq('id', tenantId).maybeSingle();
+    return (data as { timezone: string | null } | null)?.timezone ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export interface EnabledScheduleForArming {
   tenantId: string;
-  scheduleId: string;
-  /**
-   * Deterministic key (scheduleId-YYYY-MM-DD-HHMM, local) for end-to-end idempotency. Includes the
-   * local time so that re-arming with a NEW time (INSIGHTS_REARM_ON_EDIT) yields a fresh key and can
-   * fire again the same day, while minutely ticks at one time stay deduped (the once/day last_run
-   * guard handles the within-time case).
-   */
-  slotKey: string;
-  subscribedKeys: string[] | null;
+  schedule: ResolvedInsightSchedule;
+  /** Raw tenant_master timezone (nullable) — the fallback for nextRunFor. */
+  tenantTz: string | null;
+}
+
+/**
+ * Every ENABLED schedule + its tenant timezone, for the arming sweep to (re)schedule each tenant's
+ * next run. Replaces the old due-window poll: arming is event-driven now (one delayed Inngest event
+ * per tenant), and the sweep is the idempotent recovery backstop that re-arms anything lost.
+ */
+export async function getEnabledSchedulesForArming(): Promise<EnabledScheduleForArming[]> {
+  const { data, error } = await getSupabase()
+    .from(TABLE)
+    .select(`${SCHEDULE_COLS}, tenant_master(timezone)`)
+    .eq('enabled', true);
+  if (error) throw new Error(`Failed to list insight schedules: ${error.message}`);
+  // PostgREST embeds the to-one parent as an object or a single-element array — normalize both.
+  const rows = (data ?? []) as unknown as Array<
+    ScheduleRow & { tenant_master?: { timezone: string | null } | Array<{ timezone: string | null }> | null }
+  >;
+  return rows.map((raw) => {
+    const tm = Array.isArray(raw.tenant_master) ? raw.tenant_master[0] : raw.tenant_master;
+    return { tenantId: raw.tenant_id, schedule: rowToResolved(raw), tenantTz: tm?.timezone ?? null };
+  });
 }
 
 const WEEKDAY_INDEX: Record<string, number> = {
@@ -341,7 +357,7 @@ export interface NextRun {
 }
 
 /**
- * Resolve when a schedule will NEXT fire, mirroring listDueSchedules' rules exactly (DST-safe). Looks
+ * Resolve when a schedule will NEXT fire (DST-safe) — the basis for arming the chain. Looks
  * at today first (unless it already ran today), then the next selected weekday within a week.
  */
 export function nextRunFor(
@@ -414,43 +430,27 @@ export function describeNextRun(
 }
 
 /**
- * Tenants whose schedule fires on the dispatcher tick containing `now`. A schedule is due when it's
- * enabled, today's local weekday is selected, the current local time is at/after its chosen local_time,
- * and it hasn't already run today (last run's LOCAL date differs).
+ * True when `targetTs` (the instant a chain event was armed for) still matches a real occurrence of
+ * the CURRENT schedule — i.e. the right weekday and local time, on the local day of `targetTs`. Used
+ * by run-insight to reject a stale event whose time was edited away (the new chain already covers it).
  */
-export async function listDueSchedules(now: Date): Promise<DueSchedule[]> {
-  const { data, error } = await getSupabase()
-    .from(TABLE)
-    .select('id, tenant_id, enabled, local_time, days_of_week, timezone, subscribed_keys, last_run_at, next_run_at, tenant_master(timezone)')
-    .eq('enabled', true);
-  if (error) throw new Error(`Failed to list insight schedules: ${error.message}`);
+export function occurrenceMatches(
+  schedule: { localTime: string; daysOfWeek: number[]; timezone: string | null },
+  targetTs: number,
+  tenantTz: string | null = null,
+): boolean {
+  const tz = effectiveTimezone(schedule, tenantTz);
+  const tl = localPartsFor(new Date(targetTs), tz);
+  return schedule.daysOfWeek.includes(tl.weekday) && Math.abs(tl.minutes - timeToMinutes(schedule.localTime)) <= 2;
+}
 
-  const due: DueSchedule[] = [];
-  // PostgREST embeds the to-one parent as an object or a single-element array depending on FK
-  // detection — normalize both.
-  const rows = ((data ?? []) as unknown) as Array<
-    ScheduleRow & { tenant_master?: { timezone: string | null } | Array<{ timezone: string | null }> | null }
-  >;
-  for (const raw of rows) {
-    const schedule = rowToResolved(raw);
-    const tm = Array.isArray(raw.tenant_master) ? raw.tenant_master[0] : raw.tenant_master;
-    const tz = effectiveTimezone(schedule, tm?.timezone ?? null);
-    const nowLocal = localPartsFor(now, tz);
-
-    if (!schedule.daysOfWeek.includes(nowLocal.weekday)) continue;
-    // Fire on the first tick at/after the chosen local time, once per local day. Honors any HH:MM
-    // (no slot rounding) and self-heals if a dispatcher tick is missed.
-    if (nowLocal.minutes < timeToMinutes(schedule.localTime)) continue;
-    if (schedule.lastRunAt) {
-      const lastLocal = localPartsFor(new Date(schedule.lastRunAt), tz);
-      if (lastLocal.ymd === nowLocal.ymd) continue; // already ran today
-    }
-    due.push({
-      tenantId: schedule.tenantId,
-      scheduleId: schedule.id,
-      slotKey: `${schedule.id}-${nowLocal.ymd}-${schedule.localTime.replace(':', '')}`,
-      subscribedKeys: schedule.subscribedKeys,
-    });
-  }
-  return due;
+/** True when the schedule already ran on the local day of `now` (the once/day double-run guard). */
+export function ranOnLocalDay(
+  schedule: { lastRunAt: string | null; timezone: string | null },
+  now: Date,
+  tenantTz: string | null = null,
+): boolean {
+  if (!schedule.lastRunAt) return false;
+  const tz = effectiveTimezone(schedule, tenantTz);
+  return localPartsFor(new Date(schedule.lastRunAt), tz).ymd === localPartsFor(now, tz).ymd;
 }

@@ -8,14 +8,14 @@
 import { serve } from 'inngest/hono';
 import { registerApiRoute } from '@mastra/core/server';
 import { inngest } from './client';
-import { dispatchInsightsFn } from './functions/dispatch-insights';
+import { insightArmSweepFn } from './functions/sweep-insight-arms';
 import { runInsightFn } from './functions/run-insight';
 
 export const INNGEST_SERVE_PATH = '/inngest';
 
 const inngestHandler = serve({
   client: inngest,
-  functions: [dispatchInsightsFn, runInsightFn],
+  functions: [insightArmSweepFn, runInsightFn],
   servePath: INNGEST_SERVE_PATH,
 });
 
