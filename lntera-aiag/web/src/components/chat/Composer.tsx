@@ -1,5 +1,5 @@
 import { useEffect, useRef, type KeyboardEvent } from 'react';
-import { ArrowUp, Square } from 'lucide-react';
+import { ArrowUp, Square, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useOnlineStatus } from '@/lib/pwa';
 import { cn } from '@/lib/utils';
@@ -10,12 +10,15 @@ export function Composer({
   onSend,
   onStop,
   streaming,
+  onConfig,
 }: {
   value: string;
   onChange: (v: string) => void;
   onSend: () => void;
   onStop: () => void;
   streaming: boolean;
+  /** When provided, shows a subtle settings button inside the composer (Active Agent automation). */
+  onConfig?: () => void;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const online = useOnlineStatus();
@@ -46,6 +49,19 @@ export function Composer({
             'focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background',
           )}
         >
+          {onConfig ? (
+            <Button
+              size="icon"
+              variant="ghost"
+              type="button"
+              className="shrink-0 rounded-xl text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+              onClick={onConfig}
+              aria-label="Automatic analysis settings"
+              title="Automatic analysis"
+            >
+              <SlidersHorizontal className="h-5 w-5" />
+            </Button>
+          ) : null}
           <textarea
             ref={ref}
             rows={1}

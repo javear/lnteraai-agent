@@ -179,6 +179,14 @@ export default defineConfig(({ mode }) => {
             if (!id.includes('node_modules')) return undefined;
             // Lazy, heavy, chat-route-only libraries — must never reach the initial bundle.
             if (id.includes('@lottiefiles')) return 'lottie';
+            // Recharts + its d3/victory stack — only loaded when an insight chart renders.
+            if (
+              id.includes('recharts') ||
+              id.includes('victory-vendor') ||
+              /[\\/]d3-/.test(id) ||
+              /[\\/]internmap[\\/]/.test(id)
+            )
+              return 'charts';
             if (id.includes('@mastra') || /[\\/]zod[\\/]/.test(id)) return 'chat-mastra';
             // Markdown rendering stack (react-markdown + the unified/remark/micromark/mdast/hast/unist ecosystem).
             if (

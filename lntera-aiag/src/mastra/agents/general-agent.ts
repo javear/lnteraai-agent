@@ -26,6 +26,8 @@ import {
   publishProductDraftTool,
   discardProductDraftTool,
 } from '../tools/ecommerce';
+import { configureInsightsTool } from '../tools/insights/configure-insights';
+import { runInsightsNowTool } from '../tools/insights/run-insights-now';
 import { TENANT_MASTER_ID_KEY } from '../integrations/shared/marketplace-auth';
 import { AUTH_USER_ID_KEY } from '../server/auth/tenant-context-middleware';
 import { resolveAllowedToolIds } from '../integrations/shared/tenant-access';
@@ -75,6 +77,8 @@ const ALL_TOOLS = {
   [listProductDraftsTool.id]: listProductDraftsTool,
   [publishProductDraftTool.id]: publishProductDraftTool,
   [discardProductDraftTool.id]: discardProductDraftTool,
+  [configureInsightsTool.id]: configureInsightsTool,
+  [runInsightsNowTool.id]: runInsightsNowTool,
 };
 
 /**

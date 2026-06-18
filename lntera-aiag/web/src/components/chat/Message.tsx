@@ -2,8 +2,10 @@ import { Sparkles } from 'lucide-react';
 import { Avatar, TypingDots } from '../../ui';
 import { parseSuggestions } from '../../lib/chat';
 import type { NotificationAction, NotificationContextRef } from '../../lib/notifications';
+import type { ChartSpec } from '../../lib/insights';
 import { Markdown } from './Markdown';
 import { NotificationActions } from './NotificationActions';
+import { InsightChart } from './InsightChart';
 
 export interface ChatMessage {
   id: string;
@@ -24,6 +26,8 @@ export interface ChatMessage {
   /** Token-free product-sync action buttons (deterministic notifications). */
   actions?: NotificationAction[];
   contextRef?: NotificationContextRef;
+  /** Charts for scheduled business-insight messages. */
+  charts?: ChartSpec[];
 }
 
 function ToolActivity({ tool }: { tool: string }) {
@@ -63,6 +67,7 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
         ) : message.pending ? (
           <TypingDots />
         ) : null}
+        {message.charts && message.charts.length > 0 ? <InsightChart charts={message.charts} /> : null}
         {message.actions && message.actions.length > 0 ? (
           <NotificationActions actions={message.actions} contextRef={message.contextRef} />
         ) : null}

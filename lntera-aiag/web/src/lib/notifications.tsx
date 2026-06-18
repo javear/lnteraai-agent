@@ -42,7 +42,7 @@ export interface NotificationContextRef {
 export interface TenantNotification {
   id: string;
   text: string;
-  kind: 'marketplace' | 'connection' | 'product_sync';
+  kind: 'marketplace' | 'connection' | 'product_sync' | 'insight';
   platform?: string;
   category?: string;
   code?: string;
@@ -50,6 +50,8 @@ export interface TenantNotification {
   /** Token-free interactive buttons (product-sync prompts). */
   actions?: NotificationAction[];
   contextRef?: NotificationContextRef;
+  /** Charts for scheduled business-insight notifications. */
+  charts?: import('./insights').ChartSpec[];
   deterministic?: boolean;
 }
 

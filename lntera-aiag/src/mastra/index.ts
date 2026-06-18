@@ -77,6 +77,9 @@ import {
   publishProductDraftTool,
   discardProductDraftTool,
 } from './tools/ecommerce';
+import { configureInsightsTool } from './tools/insights/configure-insights';
+import { runInsightsNowTool } from './tools/insights/run-insights-now';
+import { inngestRoutes } from './inngest/serve-route';
 import { startEmbeddedDiscordBots } from './integrations/discord/embed';
 
 function createMastraStorage(): PostgresStore {
@@ -120,10 +123,12 @@ export const mastra = new Mastra({
     [listProductDraftsTool.id]: listProductDraftsTool,
     [publishProductDraftTool.id]: publishProductDraftTool,
     [discardProductDraftTool.id]: discardProductDraftTool,
+    [configureInsightsTool.id]: configureInsightsTool,
+    [runInsightsNowTool.id]: runInsightsNowTool,
   },
   scorers: { toolCallAppropriatenessScorer, completenessScorer, translationScorer },
   server: {
-    apiRoutes: [...oauthRoutes, ...groqOnboardRoutes, ...openApiRoutes, ...webhookRoutes, ...authRoutes, ...webAppRoutes],
+    apiRoutes: [...oauthRoutes, ...groqOnboardRoutes, ...openApiRoutes, ...webhookRoutes, ...authRoutes, ...webAppRoutes, ...inngestRoutes],
     // Single auth standard: the same tenant JWT issued by /svc/v1 guards Mastra's native
     // /api/* (agents, tools, workflows) in production. Omitted in local dev so the Studio
     // playground loads (Studio cannot authenticate against MastraJwtAuth — it has no login UI).

@@ -9,6 +9,7 @@ import { meIntegrationsRoutes } from './routes/me-integrations';
 import { publicConfigRoute } from './routes/public-config';
 import { chatHistoryRoutes } from './routes/chat-history';
 import { productSyncActionRoutes } from './routes/product-sync-actions';
+import { insightScheduleRoutes } from './routes/insight-schedule';
 
 /** Public Open API routes (namespace `/svc/v1`). Append new route modules here. */
 export const openApiRoutes = [
@@ -21,4 +22,5 @@ export const openApiRoutes = [
   ...meIntegrationsRoutes,
   ...chatHistoryRoutes,
   ...productSyncActionRoutes,
+  ...insightScheduleRoutes,
 ];
