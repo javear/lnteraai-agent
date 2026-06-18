@@ -13,6 +13,7 @@ import {
   type InsightSchedulePatch,
 } from '../../integrations/shared/insight-schedule-prefs';
 import { listProviders } from '../../insights/providers';
+import { armNextRun } from '../../inngest/arm-insight';
 
 const inputSchema = z.record(z.string(), z.unknown());
 
@@ -130,6 +131,10 @@ export const configureInsightsTool = createTool({
     const saved = await (Object.keys(patch).length
       ? setInsightSchedule(tenantId, patch)
       : getInsightSchedule(tenantId).then((s) => s ?? setInsightSchedule(tenantId, {})));
+
+    // (Re)schedule the next run immediately so a chat-driven change takes effect without waiting for
+    // the recovery sweep.
+    await armNextRun(tenantId, saved);
 
     // Tell the user WHEN the next analysis lands — and call out when it's deferred to a later day
     // (e.g. today's run already happened), so a same-day time change isn't silently skipped.

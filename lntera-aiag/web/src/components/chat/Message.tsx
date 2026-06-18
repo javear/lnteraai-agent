@@ -30,6 +30,22 @@ export interface ChatMessage {
   charts?: ChartSpec[];
 }
 
+/** Localized "when it arrived": time only if today, else date + time (year only if not this year). */
+function formatMessageTime(iso?: string): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const now = new Date();
+  const time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(d);
+  if (d.toDateString() === now.toDateString()) return time;
+  const date = new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    ...(d.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
+  }).format(d);
+  return `${date}, ${time}`;
+}
+
 function ToolActivity({ tool }: { tool: string }) {
   return (
     <div className="mb-1.5 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -40,12 +56,14 @@ function ToolActivity({ tool }: { tool: string }) {
 }
 
 export function MessageBubble({ message }: { message: ChatMessage }) {
+  const timeLabel = formatMessageTime(message.createdAt);
   if (message.role === 'user') {
     return (
-      <div className="flex animate-fade-in justify-end">
+      <div className="flex animate-fade-in flex-col items-end">
         <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-[15px] leading-relaxed text-primary-foreground [overflow-wrap:anywhere]">
           {message.content}
         </div>
+        {timeLabel ? <div className="mt-1 px-1 text-[11px] text-muted-foreground/70">{timeLabel}</div> : null}
       </div>
     );
   }
@@ -71,8 +89,11 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
         {message.actions && message.actions.length > 0 ? (
           <NotificationActions actions={message.actions} contextRef={message.contextRef} />
         ) : null}
-        {message.model && message.content ? (
-          <div className="mt-1.5 font-mono text-[11px] text-muted-foreground/70">{message.model}</div>
+        {timeLabel && (message.content || (message.charts?.length ?? 0) > 0) ? (
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground/70">
+            <span>{timeLabel}</span>
+            {message.model && message.content ? <span className="font-mono">{message.model}</span> : null}
+          </div>
         ) : null}
       </div>
     </div>

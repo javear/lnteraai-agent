@@ -11,6 +11,7 @@ import {
   type InsightSchedulePatch,
   type ResolvedInsightSchedule,
 } from '../../../integrations/shared/insight-schedule-prefs';
+import { armNextRun } from '../../../inngest/arm-insight';
 import { listProviders } from '../../../insights/providers';
 import { OPEN_API_PREFIX, OPENAPI_TAGS } from '../constants';
 import { resolveTenantFromBearer, type OpenApiHandlerContext } from '../middleware/bearer-tenant';
@@ -88,6 +89,7 @@ const putScheduleRoute = registerApiRoute(`${OPEN_API_PREFIX}/insights/schedule`
     }
 
     const schedule = await setInsightSchedule(auth.tenantId, patch);
+    await armNextRun(auth.tenantId, schedule); // (re)schedule the next run immediately on save
     return c.json({ schedule, nextRun: nextRunPayload(schedule) });
   },
 });
