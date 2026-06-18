@@ -24,6 +24,7 @@ export function BrandAuth({
             onClick={() => f.setMode(m)}
             className={cn(
               'rounded-full px-3.5 py-1.5 font-medium transition-colors',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--bg))]',
               f.mode === m
                 ? 'bg-brand text-brand-foreground'
                 : 'text-[hsl(var(--fg-soft))] hover:text-[hsl(var(--fg))]',

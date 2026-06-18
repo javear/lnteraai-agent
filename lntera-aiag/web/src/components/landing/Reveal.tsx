@@ -50,7 +50,7 @@ export function Reveal({
     shown && delay ? { animationDelay: `${delay}ms`, animationFillMode: 'both' } : undefined;
 
   return (
-    <Tag ref={ref} className={cn(shown ? 'animate-fade-in-up' : 'opacity-0', className)} style={style}>
+    <Tag ref={ref} className={cn(shown ? 'animate-reveal-up' : 'opacity-0', className)} style={style}>
       {children}
     </Tag>
   );
