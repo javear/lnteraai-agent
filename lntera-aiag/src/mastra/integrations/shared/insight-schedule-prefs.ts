@@ -170,10 +170,97 @@ export async function markScheduleRan(scheduleId: string, ranAt: Date): Promise<
   if (error) throw new Error(`Failed to mark schedule ran: ${error.message}`);
 }
 
+/** Business-morning candidate minutes-of-day (08:00–10:55, every 5 min) to spread tenants across. */
+function defaultCandidateMinutes(): number[] {
+  const out: number[] = [];
+  for (let h = 8; h <= 10; h++) for (let m = 0; m < 60; m += 5) out.push(h * 60 + m);
+  return out;
+}
+
+function hashTenant(tenantId: string): number {
+  let h = 0;
+  for (const ch of tenantId) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return h;
+}
+
+/**
+ * Pick a local 'HH:MM' that the FEWEST existing enabled schedules already use, so a brand-new tenant
+ * spreads across the dispatcher's minutes instead of stacking onto one (which would queue under the
+ * free-tier concurrency cap). Ties broken by a per-tenant hash so two new tenants don't collide.
+ */
+export async function pickSpreadLocalTime(tenantId: string): Promise<string> {
+  const candidates = defaultCandidateMinutes();
+  const counts = new Map<number, number>();
+  try {
+    const { data } = await getSupabase().from(TABLE).select('local_time').eq('enabled', true);
+    for (const r of (data ?? []) as Array<{ local_time: string }>) {
+      const mins = timeToMinutes(r.local_time);
+      counts.set(mins, (counts.get(mins) ?? 0) + 1);
+    }
+  } catch {
+    /* best-effort — fall back to a hash-only spread */
+  }
+  const offset = hashTenant(tenantId);
+  let best = candidates[0];
+  let bestScore = Infinity;
+  for (let i = 0; i < candidates.length; i++) {
+    const mins = candidates[(i + offset) % candidates.length];
+    const score = counts.get(mins) ?? 0;
+    if (score < bestScore) {
+      bestScore = score;
+      best = mins;
+      if (score === 0) break; // an empty slot — take it
+    }
+  }
+  return `${String(Math.floor(best / 60)).padStart(2, '0')}:${String(best % 60).padStart(2, '0')}`;
+}
+
+/**
+ * Ensure a tenant has an automatic-analysis schedule. If none exists, create an ENABLED weekday
+ * schedule at a load-balanced local time covering all insights. Idempotent: returns the existing row
+ * if present, and tolerates a concurrent create racing the unique (tenant_id) index.
+ */
+export async function ensureDefaultInsightSchedule(tenantId: string): Promise<ResolvedInsightSchedule> {
+  const existing = await getInsightSchedule(tenantId);
+  if (existing) return existing;
+
+  let timezone: string | null = null;
+  try {
+    const { data } = await getSupabase()
+      .from('tenant_master')
+      .select('timezone')
+      .eq('id', tenantId)
+      .maybeSingle();
+    timezone = (data as { timezone: string | null } | null)?.timezone ?? null;
+  } catch {
+    /* dispatch-time timezone resolution falls back to DEFAULT_TIMEZONE */
+  }
+
+  const localTime = await pickSpreadLocalTime(tenantId);
+  try {
+    return await setInsightSchedule(tenantId, {
+      enabled: true,
+      localTime,
+      daysOfWeek: [1, 2, 3, 4, 5],
+      timezone,
+      subscribedKeys: null, // all insights
+    });
+  } catch {
+    const row = await getInsightSchedule(tenantId); // concurrent create won the unique index — re-read
+    if (row) return row;
+    throw new Error('Failed to provision default insight schedule.');
+  }
+}
+
 export interface DueSchedule {
   tenantId: string;
   scheduleId: string;
-  /** Deterministic per-day key (scheduleId-YYYY-MM-DD local) for once/day idempotency end-to-end. */
+  /**
+   * Deterministic key (scheduleId-YYYY-MM-DD-HHMM, local) for end-to-end idempotency. Includes the
+   * local time so that re-arming with a NEW time (INSIGHTS_REARM_ON_EDIT) yields a fresh key and can
+   * fire again the same day, while minutely ticks at one time stay deduped (the once/day last_run
+   * guard handles the within-time case).
+   */
   slotKey: string;
   subscribedKeys: string[] | null;
 }
@@ -361,7 +448,7 @@ export async function listDueSchedules(now: Date): Promise<DueSchedule[]> {
     due.push({
       tenantId: schedule.tenantId,
       scheduleId: schedule.id,
-      slotKey: `${schedule.id}-${nowLocal.ymd}`,
+      slotKey: `${schedule.id}-${nowLocal.ymd}-${schedule.localTime.replace(':', '')}`,
       subscribedKeys: schedule.subscribedKeys,
     });
   }

@@ -4,6 +4,7 @@
 import { registerApiRoute } from '@mastra/core/server';
 import { logErrorBrief } from '../../../logger/compact-error';
 import {
+  ensureDefaultInsightSchedule,
   getInsightSchedule,
   nextRunFor,
   setInsightSchedule,
@@ -40,7 +41,8 @@ const getScheduleRoute = registerApiRoute(`${OPEN_API_PREFIX}/insights/schedule`
   handler: async (c: OpenApiHandlerContext) => {
     const auth = await resolveTenantFromBearer(c);
     if (auth instanceof Response) return auth;
-    const schedule = await getInsightSchedule(auth.tenantId);
+    // Lazily provision a load-balanced default schedule for brand-new tenants (idempotent).
+    const schedule = await ensureDefaultInsightSchedule(auth.tenantId).catch(() => null);
     return c.json({ schedule, availableInsights: listProviders(), nextRun: nextRunPayload(schedule) });
   },
 });
