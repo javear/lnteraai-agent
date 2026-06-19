@@ -7,7 +7,7 @@ import { fetchIntegrationStatus, type AppOutletContext, type IntegrationStatus }
 import { getInsightSchedule } from '../lib/insights';
 import { useOnlineStatus } from '../lib/pwa';
 import { ChatSessionsProvider, useChats } from '../lib/chat-store';
-import { RealtimeNotificationsProvider, useNotifications } from '../lib/notifications';
+import { RealtimeNotificationsProvider, useNotifications, type TenantNotification } from '../lib/notifications';
 import { THEME_OPTIONS, ThemeToggle, useTheme } from '../theme';
 import { Avatar, Logo } from '../ui';
 import { cn } from '@/lib/utils';
@@ -277,6 +277,25 @@ function SidebarContent({
   );
 }
 
+/**
+ * Refresh the integration status whenever a `connection` notification arrives over Realtime — so a
+ * marketplace connect reflects live even if the OAuth redirect back to the SPA never lands (the bind
+ * already happened server-side; this makes the UI redirect-independent). Renders nothing.
+ */
+function ConnectionStatusSync({ onConnectionEvent }: { onConnectionEvent: () => void }) {
+  const { subscribe } = useNotifications();
+  const cb = useRef(onConnectionEvent);
+  cb.current = onConnectionEvent;
+  useEffect(
+    () =>
+      subscribe((n: TenantNotification) => {
+        if (n.kind === 'connection') cb.current();
+      }),
+    [subscribe],
+  );
+  return null;
+}
+
 export function AppLayout() {
   const { api, session, signOut } = useAuth();
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
@@ -345,6 +364,7 @@ export function AppLayout() {
 
   return (
     <RealtimeNotificationsProvider>
+      <ConnectionStatusSync onConnectionEvent={() => void refreshStatus(true)} />
       <ChatSessionsProvider>
         <TooltipProvider delayDuration={200}>
         <div className="flex h-dvh overflow-hidden">
