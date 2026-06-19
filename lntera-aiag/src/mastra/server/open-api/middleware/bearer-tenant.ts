@@ -8,6 +8,7 @@ export type OpenApiHandlerContext = {
     header: (name: string) => string | undefined;
     json: <T = unknown>() => Promise<T>;
   };
+  header: (name: string, value: string, options?: { append?: boolean }) => void;
   json: (data: unknown, status?: number) => Response;
   text: (body: string, status?: number) => Response;
 };

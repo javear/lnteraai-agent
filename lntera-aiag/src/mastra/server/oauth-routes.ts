@@ -5,7 +5,13 @@ import {
   getDiscordOauthConfig,
   resolveDefaultChannelId,
 } from '../integrations/discord/oauth-install';
-import { createState, verifyState } from '../integrations/shared/oauth-state';
+import {
+  clearOAuthStateCookie,
+  createState,
+  readOAuthStateCookie,
+  setOAuthStateCookie,
+  verifyState,
+} from '../integrations/shared/oauth-state';
 import { findDiscordIntegrationConflictForRouting, upsertTenantIntegration } from '../integrations/shared/tenant-integrations';
 import { patchConnectionProfile, resolveTenantId, upsertConnection } from '../integrations/shared/supabase';
 import { isPlatform, type Platform } from '../integrations/shared/types';
@@ -209,12 +215,31 @@ export const oauthRoutes = [
         return c.text(`Unsupported platform: ${platformParam}`, 400);
       }
       const platform: Platform = platformParam;
-      const tenantInput = c.req.query('tenantId');
-      if (!tenantInput) {
-        return c.text('Missing tenantId. Pass a tenant slug or tenant UUID.', 400);
+
+      // Preferred: a pre-signed state minted by the authenticated connect-url endpoint (keeps the
+      // tenant binding tamper-proof). Legacy: a raw tenantId query (manual/direct starts).
+      const presigned = c.req.query('st');
+      let state: string;
+      if (presigned) {
+        try {
+          const parsed = verifyState(presigned);
+          if (parsed.platform !== platform) throw new Error('State platform mismatch.');
+          state = presigned;
+        } catch (err) {
+          return c.text(`Invalid state: ${(err as Error).message}`, 400);
+        }
+      } else {
+        const tenantInput = c.req.query('tenantId');
+        if (!tenantInput) {
+          return c.text('Missing tenantId. Pass a tenant slug or tenant UUID.', 400);
+        }
+        const tenantId = await resolveTenantId(tenantInput);
+        state = createState({ platform, tenantId });
       }
-      const tenantId = await resolveTenantId(tenantInput);
-      const state = createState({ platform, tenantId });
+      // Set the state cookie in THIS top-level navigation — first-party to the API origin, so it's
+      // reliably stored and sent back on the provider's callback redirect (even when the SPA lives on
+      // another origin, and even for Shopee which never echoes `state`).
+      setOAuthStateCookie(c, state);
 
       const target = platform === 'shopee' ? buildShopeeAuthUrl(state) : buildTiktokAuthUrl(state);
       return c.redirect(target, 302);
@@ -238,7 +263,8 @@ export const oauthRoutes = [
     handler: async c => {
       const code = c.req.query('code');
       const shopIdRaw = c.req.query('shop_id');
-      const stateRaw = c.req.query('state');
+      // Shopee drops the `state` query param on the redirect — fall back to the signed state cookie.
+      const stateRaw = c.req.query('state') ?? readOAuthStateCookie(c);
       if (!code || !shopIdRaw) {
         return c.html(
           oauthErrorPage({ platform: 'Shopee', title: 'Missing parameters', message: 'The authorization code or shop_id is missing.' }),
@@ -248,6 +274,7 @@ export const oauthRoutes = [
 
       let tenantId: string | null = null;
       if (stateRaw) {
+        clearOAuthStateCookie(c); // single-use: consume the state cookie
         try {
           const state = verifyState(stateRaw);
           if (state.platform !== 'shopee') throw new Error('State platform mismatch.');
@@ -336,13 +363,15 @@ export const oauthRoutes = [
     },
     handler: async (c) => {
       const code = c.req.query('code');
-      const stateRaw = c.req.query('state');
+      // Fall back to the signed state cookie if the provider didn't echo `state` back.
+      const stateRaw = c.req.query('state') ?? readOAuthStateCookie(c);
       if (!code || !stateRaw) {
         return c.html(
           oauthErrorPage({ platform: 'TikTok Shop', title: 'Missing parameters', message: 'The authorization code or state parameter is missing.' }),
           400,
         );
       }
+      clearOAuthStateCookie(c); // single-use: consume the state cookie
 
       let tenantId: string | null = null;
       try {

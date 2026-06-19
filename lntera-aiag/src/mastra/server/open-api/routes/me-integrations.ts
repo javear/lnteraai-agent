@@ -11,9 +11,8 @@ import {
 } from '../../../integrations/shared/tenant-integrations';
 import { isPlatform, type Platform } from '../../../integrations/shared/types';
 import { createState } from '../../../integrations/shared/oauth-state';
-import { buildShopeeAuthUrl } from '../../../integrations/shopee/auth';
-import { buildTiktokAuthUrl } from '../../../integrations/tiktok/auth';
 import { buildDiscordInstallUrl } from '../../../integrations/discord/oauth-install';
+import { getMastraPublicBaseUrl } from '../../../integrations/portkey/config';
 import { connectTenantGroq, disconnectTenantGroq } from '../../../integrations/portkey/connect-tenant-groq';
 import {
   connectTenantProvider,
@@ -37,9 +36,12 @@ const authHeaderParam = {
 
 function buildConnectUrl(platform: OAuthPlatform, tenantId: string): string {
   const state = createState({ platform, tenantId });
-  if (platform === 'shopee') return buildShopeeAuthUrl(state);
-  if (platform === 'tiktok') return buildTiktokAuthUrl(state);
-  return buildDiscordInstallUrl(state);
+  // Discord echoes `state` on its callback → link directly. Shopee/TikTok go through our own
+  // /oauth/:platform/start (a top-level navigation on the API origin) so the signed-state cookie is
+  // set FIRST-PARTY there — Shopee doesn't echo `state` back, and the SPA may live on another origin
+  // (Vercel), where a cookie set by this cross-origin fetch would be dropped.
+  if (platform === 'discord') return buildDiscordInstallUrl(state);
+  return `${getMastraPublicBaseUrl()}/oauth/${platform}/start?st=${encodeURIComponent(state)}`;
 }
 
 type OAuthPlatform = Platform | 'discord';

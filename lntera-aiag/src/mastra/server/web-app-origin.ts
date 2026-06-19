@@ -7,8 +7,22 @@ import { getMastraPublicBaseUrl } from '../integrations/portkey/config';
  *  - unset (legacy monolith) → the SPA is served by this server under `/app`.
  */
 function getWebAppOrigin(): string | null {
-  const origin = process.env.WEB_APP_ORIGIN?.trim().replace(/\/+$/, '');
-  return origin && origin.length > 0 ? origin : null;
+  const raw = process.env.WEB_APP_ORIGIN?.trim();
+  if (!raw) return null;
+  // Tolerate a misconfigured multi-value env ("a,b" or "a b" or a stray typo) — take the FIRST entry
+  // that parses as an absolute http(s) URL and return its clean origin. A malformed value falls back
+  // to null (→ same-origin "/app/..."), never a broken concatenated redirect.
+  for (const part of raw.split(/[\s,]+/)) {
+    const candidate = part.trim().replace(/\/+$/, '');
+    if (!candidate) continue;
+    try {
+      const u = new URL(candidate);
+      if (u.protocol === 'http:' || u.protocol === 'https:') return u.origin;
+    } catch {
+      /* try the next entry */
+    }
+  }
+  return null;
 }
 
 function normalizePath(path: string): string {
