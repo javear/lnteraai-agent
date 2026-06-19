@@ -18,6 +18,8 @@ import './index.css';
 
 // Route chunks load on demand — Login never pulls in the chat SDK/markdown bundles.
 const Login = lazy(() => import('./pages/Login'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const Chat = lazy(() => import('./pages/Chat'));
 const Integrations = lazy(() => import('./pages/Integrations'));
 // Marketing landing — web only. Gated on the BUILD mode (not the runtime IS_NATIVE) so Rollup
@@ -84,6 +86,22 @@ function Boot() {
           element={
             <Suspense fallback={<BootScreen />}>
               <Login />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/forgot-password"
+          element={
+            <Suspense fallback={<BootScreen />}>
+              <ForgotPassword />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/reset-password"
+          element={
+            <Suspense fallback={<BootScreen />}>
+              <ResetPassword />
             </Suspense>
           }
         />

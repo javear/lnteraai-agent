@@ -19,6 +19,10 @@ interface AuthContextValue {
   signInPassword: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, workspaceName?: string) => Promise<void>;
   signInGoogle: () => Promise<void>;
+  /** Email a password-recovery link that returns to /reset-password. */
+  resetPassword: (email: string) => Promise<void>;
+  /** Set a new password for the current (recovery or signed-in) session. */
+  updatePassword: (password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -118,6 +122,17 @@ export function SessionProvider({
           // BASE_URL ends with '/', so this is `${origin}/app/login` (monolith) or `${origin}/login` (Vercel).
           options: { redirectTo: `${location.origin}${import.meta.env.BASE_URL}login` },
         });
+        if (error) throw error;
+      },
+      resetPassword: async (email) => {
+        // BASE_URL ends with '/', so this is `${origin}/app/reset-password` (monolith) or `${origin}/reset-password`.
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${location.origin}${import.meta.env.BASE_URL}reset-password`,
+        });
+        if (error) throw error;
+      },
+      updatePassword: async (password) => {
+        const { error } = await supabase.auth.updateUser({ password });
         if (error) throw error;
       },
       signOut: async () => {

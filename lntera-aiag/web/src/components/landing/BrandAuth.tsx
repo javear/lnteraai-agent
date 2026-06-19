@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { GoogleGlyph } from '../auth/GoogleGlyph';
 import { useAuthForm } from '../auth/useAuthForm';
@@ -13,6 +14,7 @@ export function BrandAuth({
   defaultMode?: 'signin' | 'signup';
 }) {
   const f = useAuthForm({ defaultMode, redirectTo: '/' });
+  const navigate = useNavigate();
 
   return (
     <div className={cn('w-full', className)}>
@@ -71,6 +73,13 @@ export function BrandAuth({
             placeholder={f.mode === 'signin' ? '••••••••' : 'At least 8 characters'}
           />
         </label>
+        {f.mode === 'signin' ? (
+          <div className="-mt-1 flex justify-end">
+            <button type="button" onClick={() => navigate('/forgot-password')} className="lp-link text-[0.82rem]">
+              Forgot password?
+            </button>
+          </div>
+        ) : null}
         <button type="submit" disabled={f.busy || !f.online} className="lp-btn w-full">
           {f.busy ? 'One moment…' : f.mode === 'signin' ? 'Sign in' : 'Start free'}
         </button>
