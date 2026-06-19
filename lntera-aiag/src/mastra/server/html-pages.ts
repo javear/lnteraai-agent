@@ -26,8 +26,8 @@ body{
 }
 .logo-mark{
   width:28px;height:28px;
-  background:#111;
-  border-radius:6px;
+  background:#dc4a1e;
+  border-radius:7px;
   display:flex;align-items:center;justify-content:center;
   flex-shrink:0;
 }
@@ -143,7 +143,7 @@ h1{
 .step-num{
   flex-shrink:0;
   width:24px;height:24px;
-  background:#111;color:#fff;
+  background:#dc4a1e;color:#fff;
   border-radius:50%;
   font-size:11px;font-weight:600;
   display:flex;align-items:center;justify-content:center;
@@ -176,8 +176,8 @@ input[type=text],input[type=email],input[type=password],textarea{
   appearance:none;
 }
 input[type=text]:focus,input[type=email]:focus,input[type=password]:focus,textarea:focus{
-  border-color:#111;
-  box-shadow:0 0 0 3px rgba(17,17,17,.08);
+  border-color:#dc4a1e;
+  box-shadow:0 0 0 3px rgba(220,74,30,.14);
 }
 input::placeholder,textarea::placeholder{color:#bbb}
 
@@ -247,7 +247,7 @@ input::placeholder,textarea::placeholder{color:#bbb}
 }
 .btn:disabled{opacity:.38;cursor:not-allowed}
 .btn:not(:disabled):hover{opacity:.82}
-.btn-primary{background:#111;color:#fff;border-color:#111}
+.btn-primary{background:#dc4a1e;color:#fff;border-color:#dc4a1e}
 .btn-secondary{background:#fff;color:#111;border-color:#e5e5e5}
 .btn-secondary:not(:disabled):hover{background:#f9f9f9;opacity:1}
 .btn-block{width:100%;padding:12px 18px;font-size:15px}
@@ -284,6 +284,7 @@ export function htmlPage(title: string, body: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escHtml(title)} — Lntera</title>
+<link rel="icon" href="data:,">
 <style>${SHARED_CSS}</style>
 </head>
 <body>
@@ -295,16 +296,15 @@ ${body}
 }
 
 function logoHtml(): string {
+  // Matches the web BrandMark: orange tile + white monoline "L" + AI spark.
   return `<div class="logo">
   <div class="logo-mark">
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="2" y="2" width="5" height="5" fill="white"/>
-      <rect x="9" y="2" width="5" height="5" fill="white"/>
-      <rect x="2" y="9" width="5" height="5" fill="white"/>
-      <rect x="9" y="9" width="5" height="5" fill="white" opacity="0.4"/>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M9 6.25V13.5a2.5 2.5 0 0 0 2.5 2.5H15.5" stroke="#fff" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M17 4.4C17.2 6.05 17.55 6.55 19.2 6.8C17.55 7.05 17.2 7.55 17 9.2C16.8 7.55 16.45 7.05 14.8 6.8C16.45 6.55 16.8 6.05 17 4.4Z" fill="#fff" fill-opacity="0.9"/>
     </svg>
   </div>
-  <span class="logo-name">lntera</span>
+  <span class="logo-name">Lntera</span>
 </div>`;
 }
 

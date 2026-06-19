@@ -73,3 +73,41 @@ export function verifyState(state: string): StatePayload {
   }
   return parsed;
 }
+
+/**
+ * First-party cookie that carries the signed state across the provider round-trip. Required because
+ * Shopee does NOT echo the `state` query param back to the redirect (it appends only code + shop_id),
+ * so the callback would otherwise have no tenant context. SameSite=Lax → sent on the top-level GET
+ * redirect back from the provider; the signed value keeps the tenant binding tamper-proof.
+ */
+export const OAUTH_STATE_COOKIE = 'lntera_oauth_state';
+
+/** Minimal Hono-context shape (avoids coupling to Mastra's bundled Hono types). */
+interface CookieCtx {
+  req: { header(name: string): string | undefined };
+  header(name: string, value: string): void;
+}
+
+function cookieAttrs(maxAge: number): string {
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  return `Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Lax${secure}`;
+}
+
+export function setOAuthStateCookie(c: CookieCtx, state: string): void {
+  // state is base64url(body).base64url(sig) — all cookie-safe chars, no encoding needed.
+  c.header('Set-Cookie', `${OAUTH_STATE_COOKIE}=${state}; ${cookieAttrs(600)}`);
+}
+
+export function readOAuthStateCookie(c: CookieCtx): string | null {
+  const raw = c.req.header('cookie') ?? '';
+  for (const part of raw.split(';')) {
+    const idx = part.indexOf('=');
+    if (idx === -1) continue;
+    if (part.slice(0, idx).trim() === OAUTH_STATE_COOKIE) return part.slice(idx + 1).trim() || null;
+  }
+  return null;
+}
+
+export function clearOAuthStateCookie(c: CookieCtx): void {
+  c.header('Set-Cookie', `${OAUTH_STATE_COOKIE}=; ${cookieAttrs(0)}`);
+}
