@@ -3,7 +3,7 @@
 // text + charts into the tenant's Notifications chat. A deterministic fallback guarantees delivery
 // even if the LLM is empty/rate-limited. Used by the Inngest scheduled run AND the run-now tool.
 import { RequestContext } from '@mastra/core/request-context';
-import { generalAgent } from '../agents/general-agent';
+import { notificationAgent } from '../agents/notification-agent';
 import { TENANT_MASTER_ID_KEY } from '../integrations/shared/marketplace-auth';
 import { logErrorBrief } from '../logger/compact-error';
 import { AGENT_MODE_KEY, type AgentMode } from './notifier';
@@ -121,7 +121,7 @@ async function narrateInsights(facts: string, requestContext: RequestContext, te
   let lastErr: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const answer = (await generalAgent.generate(buildInsightPrompt(facts), { requestContext, maxSteps: 1 })) as {
+      const answer = (await notificationAgent.generate(buildInsightPrompt(facts), { requestContext, maxSteps: 1 })) as {
         text?: unknown;
         tripwire?: unknown;
       };

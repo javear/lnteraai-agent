@@ -218,7 +218,11 @@ function resolveSearchOrdersArgs(raw: SearchOrdersInputRaw): SearchOrdersArgs {
     pageSize: raw.pageSize ?? undefined,
     cursor: trimOrUndef(raw.cursor),
     includeRaw: raw.includeRaw === true,
-    enrichWithDetails: raw.enrichWithDetails ?? true,
+    // Default OFF: lean rows (id/status/buyer/total/dates) keep the tool result small so it doesn't
+    // blow the model's token budget when stored in memory + re-sent each turn. Enriching every row
+    // replaces it with the full detail object (items/recipient/phone/address) AND fires a detail API
+    // call per row. The model opts in (enrichWithDetails: true) only when it needs those fields.
+    enrichWithDetails: raw.enrichWithDetails ?? false,
   };
 }
 
@@ -235,7 +239,7 @@ export const searchOrdersTool = createTool({
   /** Groq: strict tool input forces all schema properties to be sent; disable for optional filters. */
   strict: false,
   description:
-    'Search orders for the tenant. Rows include orderId, shopId, platform, status, statusMeaning. Optional: platform, status, orderId, dates, pageSize, cursor, includeRaw, enrichWithDetails (default true). Pass shopId from rows into detail/fulfillment/label tools when multiple shops exist.',
+    'Search orders for the tenant. Rows are LEAN by default: orderId, shopId, platform, status, statusMeaning, buyerName, totalAmount, currency, dates — enough to list/summarize orders. For items / recipient / address, set enrichWithDetails: true (default false — heavier, fires a detail call per row) or call get-order-details for the one order the user asked about. Optional: platform, status, orderId, dates, pageSize, cursor, includeRaw, enrichWithDetails. Pass shopId from rows into detail/fulfillment/label tools when multiple shops exist.',
   requestContextSchema: z.object({
     [TENANT_MASTER_ID_KEY]: z.string().uuid(),
   }),
@@ -251,7 +255,7 @@ export const searchOrdersTool = createTool({
     },
     { input: { platform: 'tiktok', status: 'AWAITING_SHIPMENT', pageSize: 20 } },
     { input: { platform: 'shopee', orderId: '240101ABC123', includeRaw: true } },
-    { input: { enrichWithDetails: false, pageSize: 50 } },
+    { input: { platform: 'shopee', enrichWithDetails: true, pageSize: 10 } },
   ],
   outputSchema: z.object({
     orders: z.array(orderSchema),

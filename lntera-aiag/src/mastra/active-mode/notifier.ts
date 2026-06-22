@@ -3,6 +3,7 @@ import { RequestContext } from '@mastra/core/request-context';
 import type { MastraDBMessage } from '@mastra/core/agent';
 import { logErrorBrief } from '../logger/compact-error';
 import { generalAgent } from '../agents/general-agent';
+import { notificationAgent } from '../agents/notification-agent';
 import { TENANT_MASTER_ID_KEY } from '../integrations/shared/marketplace-auth';
 import { resolveAgentTextFromResult } from '../integrations/shared/agent-result-text';
 import type { Platform } from '../integrations/shared/types';
@@ -94,9 +95,12 @@ export async function notifyTenantOfMarketplaceEvent(
 
   let answerText = '';
   try {
-    const answer = await generalAgent.generate(buildActiveMarketplacePrompt(facts), {
+    // Lightweight notification agent (no tools/recall) — far fewer tokens; maxSteps:1 since there are
+    // no tools to loop. The result is still persisted to the GENERAL agent's memory below, so the main
+    // agent stays coherent when the seller replies to this notification.
+    const answer = await notificationAgent.generate(buildActiveMarketplacePrompt(facts), {
       requestContext,
-      maxSteps: 2,
+      maxSteps: 1,
     });
     answerText = resolveAgentTextFromResult(answer as { text?: unknown; tripwire?: { reason?: unknown } });
   } catch (err) {
@@ -166,7 +170,6 @@ function buildActiveMarketplacePrompt(facts: string): string {
     '- ALWAYS state the order number and platform so it is unambiguous which order this is.',
     '- Use plain language; NEVER print raw status codes (e.g. AWAITING_COLLECTION) or internal ids like shop_id.',
     '- Do NOT invent details (amounts, items, dates) that are not in the facts.',
-    'Also follow the active-mode rules in your system instructions.',
   ].join('\n');
 }
 
@@ -256,7 +259,7 @@ export async function notifyTenantOfConnectionEvent(
 
   let answerText = '';
   try {
-    const answer = await generalAgent.generate(prompt, { requestContext, maxSteps: 2 });
+    const answer = await notificationAgent.generate(prompt, { requestContext, maxSteps: 1 });
     answerText = resolveAgentTextFromResult(
       answer as { text?: unknown; tripwire?: { reason?: unknown } },
     );
@@ -323,13 +326,13 @@ function buildConnectionEventPrompt(input: NotifyTenantOfConnectionEventInput): 
     lines.push(
       `The tenant just successfully connected their ${name}.` +
         (input.shopName ? ` Shop name: ${input.shopName}.` : '') +
-        ' Write a short, friendly Discord notification confirming the connection is active. Follow the active-mode rules in your system instructions.',
+        ' Write a short, friendly notification confirming the connection is active.',
     );
   } else {
     lines.push(
       `The tenant's ${name} connection failed.` +
         (input.errorMessage ? ` Reason: ${input.errorMessage}.` : '') +
-        ' Write a short Discord notification informing the user and suggesting they try again or check their credentials. Follow the active-mode rules in your system instructions.',
+        ' Write a short notification informing the user and suggesting they try again or check their credentials.',
     );
   }
   return lines.join('\n');
