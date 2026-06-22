@@ -30,13 +30,14 @@ export function BrandAuth({
               inputMode="numeric"
               autoComplete="one-time-code"
               pattern="[0-9]*"
-              maxLength={6}
+              maxLength={10}
               required
               autoFocus
-              className="lp-field text-center text-[1.4rem] tracking-[0.5em]"
+              className="lp-field text-center text-[1.3rem] tabular-nums tracking-[0.3em]"
               value={f.code}
-              onChange={(e) => f.setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              placeholder="••••••"
+              // Supabase OTP length is configurable (6–10) — accept the full code, don't truncate.
+              onChange={(e) => f.setCode(e.target.value.replace(/\D/g, '').slice(0, 10))}
+              placeholder="Enter code"
             />
           </label>
           <button type="submit" disabled={f.busy || !f.online || f.code.length < 6} className="lp-btn w-full">
