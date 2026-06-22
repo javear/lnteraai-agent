@@ -9,9 +9,13 @@ Railway builds it on every push to `main` (CI/CD). The frontend deploys separate
 - **Build stage**: `npm ci` (the `mastra` CLI is a devDependency) → `npm run build` (= `mastra build`).
   Mastra bundles the Hono server and runs `npm install` inside `.mastra/output`, producing a
   self-contained output directory.
-- **Runtime stage**: copies the whole `.mastra/output` (incl. its own `node_modules`) and runs
-  `node index.mjs`. `MASTRA_HOST=0.0.0.0` is baked in so the container is reachable; the server listens
-  on Railway's injected `PORT` (default 4111). `DATABASE_URL` is only needed at **runtime**, not build.
+- **Runtime stage**: runs the self-contained `.mastra/output` (incl. its own `node_modules`) on
+  **Bun** (`oven/bun:1-slim`) via `bun index.mjs` — lighter and faster to start than Node. The build
+  above deliberately stays on Node (the `mastra` bundler is a Node toolchain with no runtime weight);
+  only the *running* service is Bun. `MASTRA_HOST=0.0.0.0` is baked in so the container is reachable;
+  the server listens on Railway's injected `PORT` (default 4111). `DATABASE_URL` is only needed at
+  **runtime**, not build. (`oven/bun:1-slim` is Debian-based, matching the `node:22-slim` builder, so
+  the copied `node_modules` stay ABI-compatible.)
 
 ## Railway service setup
 

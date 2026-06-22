@@ -13,8 +13,13 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# ── Runtime stage: copy only the self-contained build output and run it. ──
-FROM node:22-slim AS runner
+# ── Runtime stage: run the self-contained build output on Bun (lighter + faster than Node). ──
+# The BUILD stays on Node above: `mastra build` is a Node bundler/toolchain — there's no runtime
+# weight to it, and it's the proven path. Only the *running* service moves to Bun, which is where the
+# "lite & lightweight" win is. Verified locally that the bundle boots under Bun (Hono server + pg +
+# OpenTelemetry observability + discord.js all load; the server reaches "Mastra API running").
+# 1-slim is Debian-based, matching the node:22-slim builder, so the copied node_modules stay ABI-compatible.
+FROM oven/bun:1-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 # Bind all interfaces so the container is reachable; Railway injects PORT at runtime
@@ -22,7 +27,7 @@ ENV NODE_ENV=production
 ENV MASTRA_HOST=0.0.0.0
 COPY --from=builder /app/.mastra/output ./
 EXPOSE 4111
-USER node
-# Mastra's documented production entry. (For OpenTelemetry, instead use:
-#   CMD ["node","--import=./instrumentation.mjs","index.mjs"])
-CMD ["node", "index.mjs"]
+USER bun
+# Run the Mastra production bundle on Bun. (If a future build's pnpm-style node_modules layout ever
+# trips Bun, the fallback is to regenerate them here: `RUN bun install --production`.)
+CMD ["bun", "index.mjs"]
