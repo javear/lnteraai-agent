@@ -7,6 +7,7 @@ import { TENANT_MASTER_ID_KEY } from '../integrations/shared/marketplace-auth';
 import { resolveAgentTextFromResult } from '../integrations/shared/agent-result-text';
 import type { Platform } from '../integrations/shared/types';
 import type { EventCategory } from '../integrations/shared/webhook-event-classifier';
+import { buildMarketplaceNotification } from '../integrations/shared/marketplace-status';
 import {
   discordGuildResourceId,
   discordGuildThreadId,
@@ -66,8 +67,6 @@ export interface NotifyTenantOfConnectionEventResult {
   reason?: string;
 }
 
-const MAX_PAYLOAD_CHARS = 6000;
-
 /**
  * Webhook entry point. Composes the active-mode prompt, runs the agent without memory recall,
  * pushes the rendered response to Discord, then persists the assistant turn (and a small
@@ -76,56 +75,32 @@ const MAX_PAYLOAD_CHARS = 6000;
 export async function notifyTenantOfMarketplaceEvent(
   input: NotifyTenantOfMarketplaceEventInput,
 ): Promise<NotifyTenantOfMarketplaceEventResult> {
-  const payloadJson = safeStringifyPayload(input.payload);
-  const prompt = buildActiveModePrompt({
+  // Deterministic, human-readable transcription — consistent across every event, with the status
+  // code mapped to plain language (no raw codes, no LLM ambiguity, no internal ids like shop_id).
+  const { heading, text } = buildMarketplaceNotification({
     platform: input.platform,
     category: input.category,
     code: input.code,
-    payloadJson,
+    payload: input.payload,
   });
-
-  const requestContext = new RequestContext();
-  requestContext.set(TENANT_MASTER_ID_KEY, input.tenantId);
-  requestContext.set('channel', 'discord');
-  requestContext.set(AGENT_MODE_KEY, 'active' satisfies AgentMode);
-  requestContext.set(MARKETPLACE_CONTEXT_KEY, {
-    platform: input.platform,
-    category: input.category,
-    code: input.code,
-  });
-
-  // Generate the notification text once (regardless of which channels exist), then fan out.
-  let answerText = '';
-  try {
-    const answer = await generalAgent.generate(prompt, { requestContext, maxSteps: 2 });
-    answerText = resolveAgentTextFromResult(
-      answer as { text?: unknown; tripwire?: { reason?: unknown } },
-    );
-  } catch (err) {
-    logErrorBrief(`[active] generalAgent.generate failed (tenant=${input.tenantId})`, err);
-  }
-
-  // Always deliver SOMETHING: if the agent failed or returned nothing (e.g. rate-limited), send a
-  // minimal deterministic line so the tenant never silently misses a marketplace event.
-  const usedFallback = !answerText.trim();
-  const effectiveText = usedFallback ? buildFallbackMarketplaceText(input) : answerText;
 
   // 1) Tenant's own platform (web/desktop/mobile) — ALWAYS, even with no Discord linked.
   await deliverTenantWebNotification({
     tenantId: input.tenantId,
-    text: effectiveText,
-    heading: marketplaceHeading(input),
+    text,
+    heading,
     marketplace: { platform: input.platform, category: input.category, code: input.code },
     kind: 'marketplace',
   });
 
-  // 2) Discord — only when the tenant has a linked channel.
+  // 2) Discord — only when the tenant has a linked channel (no separate heading field there).
   const channels = await resolveDiscordChannelsForTenant(input.tenantId);
   if (channels.length === 0) {
-    return { status: 'delivered', deliveredChannels: 0, reason: 'web_only', usedFallback };
+    return { status: 'delivered', deliveredChannels: 0, reason: 'web_only' };
   }
 
-  const reply = toDiscordReply(effectiveText);
+  const discordText = `${heading}\n${text}`;
+  const reply = toDiscordReply(discordText);
   const result = await sendDiscordToTenant(input.tenantId, reply);
   if (result.delivered.length === 0) {
     // Discord dispatch failed, but the web notification already went out.
@@ -133,41 +108,18 @@ export async function notifyTenantOfMarketplaceEvent(
       status: 'delivered',
       deliveredChannels: 0,
       reason: result.skipped[0]?.reason ?? 'discord_dispatch_failed',
-      usedFallback,
     };
   }
 
   await persistAssistantTurn({
     tenantId: input.tenantId,
     channels: result.delivered,
-    answerText: effectiveText,
+    answerText: discordText,
     systemMarkerText: `[Notification trigger] platform=${input.platform} category=${input.category} code=${input.code}`,
     metadata: { marketplace: { platform: input.platform, category: input.category, code: input.code } },
   });
 
-  return { status: 'delivered', deliveredChannels: result.delivered.length, usedFallback };
-}
-
-function marketplaceHeading(input: NotifyTenantOfMarketplaceEventInput): string {
-  const name =
-    input.platform === 'tiktok' ? 'TikTok Shop' : input.platform === 'shopee' ? 'Shopee' : input.platform;
-  return `${name} · ${input.category}`;
-}
-
-/** Minimal deterministic notification used when the AI can't produce one (keeps the user informed). */
-function buildFallbackMarketplaceText(input: NotifyTenantOfMarketplaceEventInput): string {
-  const name =
-    input.platform === 'tiktok' ? 'TikTok Shop' : input.platform === 'shopee' ? 'Shopee' : input.platform;
-  switch (input.category) {
-    case 'orders':
-      return `🛒 New order activity on ${name}.`;
-    case 'fulfillment':
-      return `📦 Shipping/fulfillment update on ${name}.`;
-    case 'returns':
-      return `↩️ Return or cancellation update on ${name}.`;
-    default:
-      return `🔔 New activity on ${name}.`;
-  }
+  return { status: 'delivered', deliveredChannels: result.delivered.length };
 }
 
 function toDiscordReply(text: string): DiscordReply {
@@ -175,36 +127,6 @@ function toDiscordReply(text: string): DiscordReply {
   const opportunistic = parseDiscordReplyFromUnknown(sanitized);
   if (opportunistic.success) return opportunistic.data;
   return { ops: [{ message_type: 'text', content: sanitized }] };
-}
-
-function buildActiveModePrompt(args: {
-  platform: Platform;
-  category: EventCategory;
-  code: string;
-  payloadJson: string;
-}): string {
-  return [
-    '[Active mode: marketplace webhook]',
-    `platform=${args.platform}`,
-    `category=${args.category}`,
-    `code=${args.code}`,
-    '',
-    'Transcribe this event into a short Discord notification for the seller. Follow the active-mode rules in your system instructions.',
-    '',
-    'Webhook payload (JSON):',
-    args.payloadJson,
-  ].join('\n');
-}
-
-function safeStringifyPayload(payload: unknown): string {
-  try {
-    const json = JSON.stringify(payload, null, 2);
-    if (json.length <= MAX_PAYLOAD_CHARS) return json;
-    return json.slice(0, MAX_PAYLOAD_CHARS) + '\n... (truncated)';
-  } catch (err) {
-    logErrorBrief('[active] failed to stringify webhook payload', err);
-    return '{ "_unserializable": true }';
-  }
 }
 
 async function persistAssistantTurn(args: {
