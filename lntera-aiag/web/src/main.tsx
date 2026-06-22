@@ -1,6 +1,6 @@
 import { StrictMode, Suspense, lazy, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, HashRouter, Navigate, Route, Routes, useMatch } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Navigate, Route, Routes, useMatch, useNavigate } from 'react-router-dom';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
@@ -65,6 +65,18 @@ function AppGate() {
   return <AppLayout />;
 }
 
+/** Force a password-recovery session to the reset form, wherever Supabase's link happened to land
+ *  (Site URL fallback, /login, etc.) — so a recovery link never silently logs the user into the app. */
+function RecoveryRedirect() {
+  const { recovery } = useAuth();
+  const navigate = useNavigate();
+  const onReset = useMatch({ path: '/reset-password', end: true }) != null;
+  useEffect(() => {
+    if (recovery && !onReset) navigate('/reset-password', { replace: true });
+  }, [recovery, onReset, navigate]);
+  return null;
+}
+
 function Boot() {
   const [supabase, setSupabase] = useState<SupabaseClient | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +92,7 @@ function Boot() {
 
   return (
     <SessionProvider supabase={supabase}>
+      <RecoveryRedirect />
       <Routes>
         <Route
           path="/login"

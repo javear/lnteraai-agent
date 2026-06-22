@@ -20,7 +20,7 @@ const brandMarkBtn =
  */
 export default function ResetPassword() {
   const navigate = useNavigate();
-  const { session, loading, updatePassword } = useAuth();
+  const { session, loading, recovery, updatePassword, clearRecovery } = useAuth();
   const online = useOnlineStatus();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -41,6 +41,7 @@ export default function ResetPassword() {
     setBusy(true);
     try {
       await updatePassword(password);
+      clearRecovery(); // leave recovery mode so routing lets us into the app
       toast.success('Password updated.');
       navigate('/', { replace: true });
     } catch (err) {
@@ -64,7 +65,7 @@ export default function ResetPassword() {
             <div className="flex justify-center pt-10">
               <Loader2 className="h-6 w-6 animate-spin text-[hsl(var(--fg-soft))]" />
             </div>
-          ) : !session ? (
+          ) : !session && !recovery ? (
             <>
               <h1 className="lp-display text-[2.1rem] leading-[1.05]">Link expired.</h1>
               <p className="mt-2.5 text-[15px] leading-relaxed text-[hsl(var(--fg-soft))]">

@@ -17,12 +17,26 @@ interface AuthContextValue {
   /** Authenticated fetch — attaches the current Supabase access token as a Bearer header. */
   api: (path: string, init?: RequestInit) => Promise<Response>;
   signInPassword: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, workspaceName?: string) => Promise<void>;
+  /** Register via Supabase. With email confirmation ON, no session is returned until the emailed
+   *  6-digit code is verified → `{ needsConfirmation: true }`. */
+  signUp: (email: string, password: string, workspaceName?: string) => Promise<{ needsConfirmation: boolean }>;
+  /** Verify the signup confirmation code (type 'signup'). */
+  confirmSignup: (email: string, token: string) => Promise<void>;
+  /** Re-send the signup confirmation code. */
+  resendSignupCode: (email: string) => Promise<void>;
+  /** Passwordless login: email a 6-digit code to an EXISTING user (won't create one). */
+  sendLoginCode: (email: string) => Promise<void>;
+  /** Verify a passwordless login code (type 'email') → establishes the session. */
+  verifyLoginCode: (email: string, token: string) => Promise<void>;
   signInGoogle: () => Promise<void>;
   /** Email a password-recovery link that returns to /reset-password. */
   resetPassword: (email: string) => Promise<void>;
   /** Set a new password for the current (recovery or signed-in) session. */
   updatePassword: (password: string) => Promise<void>;
+  /** True between a PASSWORD_RECOVERY event and setting a new password — gates the app so a recovery
+   *  link opens the reset form instead of silently logging the user in. */
+  recovery: boolean;
+  clearRecovery: () => void;
   signOut: () => Promise<void>;
 }
 
@@ -47,6 +61,7 @@ export function SessionProvider({
 }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [recovery, setRecovery] = useState(false);
   const provisioning = useRef(false);
 
   // First sign-in for a user with no workspace yet (esp. Google): create one server-side,
@@ -77,7 +92,10 @@ export function SessionProvider({
       setLoading(false);
       await ensureProvisioned(data.session);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      // A recovery link establishes a session — flag it so routing opens the reset form instead of
+      // dropping the user into the app (RecoveryRedirect + useAuthForm honor this).
+      if (event === 'PASSWORD_RECOVERY') setRecovery(true);
       setSession(s);
       void ensureProvisioned(s);
     });
@@ -104,16 +122,31 @@ export function SessionProvider({
         if (error) throw error;
       },
       signUp: async (email, password, workspaceName) => {
-        const res = await fetch(apiUrl('/auth/signup'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, workspaceName }),
+        // Client signUp so Supabase emails the confirmation code. The workspace name rides in user
+        // metadata and is consumed by /auth/provision on the first authenticated session (same path
+        // Google sign-in uses). With "Confirm email" OFF, a session is returned immediately.
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: workspaceName ? { data: { workspace_name: workspaceName } } : undefined,
         });
-        if (!res.ok) {
-          const d = (await res.json().catch(() => ({}))) as { message?: string; error?: string };
-          throw new Error(d.message || d.error || `Sign up failed (${res.status}).`);
-        }
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        return { needsConfirmation: !data.session };
+      },
+      confirmSignup: async (email, token) => {
+        const { error } = await supabase.auth.verifyOtp({ email, token, type: 'signup' });
+        if (error) throw error;
+      },
+      resendSignupCode: async (email) => {
+        const { error } = await supabase.auth.resend({ type: 'signup', email });
+        if (error) throw error;
+      },
+      sendLoginCode: async (email) => {
+        const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
+        if (error) throw error;
+      },
+      verifyLoginCode: async (email, token) => {
+        const { error } = await supabase.auth.verifyOtp({ email, token, type: 'email' });
         if (error) throw error;
       },
       signInGoogle: async () => {
@@ -135,11 +168,14 @@ export function SessionProvider({
         const { error } = await supabase.auth.updateUser({ password });
         if (error) throw error;
       },
+      recovery,
+      clearRecovery: () => setRecovery(false),
       signOut: async () => {
+        setRecovery(false);
         await supabase.auth.signOut();
       },
     }),
-    [supabase, session, loading],
+    [supabase, session, loading, recovery],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
