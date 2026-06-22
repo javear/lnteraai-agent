@@ -10,7 +10,7 @@ import { SessionProvider, useAuth } from './auth';
 import { ThemeProvider } from './theme';
 import { Toaster } from '@/components/ui/sonner';
 import { PwaUpdater } from './components/PwaUpdater';
-import { Centered } from './ui';
+import { Button, Centered } from './ui';
 import { AppLayout } from './components/AppLayout';
 import { ChatRouteSkeleton, PageRouteSkeleton } from './components/Skeletons';
 import { Logo } from './ui';
@@ -77,17 +77,69 @@ function RecoveryRedirect() {
   return null;
 }
 
+/** Popup-callback for Google SSO. Supabase finalizes the session here (detectSessionInUrl), then this
+ *  popup notifies its opener and closes — the opener tab signs in via Supabase's cross-tab session sync.
+ *  If the popup was blocked (this loaded in the same tab via a full redirect), it just enters the app. */
+function AuthPopupCallback() {
+  const { session } = useAuth();
+  useEffect(() => {
+    const inPopup = typeof window !== 'undefined' && !!window.opener && window.opener !== window;
+    const finish = (status: 'ok' | 'error') => {
+      if (inPopup) {
+        try {
+          window.opener!.postMessage({ source: 'lntera-oauth', status }, window.location.origin);
+        } catch {
+          /* cross-origin opener — the cross-tab session sync still signs the app in */
+        }
+        window.close();
+      } else {
+        window.location.replace(import.meta.env.BASE_URL || '/');
+      }
+    };
+    if (session) {
+      finish('ok');
+      return;
+    }
+    // No session yet — detectSessionInUrl is still exchanging the code. Give up after a grace period.
+    const t = window.setTimeout(() => finish('error'), 8000);
+    return () => window.clearTimeout(t);
+  }, [session]);
+  return <BootScreen />;
+}
+
 function Boot() {
   const [supabase, setSupabase] = useState<SupabaseClient | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
+  // fetchPublicConfig already retries with backoff and falls back to a cached config; it only rejects
+  // when there's truly no network AND no cache. In that case we show a retry screen (not a dead-end),
+  // and bumping `attempt` re-runs the whole resilient fetch.
   useEffect(() => {
+    let cancelled = false;
+    setError(null);
     fetchPublicConfig()
-      .then((cfg) => setSupabase(makeSupabase(cfg)))
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, []);
+      .then((cfg) => {
+        if (!cancelled) setSupabase(makeSupabase(cfg));
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt]);
 
-  if (error) return <Centered>{error}</Centered>;
+  if (error)
+    return (
+      <Centered>
+        <div className="flex max-w-xs flex-col items-center gap-4 text-center">
+          <Logo size="lg" wordmark={false} className="opacity-90" />
+          <p className="text-sm text-muted-foreground">{error}</p>
+          <Button onClick={() => setAttempt((a) => a + 1)}>Try again</Button>
+        </div>
+      </Centered>
+    );
   if (!supabase) return <BootScreen />;
 
   return (
@@ -118,6 +170,7 @@ function Boot() {
             </Suspense>
           }
         />
+        <Route path="/auth/popup" element={<AuthPopupCallback />} />
         <Route element={<AppGate />}>
           <Route
             path="/"

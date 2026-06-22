@@ -15,7 +15,6 @@ import {
 import { findDiscordIntegrationConflictForRouting, upsertTenantIntegration } from '../integrations/shared/tenant-integrations';
 import { patchConnectionProfile, resolveTenantId, upsertConnection } from '../integrations/shared/supabase';
 import { isPlatform, type Platform } from '../integrations/shared/types';
-import { webAppUrl } from './web-app-origin';
 import { buildShopeeAuthUrl, exchangeShopeeCode } from '../integrations/shopee/auth';
 import { getShopeeClient } from '../integrations/shopee/client';
 import { getShopeeConfig } from '../integrations/shopee/config';
@@ -23,7 +22,7 @@ import { getShopeeShopInfo } from '../integrations/shopee/shop-info';
 import { buildTiktokAuthUrl, exchangeTiktokCode, getTiktokAuthorizedShops } from '../integrations/tiktok/auth';
 import { notifyTenantOfConnectionEvent } from '../active-mode/notifier';
 import { notifyConnectedOfferSync } from '../sync/product-sync-notifier';
-import { oauthErrorPage } from './html-pages';
+import { oauthErrorPage, oauthSuccessPage } from './html-pages';
 
 export const oauthRoutes = [
   // Discord routes must be registered before `/oauth/:platform/start`, otherwise `discord` is
@@ -193,7 +192,7 @@ export const oauthRoutes = [
         );
       }
 
-      return c.redirect(webAppUrl('/integrations?connected=discord&status=ok'), 302);
+      return c.html(oauthSuccessPage({ platform: 'Discord' }));
     },
   }),
 
@@ -338,12 +337,12 @@ export const oauthRoutes = [
         void notifyTenantOfConnectionEvent({ tenantId, integration: 'shopee', status: 'connected', shopName });
         // Deterministic (no-LLM) "import your products now?" offer with token-free action buttons.
         void notifyConnectedOfferSync(tenantId, 'shopee', shopName);
-        return c.redirect(webAppUrl('/integrations?connected=shopee&status=ok'), 302);
+        return c.html(oauthSuccessPage({ platform: 'Shopee', shopName }));
       } catch (err) {
         void notifyTenantOfConnectionEvent({ tenantId, integration: 'shopee', status: 'failed', errorMessage: (err as Error).message });
-        return c.redirect(
-          webAppUrl(`/integrations?connected=shopee&status=error&message=${encodeURIComponent((err as Error).message)}`),
-          302,
+        return c.html(
+          oauthErrorPage({ platform: 'Shopee', title: 'Connection failed', message: (err as Error).message }),
+          502,
         );
       }
     },
@@ -431,12 +430,12 @@ export const oauthRoutes = [
         void notifyTenantOfConnectionEvent({ tenantId, integration: 'tiktok', status: 'connected', shopName: tokens.seller_name ?? null });
         // Deterministic (no-LLM) "import your products now?" offer with token-free action buttons.
         void notifyConnectedOfferSync(tenantId, 'tiktok', tokens.seller_name ?? null);
-        return c.redirect(webAppUrl('/integrations?connected=tiktok&status=ok'), 302);
+        return c.html(oauthSuccessPage({ platform: 'TikTok Shop', shopName: tokens.seller_name ?? null }));
       } catch (err) {
         void notifyTenantOfConnectionEvent({ tenantId, integration: 'tiktok', status: 'failed', errorMessage: (err as Error).message });
-        return c.redirect(
-          webAppUrl(`/integrations?connected=tiktok&status=error&message=${encodeURIComponent((err as Error).message)}`),
-          302,
+        return c.html(
+          oauthErrorPage({ platform: 'TikTok Shop', title: 'Connection failed', message: (err as Error).message }),
+          502,
         );
       }
     },

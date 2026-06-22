@@ -6,7 +6,7 @@ import { getMastraPublicBaseUrl } from '../integrations/portkey/config';
  *  - `WEB_APP_ORIGIN` set (standalone host, e.g. Vercel) → the SPA is at that origin's root.
  *  - unset (legacy monolith) → the SPA is served by this server under `/app`.
  */
-function getWebAppOrigin(): string | null {
+export function getWebAppOrigin(): string | null {
   const raw = process.env.WEB_APP_ORIGIN?.trim();
   if (!raw) return null;
   // Tolerate a misconfigured multi-value env ("a,b" or "a b" or a stray typo) — take the FIRST entry
