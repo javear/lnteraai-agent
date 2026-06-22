@@ -7,8 +7,9 @@ node_modules
 dist
 src/mastra/public/app
 
-# Force npm inside the image: `mastra build` picks the package manager from the lockfile it sees,
-# and the node:22-slim image only has npm. Excluding the pnpm lock makes it use package-lock.json.
+# Package manager: the image builds with Bun. `mastra build` picks the PM from the lockfile it sees,
+# so keep the npm/pnpm locks OUT of the build context — only bun.lock (from `bun install`) governs.
+package-lock.json
 pnpm-lock.yaml
 
 # Frontend — deploys separately on Vercel; backend never imports it at runtime

@@ -6,9 +6,10 @@ Railway builds it on every push to `main` (CI/CD). The frontend deploys separate
 
 ## How the image works
 
-- **Build stage**: `npm ci` (the `mastra` CLI is a devDependency) → `npm run build` (= `mastra build`).
-  Mastra bundles the Hono server and runs `npm install` inside `.mastra/output`, producing a
-  self-contained output directory.
+- **Build stage** (on the `oven/bun` image): `bun install` → `bun run build` (= `mastra build`).
+  Mastra bundles the Hono server and installs `.mastra/output`'s deps **with Bun** (it picks the PM
+  from the lockfile present; only `bun.lock` reaches the image — the npm/pnpm locks are dockerignored),
+  producing a self-contained output directory. `bun install` is much faster than `npm ci`.
 - **Runtime stage**: runs the self-contained `.mastra/output` (incl. its own `node_modules`) on
   **Bun** (`oven/bun:1-slim`) via `bun index.mjs` — lighter and faster to start than Node. The build
   above deliberately stays on Node (the `mastra` bundler is a Node toolchain with no runtime weight);
