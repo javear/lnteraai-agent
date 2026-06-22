@@ -96,8 +96,31 @@ export function extractOrderEvent(payload: unknown): { orderId: string | null; s
 }
 
 /**
+ * Plain-language FACTS about the event for the active-mode LLM prompt. Gives the agent the *meaning*
+ * of the platform status code (not just the raw value) so it can write a natural, non-monotone, but
+ * accurate notification — and stay coherent on follow-ups — without ever emitting raw codes / shop ids.
+ */
+export function buildMarketplacePromptFacts(input: {
+  platform: Platform;
+  category: EventCategory;
+  code: string;
+  payload: unknown;
+}): string {
+  const name = platformName(input.platform);
+  const { orderId, status } = extractOrderEvent(input.payload);
+  const info = lookupStatus(input.platform, status);
+  const lines = [`platform: ${name}`, `category: ${input.category}`];
+  if (orderId) lines.push(`order number: #${orderId}`);
+  if (info) lines.push(`status: ${info.label} — meaning: ${info.meaning}`);
+  else if (status) lines.push(`status: ${humanizeStatus(status)}`);
+  else lines.push('status: (not specified in the event)');
+  return lines.join('\n');
+}
+
+/**
  * Build a consistent, human-readable notification (heading + body) for a marketplace webhook event.
- * Deterministic — same input always yields the same clear message.
+ * Deterministic — used as the FALLBACK when the LLM can't generate (e.g. rate-limited), and to supply
+ * the consistent heading/emoji. The visible body is normally LLM-written from buildMarketplacePromptFacts.
  */
 export function buildMarketplaceNotification(input: {
   platform: Platform;

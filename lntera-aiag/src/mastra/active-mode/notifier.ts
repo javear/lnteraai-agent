@@ -7,7 +7,7 @@ import { TENANT_MASTER_ID_KEY } from '../integrations/shared/marketplace-auth';
 import { resolveAgentTextFromResult } from '../integrations/shared/agent-result-text';
 import type { Platform } from '../integrations/shared/types';
 import type { EventCategory } from '../integrations/shared/webhook-event-classifier';
-import { buildMarketplaceNotification } from '../integrations/shared/marketplace-status';
+import { buildMarketplaceNotification, buildMarketplacePromptFacts } from '../integrations/shared/marketplace-status';
 import {
   discordGuildResourceId,
   discordGuildThreadId,
@@ -75,51 +75,73 @@ export interface NotifyTenantOfConnectionEventResult {
 export async function notifyTenantOfMarketplaceEvent(
   input: NotifyTenantOfMarketplaceEventInput,
 ): Promise<NotifyTenantOfMarketplaceEventResult> {
-  // Deterministic, human-readable transcription — consistent across every event, with the status
-  // code mapped to plain language (no raw codes, no LLM ambiguity, no internal ids like shop_id).
-  const { heading, text } = buildMarketplaceNotification({
+  // The LLM writes the notification (natural, non-monotone, and it lands in memory as a real agent
+  // turn so follow-ups stay coherent) — but we GROUND it with plain-language facts that include the
+  // MEANING of the platform status code, so it's accurate and never prints raw codes / shop ids.
+  // buildMarketplaceNotification supplies the consistent heading + a deterministic fallback.
+  const facts = buildMarketplacePromptFacts(input);
+  const fallback = buildMarketplaceNotification(input);
+
+  const requestContext = new RequestContext();
+  requestContext.set(TENANT_MASTER_ID_KEY, input.tenantId);
+  requestContext.set('channel', 'discord');
+  requestContext.set(AGENT_MODE_KEY, 'active' satisfies AgentMode);
+  requestContext.set(MARKETPLACE_CONTEXT_KEY, {
     platform: input.platform,
     category: input.category,
     code: input.code,
-    payload: input.payload,
   });
 
-  // 1) Tenant's own platform (web/desktop/mobile) — ALWAYS, even with no Discord linked.
+  let answerText = '';
+  try {
+    const answer = await generalAgent.generate(buildActiveMarketplacePrompt(facts), {
+      requestContext,
+      maxSteps: 2,
+    });
+    answerText = resolveAgentTextFromResult(answer as { text?: unknown; tripwire?: { reason?: unknown } });
+  } catch (err) {
+    logErrorBrief(`[active] generalAgent.generate failed (tenant=${input.tenantId})`, err);
+  }
+
+  const usedFallback = !answerText.trim();
+  const text = usedFallback ? fallback.text : answerText.trim();
+
+  // 1) Tenant's own platform (web/desktop/mobile) — ALWAYS. Persisted to the Notifications thread
+  // (Mastra memory) by deliverTenantWebNotification, so the agent stays coherent on follow-ups.
   await deliverTenantWebNotification({
     tenantId: input.tenantId,
     text,
-    heading,
+    heading: fallback.heading,
     marketplace: { platform: input.platform, category: input.category, code: input.code },
     kind: 'marketplace',
   });
 
-  // 2) Discord — only when the tenant has a linked channel (no separate heading field there).
+  // 2) Discord — only when the tenant has a linked channel.
   const channels = await resolveDiscordChannelsForTenant(input.tenantId);
   if (channels.length === 0) {
-    return { status: 'delivered', deliveredChannels: 0, reason: 'web_only' };
+    return { status: 'delivered', deliveredChannels: 0, reason: 'web_only', usedFallback };
   }
 
-  const discordText = `${heading}\n${text}`;
-  const reply = toDiscordReply(discordText);
+  const reply = toDiscordReply(text);
   const result = await sendDiscordToTenant(input.tenantId, reply);
   if (result.delivered.length === 0) {
-    // Discord dispatch failed, but the web notification already went out.
     return {
       status: 'delivered',
       deliveredChannels: 0,
       reason: result.skipped[0]?.reason ?? 'discord_dispatch_failed',
+      usedFallback,
     };
   }
 
   await persistAssistantTurn({
     tenantId: input.tenantId,
     channels: result.delivered,
-    answerText: discordText,
+    answerText: text,
     systemMarkerText: `[Notification trigger] platform=${input.platform} category=${input.category} code=${input.code}`,
     metadata: { marketplace: { platform: input.platform, category: input.category, code: input.code } },
   });
 
-  return { status: 'delivered', deliveredChannels: result.delivered.length };
+  return { status: 'delivered', deliveredChannels: result.delivered.length, usedFallback };
 }
 
 function toDiscordReply(text: string): DiscordReply {
@@ -127,6 +149,25 @@ function toDiscordReply(text: string): DiscordReply {
   const opportunistic = parseDiscordReplyFromUnknown(sanitized);
   if (opportunistic.success) return opportunistic.data;
   return { ops: [{ message_type: 'text', content: sanitized }] };
+}
+
+/** Prompt for the active-mode marketplace notification: give the agent the status *meaning* + grounding
+ *  facts, let it phrase naturally, but forbid raw codes / internal ids and require the order + platform. */
+function buildActiveMarketplacePrompt(facts: string): string {
+  return [
+    '[Active mode: marketplace notification]',
+    "Write a brief, friendly notification to the seller about this marketplace event for their Active Agent chat.",
+    '',
+    'Facts (accurate — base your message ONLY on these; "meaning" explains what the status implies for the seller):',
+    facts,
+    '',
+    'Rules:',
+    '- 1–2 short sentences, warm and clear; lead with what it means or any action the seller should take.',
+    '- ALWAYS state the order number and platform so it is unambiguous which order this is.',
+    '- Use plain language; NEVER print raw status codes (e.g. AWAITING_COLLECTION) or internal ids like shop_id.',
+    '- Do NOT invent details (amounts, items, dates) that are not in the facts.',
+    'Also follow the active-mode rules in your system instructions.',
+  ].join('\n');
 }
 
 async function persistAssistantTurn(args: {
