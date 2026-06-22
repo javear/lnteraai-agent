@@ -25,6 +25,9 @@ export const publicConfigRoute = registerApiRoute(`${OPEN_API_PREFIX}/public-con
     // Browser-safe OneSignal ids (the REST key stays server-only). Null when push is unconfigured.
     const oneSignalAppId = process.env.ONESIGNAL_APP_ID?.trim() || null;
     const oneSignalSafariWebId = process.env.ONESIGNAL_SAFARI_WEB_ID?.trim() || null;
-    return c.json({ supabaseUrl, supabaseKey, oneSignalAppId, oneSignalSafariWebId });
+    // Google Web OAuth client id for One Tap (browser-safe — it's a public client id). Null disables
+    // One Tap. Must match a client id in Supabase → Auth → Google → "Authorized Client IDs".
+    const googleClientId = process.env.GOOGLE_CLIENT_ID?.trim() || null;
+    return c.json({ supabaseUrl, supabaseKey, oneSignalAppId, oneSignalSafariWebId, googleClientId });
   },
 });
