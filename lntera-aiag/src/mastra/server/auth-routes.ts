@@ -102,9 +102,12 @@ export const authRoutes = [
         if (error || !data?.user) {
           return c.json({ error: 'invalid_token', message: 'Could not verify the access token.' }, 401);
         }
+        // Email sign-up stashes the chosen workspace name in user metadata (Google sign-in has none).
+        const wsName = (data.user.user_metadata as { workspace_name?: unknown } | null)?.workspace_name;
         const { tenantId } = await provisionWorkspaceForAuthUser({
           authUserId: data.user.id,
           email: data.user.email ?? null,
+          workspaceName: typeof wsName === 'string' && wsName.trim() ? wsName.trim() : undefined,
         });
         return c.json({ ok: true, tenantId }, 200);
       } catch (err) {
