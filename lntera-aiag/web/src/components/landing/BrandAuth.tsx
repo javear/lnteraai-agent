@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { GoogleGlyph } from '../auth/GoogleGlyph';
+import { GoogleOneTap } from '../auth/GoogleOneTap';
 import { useAuthForm } from '../auth/useAuthForm';
 
 const labelCls = 'lp-mono mb-1.5 block text-[0.7rem] uppercase tracking-wider text-[hsl(var(--fg-soft))]';
@@ -64,6 +65,8 @@ export function BrandAuth({
   // ── Email / password form ───────────────────────────────────────────────────
   return (
     <div className={cn('w-full', className)}>
+      {/* Google One Tap (auto account chip → one-tap sign-in). No-op unless googleClientId is set. */}
+      <GoogleOneTap />
       <div className="inline-flex rounded-full border p-0.5 text-[0.82rem]">
         {(['signup', 'signin'] as const).map((m) => (
           <button

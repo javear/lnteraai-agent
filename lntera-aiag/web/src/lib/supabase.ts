@@ -8,6 +8,8 @@ export interface PublicConfig {
   oneSignalAppId?: string | null;
   /** OneSignal Safari web id (browser-safe). Null when push isn't configured. */
   oneSignalSafariWebId?: string | null;
+  /** Google Web OAuth client id for One Tap (browser-safe). Null when not configured. */
+  googleClientId?: string | null;
 }
 
 let cachedConfig: PublicConfig | null = null;

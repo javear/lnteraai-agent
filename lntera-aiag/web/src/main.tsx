@@ -83,18 +83,23 @@ function RecoveryRedirect() {
 function AuthPopupCallback() {
   const { session } = useAuth();
   useEffect(() => {
-    const inPopup = typeof window !== 'undefined' && !!window.opener && window.opener !== window;
     const finish = (status: 'ok' | 'error') => {
-      if (inPopup) {
-        try {
-          window.opener!.postMessage({ source: 'lntera-oauth', status }, window.location.origin);
-        } catch {
-          /* cross-origin opener — the cross-tab session sync still signs the app in */
-        }
-        window.close();
-      } else {
-        window.location.replace(import.meta.env.BASE_URL || '/');
+      // Best-effort notify the opener — but Google's OAuth pages set Cross-Origin-Opener-Policy, which
+      // severs window.opener after the round-trip, so we must NOT gate closing on it. The opener tab
+      // signs in via Supabase's cross-tab session sync regardless of whether this message arrives.
+      try {
+        window.opener?.postMessage({ source: 'lntera-oauth', status }, window.location.origin);
+      } catch {
+        /* opener gone (COOP) */
       }
+      // A script-opened popup can close itself even when the opener is severed. If closing is blocked
+      // (popup was blocked → this ran in the MAIN tab; or a mobile tab that can't self-close), fall
+      // back to entering the app so the user is never stranded on the callback — and never left with
+      // two logged-in tabs because the popup silently became an app tab.
+      window.close();
+      window.setTimeout(() => {
+        if (!window.closed) window.location.replace(import.meta.env.BASE_URL || '/');
+      }, 500);
     };
     if (session) {
       finish('ok');
