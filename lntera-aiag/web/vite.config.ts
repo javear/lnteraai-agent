@@ -131,9 +131,23 @@ export default defineConfig(({ mode }) => {
           ],
           runtimeCaching: [
             {
-              // Last-known integration status + public config render offline.
-              urlPattern: ({ url }) =>
-                url.pathname === '/svc/v1/public-config' || url.pathname === '/svc/v1/me/integrations',
+              // Public config is required to BOOT. NetworkFirst with a short timeout so a slow/cold
+              // backend can't make the SW hang — it falls back to the last cached config fast. The app
+              // also retries with backoff and keeps a localStorage copy (see lib/supabase.ts), so a
+              // Railway cold start surfaces as a brief wait, never a hard "failed to fetch".
+              urlPattern: ({ url }) => url.pathname === '/svc/v1/public-config',
+              handler: 'NetworkFirst',
+              method: 'GET',
+              options: {
+                cacheName: 'lntera-api',
+                networkTimeoutSeconds: 5,
+                expiration: { maxEntries: 4, maxAgeSeconds: 60 * 60 * 24 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+            {
+              // Last-known integration status renders offline (cache-first, revalidate in background).
+              urlPattern: ({ url }) => url.pathname === '/svc/v1/me/integrations',
               handler: 'StaleWhileRevalidate',
               method: 'GET',
               options: {

@@ -10,6 +10,9 @@ import { useApp } from '../components/AppLayout';
 import { IntegrationListSkeleton } from '../components/Skeletons';
 import { SuccessArt } from '../components/Lottie';
 import { apiErrorMessage, type IntegrationStatus } from '../lib/integrations';
+import { openAuthPopup } from '../lib/oauth-popup';
+import { useNotifications } from '../lib/notifications';
+import { IS_NATIVE } from '../lib/runtime';
 
 function label(key: string): string {
   return { discord: 'Discord', groq: 'Groq', gemini: 'Gemini', tiktok: 'TikTok Shop', shopee: 'Shopee' }[key] ?? key;
@@ -33,6 +36,7 @@ export default function Integrations() {
   const { status, loadingStatus, refreshStatus } = useApp();
   const online = useOnlineStatus();
   const navigate = useNavigate();
+  const { subscribe } = useNotifications();
   const [busy, setBusy] = useState<string | null>(null);
 
   // Show a toast when returning from an OAuth callback (?connected=…&status=…), then clean the URL
@@ -48,13 +52,59 @@ export default function Integrations() {
     void refreshStatus(true);
   }, [refreshStatus, navigate]);
 
+  // Backstop for the seamless connect flow: when the backend broadcasts a `connection` event (a store
+  // linked), refresh the list and clear any spinner — covers mobile, where the OAuth tab can't always
+  // postMessage/auto-close back to the app.
+  useEffect(
+    () =>
+      subscribe((n) => {
+        if (n.kind === 'connection') {
+          setBusy(null);
+          void refreshStatus(true);
+        }
+      }),
+    [subscribe, refreshStatus],
+  );
+
   async function connectOAuth(platform: 'discord' | 'shopee' | 'tiktok') {
     setBusy(platform);
     try {
       const res = await api(`/svc/v1/me/integrations/${platform}/connect-url`, { method: 'POST' });
       const data = (await res.json()) as { url?: string; message?: string };
       if (!res.ok || !data.url) throw new Error(data.message || `Could not start ${label(platform)} connect.`);
-      window.location.href = data.url;
+
+      // Native shell: open the system browser; the app stays alive and refreshes on the realtime
+      // `connection` event above when the user returns. (Installing @capacitor/browser would enable an
+      // in-app browser that auto-dismisses — see NATIVE.md.)
+      if (IS_NATIVE) {
+        window.open(data.url, '_blank');
+        window.setTimeout(() => setBusy((b) => (b === platform ? null : b)), 1500);
+        return;
+      }
+
+      // Web/PWA: open a popup (desktop) / new tab (mobile) so the app never unloads. The backend result
+      // page messages the outcome back and closes itself; the realtime handler above is the backstop.
+      const { opened } = openAuthPopup(data.url, {
+        onResult: (r) => {
+          setBusy(null);
+          if (r.status === 'ok') {
+            celebrate(label(platform));
+            void refreshStatus(true);
+          } else {
+            toast.error(`${label(platform)} failed`, { description: r.message || 'Please try again.' });
+          }
+        },
+        onClose: () => {
+          // Closed without a message (cancel, or a mobile tab that couldn't postMessage). Refresh in
+          // case it actually succeeded.
+          setBusy(null);
+          void refreshStatus(true);
+        },
+      });
+      if (!opened) {
+        // Popup blocked → fall back to the classic full-page redirect.
+        window.location.href = data.url;
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
       setBusy(null);

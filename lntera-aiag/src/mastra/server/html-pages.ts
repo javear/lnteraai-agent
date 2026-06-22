@@ -1,3 +1,5 @@
+import { getWebAppOrigin, webAppUrl } from './web-app-origin';
+
 const SHARED_CSS = `
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
@@ -317,6 +319,38 @@ function escHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/**
+ * Inline script that lets an OAuth page (opened by the SPA in a popup / new tab) tell the opener what
+ * happened, so the app updates live without a full reload. On success it also closes the popup. It is
+ * a harmless no-op when there is no opener (e.g. a direct hit or a same-tab fallback). The message
+ * carries no secrets — just the status — so '*' is an acceptable target when the origin isn't known.
+ */
+function oauthBridgeScript(status: 'ok' | 'error', message?: string): string {
+  const origin = getWebAppOrigin();
+  const payload = JSON.stringify({ source: 'lntera-oauth', status, message: message ?? null });
+  const target = JSON.stringify(origin || '*');
+  const close = status === 'ok' ? 'setTimeout(function(){try{window.close();}catch(e){}},900);' : '';
+  return `<script>(function(){try{if(window.opener)window.opener.postMessage(${payload},${target});}catch(e){}${close}})();</script>`;
+}
+
+/** Success page shown at the end of a marketplace OAuth. Notifies the opener SPA and auto-closes. */
+export function oauthSuccessPage(args: { platform: string; shopName?: string | null }): string {
+  const detail = args.shopName
+    ? `<p class="subtitle"><strong>${escHtml(args.shopName)}</strong> is now linked to your workspace.</p>`
+    : `<p class="subtitle">Your ${escHtml(args.platform)} account is now connected.</p>`;
+  return htmlPage(
+    `${args.platform} connected`,
+    `${logoHtml()}
+<p class="platform-label">${escHtml(args.platform)} OAuth</p>
+<div class="status-badge status-success"><span class="badge-dot"></span>Connected</div>
+<h1>${escHtml(args.platform)} connected</h1>
+${detail}
+<p class="close-hint">All set — this window will close automatically. Return to Lntera to continue.</p>
+<div class="btn-row" style="margin-top:20px"><a class="btn btn-primary" href="${escHtml(webAppUrl('/integrations'))}">Return to Lntera</a></div>
+${oauthBridgeScript('ok')}`,
+  );
+}
+
 export function oauthErrorPage(args: {
   platform: string;
   title: string;
@@ -332,7 +366,9 @@ export function oauthErrorPage(args: {
 <p class="platform-label">${escHtml(args.platform)} OAuth</p>
 <div class="status-badge status-error"><span class="badge-dot"></span>Failed</div>
 <h1>${escHtml(args.title)}</h1>
-<p class="subtitle">${escHtml(args.message)}</p>${hint}`,
+<p class="subtitle">${escHtml(args.message)}</p>${hint}
+<div class="btn-row" style="margin-top:24px"><a class="btn btn-secondary" href="${escHtml(webAppUrl('/integrations'))}">Return to Lntera</a></div>
+${oauthBridgeScript('error', args.message)}`,
   );
 }
 
