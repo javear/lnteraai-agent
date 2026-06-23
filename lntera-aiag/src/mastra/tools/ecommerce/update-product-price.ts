@@ -20,6 +20,7 @@ import {
   updateTiktokPrices,
   type TiktokSkuPriceUpdate,
 } from '../../integrations/tiktok/product-write';
+import { propagateInternalPriceEdit } from '../../sync/propagate-internal-price-edit';
 
 const platformEnum = z.enum(['shopee', 'tiktok']);
 
@@ -131,6 +132,15 @@ export const updateProductPriceTool = createTool({
         modelUpdates = [{ modelId: 0, price: args.price! }];
       }
       await updateShopeePrices(client, args.productId, modelUpdates);
+      // Treat this as the internal base price → fan out to the other mapped stores (each with its margin).
+      void propagateInternalPriceEdit({
+        tenantId,
+        platform: 'shopee',
+        externalProductId: args.productId,
+        perSku: modelUpdates
+          .filter((m): m is ShopeeModelUpdate & { price: number } => typeof m.price === 'number')
+          .map((m) => ({ externalSkuId: String(m.modelId), price: m.price })),
+      });
       return { success: true, message: `Shopee item ${args.productId} prices updated.`, count: modelUpdates.length };
     }
 
@@ -191,6 +201,13 @@ export const updateProductPriceTool = createTool({
         }
 
         await updateTiktokPrices(client, args.productId, tiktokUpdates, shopCipher);
+        // Treat this as the internal base price → fan out to the other mapped stores (each with its margin).
+        void propagateInternalPriceEdit({
+          tenantId,
+          platform: 'tiktok',
+          externalProductId: args.productId,
+          perSku: tiktokUpdates.map((u) => ({ externalSkuId: u.skuId, price: u.price })),
+        });
         return tiktokUpdates.length;
       },
     });
