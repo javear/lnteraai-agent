@@ -2,6 +2,7 @@ import { registerApiRoute } from '@mastra/core/server';
 import { logErrorBrief } from '../../logger/compact-error';
 import {
   extractTiktokShopIdentity,
+  repairTiktokBigIntIds,
   verifyTiktokWebhookSignature,
 } from '../../integrations/tiktok/webhook';
 import { getTiktokConfig } from '../../integrations/tiktok/config';
@@ -69,6 +70,9 @@ export const tiktokWebhookRoute = registerApiRoute(WEBHOOK_PATH, {
     } catch {
       return c.json({ ok: false, error: 'invalid_json' }, 400);
     }
+    // JSON.parse rounds TikTok's ~19-digit numeric ids past 2^53 — restore the exact strings from the
+    // raw body so the product-detail fetch + tenant resolution use the real ids.
+    repairTiktokBigIntIds(rawBody, payload);
 
     const event = classifyWebhookEvent('tiktok', payload);
     if (!shouldProcessEvent(event)) {
