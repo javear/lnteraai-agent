@@ -36,6 +36,8 @@ export async function reconcileAndPropagateFromMarketplace(args: {
       externalProductId: mapping.external_product_id,
       internalSkus,
       detail: args.detail,
+      // This is the source marketplace → align internal to its current stock on first seed.
+      adoptInternalStock: true,
     });
     if (links.length === 0) return;
 

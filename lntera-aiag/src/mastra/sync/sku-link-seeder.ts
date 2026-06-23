@@ -5,7 +5,7 @@ import type { MarketplaceConnection } from '../integrations/shared/types';
 import type { NormalizedProductDetail } from '../integrations/shared/products';
 import { fetchNormalizedProductDetail } from '../integrations/shared/product-detail-fetch';
 import { getLinksByMapping, upsertSkuLink, updateLinkSnapshot, type SkuLinkRow } from '../integrations/products/sku-links-repo';
-import type { InternalSkuStock } from '../integrations/products/inventory-repo';
+import { applyInventoryDelta, type InternalSkuStock } from '../integrations/products/inventory-repo';
 import { matchSkus } from './sku-matcher';
 
 export async function ensureSkuLinks(args: {
@@ -16,6 +16,12 @@ export async function ensureSkuLinks(args: {
   internalSkus: InternalSkuStock[];
   /** Pre-fetched detail (the feeder already has it); fetched on demand otherwise. */
   detail?: NormalizedProductDetail | null;
+  /**
+   * Align internal stock to the store's current stock when first seeding. Pass ONLY from the
+   * source-marketplace feeder — so the master reflects that store's reality from the start instead of
+   * being permanently offset. NEVER pass from the fan-out path (we'd adopt a TARGET store's stock).
+   */
+  adoptInternalStock?: boolean;
 }): Promise<SkuLinkRow[]> {
   const existing = await getLinksByMapping(args.mappingId);
   if (existing.length > 0) return existing;
@@ -53,6 +59,12 @@ export async function ensureSkuLinks(args: {
     // Baseline the delta snapshot at the store's current stock.
     if (typeof variant.stock === 'number') {
       await updateLinkSnapshot(link.id, { lastSeenExternalStock: variant.stock });
+      // First seed from the source marketplace → adopt that stock as internal truth so the master isn't
+      // left permanently offset from reality. Silent: this is the baseline, not a seller-made change.
+      if (args.adoptInternalStock) {
+        const adopt = variant.stock - internalSku.quantity;
+        if (adopt !== 0) await applyInventoryDelta(internalSku.id, internalSku.primaryWarehouseId, adopt);
+      }
     }
   }
 
