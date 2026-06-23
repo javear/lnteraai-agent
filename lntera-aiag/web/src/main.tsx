@@ -77,41 +77,6 @@ function RecoveryRedirect() {
   return null;
 }
 
-/** Popup-callback for Google SSO. Supabase finalizes the session here (detectSessionInUrl), then this
- *  popup notifies its opener and closes — the opener tab signs in via Supabase's cross-tab session sync.
- *  If the popup was blocked (this loaded in the same tab via a full redirect), it just enters the app. */
-function AuthPopupCallback() {
-  const { session } = useAuth();
-  useEffect(() => {
-    const finish = (status: 'ok' | 'error') => {
-      // Best-effort notify the opener — but Google's OAuth pages set Cross-Origin-Opener-Policy, which
-      // severs window.opener after the round-trip, so we must NOT gate closing on it. The opener tab
-      // signs in via Supabase's cross-tab session sync regardless of whether this message arrives.
-      try {
-        window.opener?.postMessage({ source: 'lntera-oauth', status }, window.location.origin);
-      } catch {
-        /* opener gone (COOP) */
-      }
-      // A script-opened popup can close itself even when the opener is severed. If closing is blocked
-      // (popup was blocked → this ran in the MAIN tab; or a mobile tab that can't self-close), fall
-      // back to entering the app so the user is never stranded on the callback — and never left with
-      // two logged-in tabs because the popup silently became an app tab.
-      window.close();
-      window.setTimeout(() => {
-        if (!window.closed) window.location.replace(import.meta.env.BASE_URL || '/');
-      }, 500);
-    };
-    if (session) {
-      finish('ok');
-      return;
-    }
-    // No session yet — detectSessionInUrl is still exchanging the code. Give up after a grace period.
-    const t = window.setTimeout(() => finish('error'), 8000);
-    return () => window.clearTimeout(t);
-  }, [session]);
-  return <BootScreen />;
-}
-
 function Boot() {
   const [supabase, setSupabase] = useState<SupabaseClient | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -175,7 +140,6 @@ function Boot() {
             </Suspense>
           }
         />
-        <Route path="/auth/popup" element={<AuthPopupCallback />} />
         <Route element={<AppGate />}>
           <Route
             path="/"
