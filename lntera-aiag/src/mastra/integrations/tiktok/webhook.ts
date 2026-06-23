@@ -67,6 +67,28 @@ export interface TiktokWebhookShopIdentity {
   shopCipher: string | null;
 }
 
+/**
+ * Repair TikTok's big-integer ids in a parsed payload.
+ *
+ * TikTok sends `product_id` / `sku_id` / `seller_id` as raw JSON *numbers* (~19 digits). JS numbers are
+ * only exact to 2^53 (~16 digits), so `JSON.parse` silently rounds them (e.g. `…267998` → `…268000`) —
+ * which then 404s the product-detail fetch ("nonexistent product id"). Re-read the exact digit strings
+ * from the raw body and write them back as strings, in place, before anything consumes the payload.
+ */
+export function repairTiktokBigIntIds(rawBody: string, payload: unknown): void {
+  if (!payload || typeof payload !== 'object') return;
+  const obj = payload as Record<string, unknown>;
+  const data = obj.data && typeof obj.data === 'object' ? (obj.data as Record<string, unknown>) : null;
+  for (const key of ['product_id', 'sku_id', 'seller_id', 'shop_id'] as const) {
+    // Match the first unquoted-or-quoted run of >=12 digits for this key in the raw JSON text.
+    const m = rawBody.match(new RegExp(`"${key}"\\s*:\\s*"?(\\d{12,})"?`));
+    if (!m) continue;
+    const exact = m[1];
+    if (typeof obj[key] === 'number') obj[key] = exact;
+    if (data && typeof data[key] === 'number') data[key] = exact;
+  }
+}
+
 export function extractTiktokShopIdentity(payload: unknown): TiktokWebhookShopIdentity {
   if (!payload || typeof payload !== 'object') return { shopId: null, shopCipher: null };
   const obj = payload as Record<string, unknown>;
