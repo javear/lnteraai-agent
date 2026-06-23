@@ -1,6 +1,7 @@
 import { registerApiRoute } from '@mastra/core/server';
 import { logErrorBrief } from '../../../logger/compact-error';
 import { applyProductSyncAction } from '../../../sync/product-sync-actions';
+import { applySyncProposal } from '../../../sync/apply-sync-proposal';
 import { resyncMarketplaceProducts } from '../../../sync/product-sync-engine';
 import { notifyResyncOutcome } from '../../../sync/product-sync-notifier';
 import { setSyncPrefs } from '../../../integrations/shared/sync-prefs';
@@ -115,4 +116,41 @@ const resyncRoute = registerApiRoute(`${OPEN_API_PREFIX}/products/resync`, {
   },
 });
 
-export const productSyncActionRoutes = [syncActionRoute, resyncRoute];
+/**
+ * POST /svc/v1/products/sync-proposals/:proposalId — apply ('apply' / 'apply_always') or 'dismiss' a
+ * bidirectional-sync propagation proposal. Apply re-validates against current internal truth before
+ * pushing; 'apply_always' flips the tenant to autopilot for that attribute. Never invokes the agent.
+ */
+const syncProposalRoute = registerApiRoute(`${OPEN_API_PREFIX}/products/sync-proposals/:proposalId`, {
+  method: 'POST',
+  requiresAuth: false,
+  openapi: {
+    summary: 'Apply or dismiss a bidirectional-sync propagation proposal',
+    tags: [...OPENAPI_TAGS.root],
+    parameters: [authHeaderParam],
+    responses: {
+      200: { description: 'Applied / dismissed' },
+      400: { description: 'Bad request' },
+      401: { description: 'Unauthorized' },
+      404: { description: 'Proposal not found' },
+    },
+  },
+  handler: async (c: ActionContext) => {
+    const auth = await resolveTenantFromBearer(c);
+    if (auth instanceof Response) return auth;
+
+    const proposalId = c.req.param('proposalId');
+    if (!proposalId) return openApiJsonError(c, 400, 'bad_request', 'A proposalId is required.');
+
+    const body = (await c.req.json<{ choice?: string }>().catch(() => ({}))) as { choice?: string };
+    const choice = (body.choice ?? '').trim();
+    if (!choice) return openApiJsonError(c, 400, 'bad_request', 'A choice is required.');
+
+    const result = await applySyncProposal({ tenantId: auth.tenantId, proposalId, choice });
+    if (result.status === 'not_found') return openApiJsonError(c, 404, 'not_found', result.message);
+    if (result.status === 'invalid') return openApiJsonError(c, 400, 'bad_request', result.message);
+    return c.json({ ok: true, status: result.status, message: result.message, prefUpdated: result.prefUpdated });
+  },
+});
+
+export const productSyncActionRoutes = [syncActionRoute, resyncRoute, syncProposalRoute];

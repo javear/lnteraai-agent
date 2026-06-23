@@ -29,6 +29,24 @@ export async function postSyncAction(api: Api, linkId: string, choice: string): 
   };
 }
 
+/** Apply ('apply' / 'apply_always') or 'dismiss' a bidirectional-sync propagation proposal. */
+export async function postPropagate(
+  api: Api,
+  proposalId: string,
+  choice: string,
+): Promise<{ ok: boolean; message: string }> {
+  const res = await api(`/svc/v1/products/sync-proposals/${encodeURIComponent(proposalId)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ choice }),
+  });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string };
+  return {
+    ok: res.ok && (data.ok ?? true),
+    message: data.message ?? (res.ok ? 'Done.' : `Failed (${res.status}).`),
+  };
+}
+
 export async function postResync(
   api: Api,
   opts: { platform?: string; mode?: string } = {},

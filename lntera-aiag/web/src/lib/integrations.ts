@@ -2,8 +2,8 @@ export interface IntegrationStatus {
   discord: { connected: boolean; guildId: string | null; channelId: string | null };
   groq: { status: string; connectedAt: string | null };
   gemini: { status: string; connectedAt: string | null };
-  shopee: { shopId: string; shopName: string | null }[];
-  tiktok: { openId: string; shopName: string | null; region: string | null }[];
+  shopee: { connectionId: string; shopId: string; shopName: string | null }[];
+  tiktok: { connectionId: string; openId: string; shopName: string | null; region: string | null }[];
 }
 
 type Api = (path: string, init?: RequestInit) => Promise<Response>;

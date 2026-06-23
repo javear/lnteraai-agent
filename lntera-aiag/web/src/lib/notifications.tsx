@@ -20,7 +20,13 @@ import { NotificationSettings } from '../components/NotificationSettings';
 const INAPP_PREF_KEY = 'lntera-inapp-alerts';
 
 /** Token-free action button (mirrors server broadcast.ts NotificationAction). */
-export type NotificationActionKind = 'sync_action' | 'resync' | 'list_on_marketplace' | 'link' | 'dismiss';
+export type NotificationActionKind =
+  | 'sync_action'
+  | 'propagate'
+  | 'resync'
+  | 'list_on_marketplace'
+  | 'link'
+  | 'dismiss';
 
 export interface NotificationAction {
   id: string;
@@ -36,6 +42,9 @@ export interface NotificationContextRef {
   platform?: string;
   productId?: string;
   shopId?: string;
+  /** Bidirectional-sync propagation proposal (the 'propagate' action targets this). */
+  proposalId?: string;
+  attribute?: 'stock' | 'price';
 }
 
 /** A tenant notification pushed from the server over Supabase Realtime (see server broadcast.ts). */

@@ -14,6 +14,7 @@ import { useOnlineStatus } from '../lib/pwa';
 import { ProviderConnect, PROVIDER_CONNECT_CONFIGS } from '../components/ProviderConnect';
 import { Alert, Button, Logo, Modal } from '../ui';
 import { InsightSettings } from '../components/InsightSettings';
+import { AutopilotSettings } from '../components/AutopilotSettings';
 import { MessageBubble, type ChatMessage } from '../components/chat/Message';
 import { Suggestions } from '../components/chat/Suggestions';
 import { Composer } from '../components/chat/Composer';
@@ -546,10 +547,15 @@ export default function Chat() {
       <Modal
         open={automationOpen}
         onClose={() => setAutomationOpen(false)}
-        title="Automatic analysis"
-        subtitle="Let your Active Agent analyze your shops on a schedule."
+        title="Active Agent settings"
+        subtitle="Automatic analysis + stock/price sync across your stores."
       >
-        <InsightSettings />
+        <div className="flex flex-col gap-6">
+          <AutopilotSettings />
+          <div className="border-t pt-6">
+            <InsightSettings />
+          </div>
+        </div>
       </Modal>
     </div>
   );

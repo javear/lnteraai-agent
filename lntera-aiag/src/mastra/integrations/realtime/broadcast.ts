@@ -6,6 +6,7 @@ import type { ChartSpec } from '../../insights/types';
  *  'dismiss' is purely client-side (disable the buttons, no request). */
 export type NotificationActionKind =
   | 'sync_action'
+  | 'propagate'
   | 'resync'
   | 'list_on_marketplace'
   | 'link'
@@ -28,6 +29,9 @@ export interface NotificationContextRef {
   platform?: string;
   productId?: string;
   shopId?: string;
+  /** Bidirectional-sync propagation proposal (the 'propagate' action targets this). */
+  proposalId?: string;
+  attribute?: 'stock' | 'price';
 }
 
 /** Payload delivered to a tenant's web/native clients over Supabase Realtime. */
