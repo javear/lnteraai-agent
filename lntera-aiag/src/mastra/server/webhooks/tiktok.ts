@@ -6,6 +6,7 @@ import {
 } from '../../integrations/tiktok/webhook';
 import { getTiktokConfig } from '../../integrations/tiktok/config';
 import { findTiktokConnectionByShopId } from '../../integrations/shared/marketplace-resolve';
+import { remapTestShopId } from '../../integrations/shared/test-shop-remap';
 import {
   classifyWebhookEvent,
   isProductEvent,
@@ -100,8 +101,12 @@ export const tiktokWebhookRoute = registerApiRoute(WEBHOOK_PATH, {
       return c.json({ ok: true, ignored: true, reason: 'missing_shop_identity' });
     }
 
+    // TEST-ONLY: route a console "test push" shop_id to a connected shop (TIKTOK_TEST_SHOP_REMAP).
+    const shopId = identity.shopId ? remapTestShopId('tiktok', identity.shopId) : identity.shopId;
+    if (shopId !== identity.shopId) console.info(`[webhook] tiktok test-remap shop_id ${identity.shopId} → ${shopId}`);
+
     const connection = await findTiktokConnectionByShopId({
-      shopId: identity.shopId,
+      shopId,
       shopCipher: identity.shopCipher,
     }).catch((err) => {
       logErrorBrief('[webhook] tiktok tenant resolve failed', err);
