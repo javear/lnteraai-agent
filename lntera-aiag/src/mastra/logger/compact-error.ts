@@ -46,6 +46,14 @@ export function compactError(err: unknown): CompactErrorInfo {
   return { type: 'Error', message: String(err) };
 }
 
+/** AI-SDK `APICallError` fields that, at the TOP LEVEL of a log's args, mean the args object IS the
+ *  error (logged directly, not under err/error) — so we collapse it instead of dumping all of it. */
+const API_ERROR_MARKERS = ['responseBody', 'responseHeaders', 'requestBodyValues', 'isRetryable'] as const;
+
+function looksLikeApiCallError(o: Record<string, unknown>): boolean {
+  return API_ERROR_MARKERS.some((k) => k in o);
+}
+
 function compactArgs(args: Record<string, unknown> = {}): Record<string, unknown> {
   const out = { ...args };
   if ('err' in out && out.err != null) {
@@ -53,6 +61,13 @@ function compactArgs(args: Record<string, unknown> = {}): Record<string, unknown
   }
   if ('error' in out && out.error != null) {
     out.error = compactError(out.error);
+  }
+  // Mastra/the AI SDK sometimes logs the APICallError as the args object itself, so its verbose guts
+  // (statusCode/responseHeaders/responseBody/data/isRetryable/responseChunks/…) land at the top level.
+  // Collapse the whole thing to a one-line {type,message} so Groq/Gemini rate-limit + API errors stay
+  // readable instead of dumping headers, cookies and the full response body.
+  if (looksLikeApiCallError(out)) {
+    return { error: compactError(out) };
   }
   return out;
 }

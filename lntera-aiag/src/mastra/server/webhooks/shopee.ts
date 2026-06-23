@@ -6,6 +6,7 @@ import {
   verifyShopeePushSignature,
 } from '../../integrations/shopee/webhook';
 import { findShopeeConnectionByShopId } from '../../integrations/shared/marketplace-resolve';
+import { remapTestShopId } from '../../integrations/shared/test-shop-remap';
 import {
   classifyWebhookEvent,
   isProductEvent,
@@ -76,11 +77,14 @@ export const shopeeWebhookRoute = registerApiRoute(WEBHOOK_PATH, {
       return c.json({ ok: true, ignored: true, code: event.code });
     }
 
-    const shopId = extractShopeeShopId(payload);
-    if (!shopId) {
+    const rawShopId = extractShopeeShopId(payload);
+    if (!rawShopId) {
       console.warn('[webhook] shopee event missing shop_id', { code: event.code });
       return c.json({ ok: true, ignored: true, reason: 'missing_shop_id' });
     }
+    // TEST-ONLY: route a console "test push" shop_id to a connected shop (SHOPEE_TEST_SHOP_REMAP).
+    const shopId = remapTestShopId('shopee', rawShopId);
+    if (shopId !== rawShopId) console.info(`[webhook] shopee test-remap shop_id ${rawShopId} → ${shopId}`);
 
     const connection = await findShopeeConnectionByShopId(shopId).catch((err) => {
       logErrorBrief('[webhook] shopee tenant resolve failed', err);
