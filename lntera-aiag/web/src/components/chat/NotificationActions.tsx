@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, Loader2 } from 'lucide-react';
 import { useAuth } from '../../auth';
-import { postResync, postSyncAction } from '../../lib/product-sync-actions';
+import { postPropagate, postResync, postSyncAction } from '../../lib/product-sync-actions';
 import type { NotificationAction, NotificationContextRef } from '../../lib/notifications';
 
 /**
@@ -42,6 +42,14 @@ export function NotificationActions({
       if (a.kind === 'resync') {
         const r = await postResync(api, { platform: contextRef?.platform, mode: a.id });
         setDone({ message: r.message, ok: true });
+      } else if (a.kind === 'propagate') {
+        // Bidirectional-sync propagation proposal — needs the proposal id.
+        if (!contextRef?.proposalId) {
+          setDone({ message: 'This sync request is no longer available.' });
+          return;
+        }
+        const r = await postPropagate(api, contextRef.proposalId, a.id);
+        setDone({ message: r.message, ok: r.ok });
       } else {
         // sync_action — needs the mapping link id.
         if (!contextRef?.linkId) {

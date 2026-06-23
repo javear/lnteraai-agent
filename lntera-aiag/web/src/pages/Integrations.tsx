@@ -13,6 +13,9 @@ import { apiErrorMessage, type IntegrationStatus } from '../lib/integrations';
 import { openAuthPopup } from '../lib/oauth-popup';
 import { useNotifications } from '../lib/notifications';
 import { IS_NATIVE } from '../lib/runtime';
+import { SyncPrefsSettings } from '../components/SyncPrefsSettings';
+import { StoreSyncConfig } from '../components/StoreSyncConfig';
+import { getStores, type StoreSyncRow } from '../lib/sync-config';
 
 function label(key: string): string {
   return { discord: 'Discord', groq: 'Groq', gemini: 'Gemini', tiktok: 'TikTok Shop', shopee: 'Shopee' }[key] ?? key;
@@ -38,6 +41,23 @@ export default function Integrations() {
   const navigate = useNavigate();
   const { subscribe } = useNotifications();
   const [busy, setBusy] = useState<string | null>(null);
+  const [storeCfgs, setStoreCfgs] = useState<Map<string, StoreSyncRow>>(new Map());
+
+  // Per-store sync transforms (margins / stock cap), keyed by connectionId. Reload when stores change.
+  useEffect(() => {
+    let cancelled = false;
+    getStores(api)
+      .then((rows) => {
+        if (!cancelled) setStoreCfgs(new Map(rows.map((r) => [r.connectionId, r])));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [api, status]);
+
+  const onStoreCfgSaved = (saved: StoreSyncRow) =>
+    setStoreCfgs((m) => new Map(m).set(saved.connectionId, saved));
 
   // Show a toast when returning from an OAuth callback (?connected=…&status=…), then clean the URL
   // (router-aware so it works under both the /app basename and native hash routing).
@@ -195,7 +215,14 @@ export default function Integrations() {
           <MarketplaceCard
             name="TikTok Shop"
             platform="tiktok"
-            stores={(status?.tiktok ?? []).map((s) => ({ id: s.openId, shopName: s.shopName, region: s.region }))}
+            stores={(status?.tiktok ?? []).map((s) => ({
+              id: s.openId,
+              connectionId: s.connectionId,
+              shopName: s.shopName,
+              region: s.region,
+            }))}
+            storeCfgs={storeCfgs}
+            onStoreCfgSaved={onStoreCfgSaved}
             busy={busy}
             disabled={!online}
             onConnect={() => connectOAuth('tiktok')}
@@ -204,12 +231,20 @@ export default function Integrations() {
           <MarketplaceCard
             name="Shopee"
             platform="shopee"
-            stores={(status?.shopee ?? []).map((s) => ({ id: s.shopId, shopName: s.shopName, region: null }))}
+            stores={(status?.shopee ?? []).map((s) => ({
+              id: s.shopId,
+              connectionId: s.connectionId,
+              shopName: s.shopName,
+              region: null,
+            }))}
+            storeCfgs={storeCfgs}
+            onStoreCfgSaved={onStoreCfgSaved}
             busy={busy}
             disabled={!online}
             onConnect={() => connectOAuth('shopee')}
             onRemove={(id, dn) => disconnectStore('shopee', id, dn)}
           />
+          <SyncPrefsSettings />
         </div>
       )}
     </div>
@@ -330,6 +365,7 @@ function LlmProviderCard({
 
 interface MarketplaceStore {
   id: string;
+  connectionId: string;
   shopName: string | null;
   region: string | null;
 }
@@ -339,6 +375,8 @@ function MarketplaceCard({
   name,
   platform,
   stores,
+  storeCfgs,
+  onStoreCfgSaved,
   busy,
   disabled,
   onConnect,
@@ -347,6 +385,8 @@ function MarketplaceCard({
   name: string;
   platform: 'shopee' | 'tiktok';
   stores: MarketplaceStore[];
+  storeCfgs: Map<string, StoreSyncRow>;
+  onStoreCfgSaved: (s: StoreSyncRow) => void;
   busy: string | null;
   disabled: boolean;
   onConnect: () => void;
@@ -386,24 +426,22 @@ function MarketplaceCard({
               const display = s.shopName || s.id;
               const removing = busy === `${platform}:${s.id}`;
               return (
-                <li
-                  key={s.id}
-                  className="flex items-center justify-between gap-3 rounded-lg border bg-muted/30 px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate text-[13px] font-medium">{display}</div>
-                    <div className="truncate text-[11px] text-muted-foreground">
-                      {s.region ? `${s.region} · ` : ''}
-                      {s.id}
+                <li key={s.id} className="flex flex-col gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-[13px] font-medium">{display}</div>
+                      <div className="truncate text-[11px] text-muted-foreground">
+                        {s.region ? `${s.region} · ` : ''}
+                        {s.id}
+                      </div>
                     </div>
+                    <Button variant="danger" disabled={removing || disabled} onClick={() => onRemove(s.id, display)}>
+                      {removing ? 'Removing…' : 'Remove'}
+                    </Button>
                   </div>
-                  <Button
-                    variant="danger"
-                    disabled={removing || disabled}
-                    onClick={() => onRemove(s.id, display)}
-                  >
-                    {removing ? 'Removing…' : 'Remove'}
-                  </Button>
+                  {storeCfgs.get(s.connectionId) ? (
+                    <StoreSyncConfig store={storeCfgs.get(s.connectionId)!} onSaved={onStoreCfgSaved} />
+                  ) : null}
                 </li>
               );
             })}

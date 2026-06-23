@@ -92,8 +92,9 @@ export const meIntegrationsStatusRoute = registerApiRoute(`${OPEN_API_PREFIX}/me
         status: geminiConfig?.status ?? 'not_connected',
         connectedAt: geminiConfig?.connectedAt ?? null,
       },
-      shopee: shopeeConns.map((c2) => ({ shopId: c2.external_shop_id, shopName: c2.shop_name })),
+      shopee: shopeeConns.map((c2) => ({ connectionId: c2.id, shopId: c2.external_shop_id, shopName: c2.shop_name })),
       tiktok: tiktokConns.map((c2) => ({
+        connectionId: c2.id,
         openId: c2.external_shop_id,
         shopName: c2.shop_name,
         region: c2.region,
