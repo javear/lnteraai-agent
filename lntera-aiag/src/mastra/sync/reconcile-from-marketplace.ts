@@ -61,14 +61,21 @@ export async function reconcileAndPropagateFromMarketplace(args: {
         continue;
       }
 
-      const baseline = link.last_seen_external_stock;
-      await updateLinkSnapshot(link.id, { lastSeenExternalStock: fresh });
-      if (baseline == null) continue; // first sight → adopt baseline, no delta
-      const delta = fresh - baseline;
-      if (delta === 0) continue;
-
       const internal = internalById.get(link.internal_sku_id);
       if (!internal) continue;
+      const baseline = link.last_seen_external_stock;
+      await updateLinkSnapshot(link.id, { lastSeenExternalStock: fresh });
+
+      if (baseline == null) {
+        // First sight of this link → adopt the marketplace's current stock as internal truth so the
+        // internal master tracks reality immediately. No fan-out: an initial sync isn't a "change".
+        const adopt = fresh - internal.quantity;
+        if (adopt !== 0) await applyInventoryDelta(internal.id, internal.primaryWarehouseId, adopt);
+        continue;
+      }
+
+      const delta = fresh - baseline;
+      if (delta === 0) continue;
       await applyInventoryDelta(internal.id, internal.primaryWarehouseId, delta);
       appliedAnyDelta = true;
     }
@@ -82,6 +89,8 @@ export async function reconcileAndPropagateFromMarketplace(args: {
         sourceConnectionId: args.connection.id,
         sourceSummary: `${platformLabel} stock for "${args.detail.title}" changed.`,
       });
+    } else {
+      console.info(`[sync] reconcile "${args.detail.title}": internal stock synced; no delta to propagate.`);
     }
   } catch (err) {
     logErrorBrief(`[sync] reconcile-from-marketplace failed (mapping=${args.mappingId})`, err);

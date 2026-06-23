@@ -57,6 +57,8 @@ const TIKTOK_PRODUCT_CODES = new Set([
  *  5  Shipping document update (carrier label)
  *  9  Order tax info
  *  12 Cancellation status update
+ *  37 Product audit status change   → products
+ *  68 Inventory (stock) changed      → products  (carries change_detail[].*_quantity_delta + snapshot)
  *
  * Sources differ between Partner Center revisions; allow-list errs toward what we actually
  * want to forward to the agent. Anything not listed below is treated as `other`.
@@ -67,6 +69,8 @@ const TIKTOK_TYPE_CODE_TO_CATEGORY: Record<number, EventCategory> = {
   4: 'fulfillment',
   5: 'fulfillment',
   12: 'returns',
+  37: 'products',
+  68: 'products',
 };
 
 /**

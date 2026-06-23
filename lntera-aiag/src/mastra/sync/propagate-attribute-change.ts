@@ -67,7 +67,12 @@ export async function propagateAttributeChange(args: {
     const mappings = (await getDecidedMappingsByInternal(args.masterProductId)).filter(
       (m) => m.internal_product_id && m.marketplace_connection_id !== args.sourceConnectionId,
     );
-    if (mappings.length === 0) return;
+    if (mappings.length === 0) {
+      console.info(
+        `[sync] propagate ${args.attribute}: product ${args.masterProductId} isn't mapped to any other store — nothing to propagate.`,
+      );
+      return;
+    }
 
     const conns = await listConnectionsByTenant(args.tenantId, ['shopee', 'tiktok']);
     const connById = new Map(conns.map((c) => [c.id, c]));
