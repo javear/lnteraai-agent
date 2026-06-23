@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
-import { apiUrl, IS_NATIVE } from './lib/runtime';
+import { apiUrl } from './lib/runtime';
 
 interface AuthContextValue {
   supabase: SupabaseClient;
@@ -150,25 +150,15 @@ export function SessionProvider({
         if (error) throw error;
       },
       signInGoogle: async () => {
-        // Land on a dedicated popup-callback route that finalizes the session and closes the window.
-        // BASE_URL ends with '/', so `${origin}/auth/popup` (Vercel) or `${origin}/app/auth/popup` (monolith).
-        // NOTE: this URL must be allow-listed in Supabase Auth → URL Configuration (a `…/**` wildcard covers it).
-        const redirectTo = `${location.origin}${import.meta.env.BASE_URL}auth/popup`;
-        const { data, error } = await supabase.auth.signInWithOAuth({
+        // Full-page redirect in the SAME tab — robust everywhere. (A popup/new tab can't be reliably
+        // closed once Google's Cross-Origin-Opener-Policy severs window.opener, which left a second
+        // logged-in session tab; single-tab redirect avoids that entirely.)
+        // BASE_URL ends with '/', so `${origin}/app/login` (monolith) or `${origin}/login` (Vercel).
+        const { error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
-          options: { redirectTo, skipBrowserRedirect: true },
+          options: { redirectTo: `${location.origin}${import.meta.env.BASE_URL}login` },
         });
         if (error) throw error;
-        if (!data?.url) throw new Error('Could not start Google sign-in.');
-        // Native shell → full-page redirect (no popup/opener model). Web/PWA → open Google in a popup so
-        // the landing/login page never unloads; the popup finalizes the session (shared same-origin
-        // storage) and closes, and THIS tab signs in via Supabase's cross-tab sync. Blocked popup → redirect.
-        if (IS_NATIVE) {
-          window.location.href = data.url;
-          return;
-        }
-        const popup = window.open(data.url, 'lntera_google', 'popup=yes,width=480,height=640,menubar=no,toolbar=no');
-        if (!popup) window.location.href = data.url;
       },
       resetPassword: async (email) => {
         // BASE_URL ends with '/', so this is `${origin}/app/reset-password` (monolith) or `${origin}/reset-password`.
