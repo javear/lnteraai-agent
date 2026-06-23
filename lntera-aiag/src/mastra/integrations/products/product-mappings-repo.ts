@@ -68,6 +68,18 @@ export async function getMappingById(id: string): Promise<ProductMappingRow | nu
   return (data as ProductMappingRow | null) ?? null;
 }
 
+/** All DECIDED mappings (across every store) that point at one internal product — the fan-out targets
+ *  for bidirectional propagation. (Uses the product_mappings_internal_idx index.) */
+export async function getDecidedMappingsByInternal(internalProductId: string): Promise<ProductMappingRow[]> {
+  const { data, error } = await getSupabase()
+    .from(TABLE)
+    .select('*')
+    .eq('internal_product_id', internalProductId)
+    .in('status', DECIDED_STATUSES);
+  if (error) throw new Error(`Failed to read mappings by internal product: ${error.message}`);
+  return (data as ProductMappingRow[] | null) ?? [];
+}
+
 export interface UpsertMappingInput {
   tenantId: string;
   internalProductId?: string | null;
