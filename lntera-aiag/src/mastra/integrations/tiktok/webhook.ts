@@ -45,16 +45,11 @@ export function verifyTiktokWebhookSignature(input: TiktokWebhookVerifyInput): T
   const provided = input.signatures.map((s) => (s ?? '').trim().toLowerCase()).filter(Boolean);
   if (provided.length === 0) return { ok: false, reason: 'signature_header_missing' };
 
-  // Documented scheme first, then fallbacks (raw body; legacy app_secret-prefixed).
-  const candidates: Array<{ scheme: string; value: string }> = [
-    { scheme: 'app_key+body', value: hmacHex(input.appSecret, `${input.appKey}${input.rawBody}`) },
-    { scheme: 'body', value: hmacHex(input.appSecret, input.rawBody) },
-    { scheme: 'app_secret+body', value: hmacHex(input.appSecret, `${input.appSecret}${input.rawBody}`) },
-  ];
-  for (const cand of candidates) {
-    for (const sig of provided) {
-      if (eqHex(sig, cand.value)) return { ok: true, scheme: cand.scheme };
-    }
+  // Confirmed scheme (TikTok Shop Partner Center): HMAC-SHA256(app_secret, app_key + rawBody), hex,
+  // delivered in the Authorization header. Locked to this single scheme.
+  const expected = hmacHex(input.appSecret, `${input.appKey}${input.rawBody}`);
+  for (const sig of provided) {
+    if (eqHex(sig, expected)) return { ok: true, scheme: 'app_key+body' };
   }
   return { ok: false, reason: 'signature_mismatch' };
 }
@@ -75,30 +70,30 @@ export interface TiktokWebhookShopIdentity {
 export function extractTiktokShopIdentity(payload: unknown): TiktokWebhookShopIdentity {
   if (!payload || typeof payload !== 'object') return { shopId: null, shopCipher: null };
   const obj = payload as Record<string, unknown>;
+  const data = (obj.data && typeof obj.data === 'object' ? obj.data : {}) as Record<string, unknown>;
 
-  let shopId: string | null = null;
-  let shopCipher: string | null = null;
-
-  const top = obj.shop_id;
-  if (typeof top === 'number' && Number.isFinite(top)) shopId = String(top);
-  else if (typeof top === 'string' && top.trim()) shopId = top.trim();
-
-  const topCipher = obj.shop_cipher;
-  if (typeof topCipher === 'string' && topCipher.trim()) shopCipher = topCipher.trim();
-
-  const data = obj.data;
-  if (data && typeof data === 'object') {
-    const d = data as Record<string, unknown>;
-    if (!shopId) {
-      const v = d.shop_id;
-      if (typeof v === 'number' && Number.isFinite(v)) shopId = String(v);
-      else if (typeof v === 'string' && v.trim()) shopId = v.trim();
+  const pick = (...vals: unknown[]): string | null => {
+    for (const v of vals) {
+      if (typeof v === 'string' && v.trim()) return v.trim();
+      if (typeof v === 'number' && Number.isFinite(v)) return String(v);
     }
-    if (!shopCipher) {
-      const v = d.shop_cipher;
-      if (typeof v === 'string' && v.trim()) shopCipher = v.trim();
-    }
-  }
+    return null;
+  };
+
+  // Event types differ: order/product-audit events carry `shop_id`; the inventory event (type 68)
+  // carries `seller_open_id` (= our connection's external_shop_id) + numeric `seller_id`. We prefer the
+  // open id (matches external_shop_id directly) and fall back to the numeric ids (match raw_metadata.shops[].id).
+  const shopId = pick(
+    obj.seller_open_id,
+    obj.open_id,
+    obj.shop_id,
+    obj.seller_id,
+    data.seller_open_id,
+    data.open_id,
+    data.shop_id,
+    data.seller_id,
+  );
+  const shopCipher = pick(obj.shop_cipher, data.shop_cipher);
 
   return { shopId, shopCipher };
 }

@@ -50,45 +50,17 @@ export const tiktokWebhookRoute = registerApiRoute(WEBHOOK_PATH, {
 
     const rawBody = await c.req.text();
 
-    // TikTok Shop's webhook auth isn't clearly documented and our previous `x-tts-signature` guess was
-    // wrong — every push was rejected as signature_header_missing. Introspect the actual headers so we
-    // can pin the real scheme, then verify IF a signature is present. A missing/mismatching signature is
-    // logged but NOT fatal for now: the shop_id→tenant resolution below is the gate and these events are
-    // read-only notifications. Once the logged header + value confirm TikTok's algorithm, re-enable a
-    // hard reject here.
-    let sigHeaderName: string | null = null;
-    let signatureHeader: string | null = null;
-    try {
-      const keys: string[] = [];
-      for (const [k, v] of c.req.raw.headers) {
-        keys.push(k);
-        if (!signatureHeader && /(signature|^sign$|authorization|hmac)/i.test(k)) {
-          sigHeaderName = k;
-          signatureHeader = v;
-        }
-      }
-      console.info(
-        '[webhook] tiktok headers',
-        JSON.stringify({ keys, sigHeader: sigHeaderName, sigSample: signatureHeader ? `${signatureHeader.slice(0, 28)}…` : null }),
-      );
-    } catch (err) {
-      logErrorBrief('[webhook] tiktok header introspection failed', err);
-    }
-
-    // TikTok Shop signs in `Authorization` (plain hex). Check it + `x-tt-signature` against the
-    // documented + fallback schemes; log which one matched so we can lock to it and hard-reject later.
+    // TikTok Shop signs the webhook in the `Authorization` header (plain lowercase hex) as
+    // HMAC-SHA256(app_secret, app_key + rawBody). Confirmed scheme → reject anything that doesn't match.
     const verification = verifyTiktokWebhookSignature({
       rawBody,
-      signatures: [c.req.header('authorization'), c.req.header('x-tt-signature'), signatureHeader],
+      signatures: [c.req.header('authorization'), c.req.header('x-tt-signature')],
       appKey,
       appSecret,
     });
-    if (verification.ok) {
-      console.info(`[webhook] tiktok signature verified (scheme=${verification.scheme})`);
-    } else {
-      console.warn(
-        `[webhook] tiktok signature NOT verified (${verification.reason}) — proceeding via shop_id; will tighten once the scheme is confirmed`,
-      );
+    if (!verification.ok) {
+      console.warn(`[webhook] tiktok signature rejected (${verification.reason})`);
+      return c.text('invalid signature', 401);
     }
 
     let payload: unknown;
