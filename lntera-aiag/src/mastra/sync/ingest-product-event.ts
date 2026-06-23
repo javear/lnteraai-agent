@@ -8,6 +8,7 @@ import { ingestMarketplaceProduct } from '../integrations/products/ingest-market
 import { getMappingByExternal } from '../integrations/products/product-mappings-repo';
 import { isDuplicateEvent } from './product-sync-dedup';
 import { notifyProductSyncDecision } from './product-sync-notifier';
+import { reconcileAndPropagateFromMarketplace } from './reconcile-from-marketplace';
 
 export interface IngestProductEventResult {
   status: 'ingested' | 'duplicate' | 'no_product_id' | 'detail_not_found' | 'error';
@@ -75,5 +76,17 @@ export async function ingestMarketplaceProductEvent(args: {
     eventKey,
   });
   await notifyProductSyncDecision(args.tenantId, result.notice);
+
+  // Bidirectional sync: reconcile the per-SKU stock delta into internal truth and fan out to the
+  // other mapped stores (notify or autopilot). Fire-and-forget — never block/break the ingest ack.
+  if (result.mappingId) {
+    void reconcileAndPropagateFromMarketplace({
+      tenantId: args.tenantId,
+      connection: args.connection,
+      detail,
+      mappingId: result.mappingId,
+    }).catch((err) => logErrorBrief('[product-event] sync propagation failed', err));
+  }
+
   return { status: 'ingested', mappingId: result.mappingId, decision: result.decision };
 }

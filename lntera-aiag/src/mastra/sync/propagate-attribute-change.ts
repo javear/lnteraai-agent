@@ -43,17 +43,22 @@ export async function propagateAttributeChange(args: {
   /** Store that originated the change (excluded from fan-out — it already has the value). Null = internal edit. */
   sourceConnectionId: string | null;
   sourceSummary?: string;
+  /** Force an immediate push (skip the coalesce latch + NOTIFY gating). Used when applying a proposal. */
+  force?: boolean;
 }): Promise<void> {
   const latchKey = `${args.tenantId}:${args.masterProductId}:${args.attribute}`;
   const now = Date.now();
-  const last = recentlyPropagated.get(latchKey);
-  if (last != null && now - last < COALESCE_MS) return;
-  recentlyPropagated.set(latchKey, now);
+  if (!args.force) {
+    const last = recentlyPropagated.get(latchKey);
+    if (last != null && now - last < COALESCE_MS) return;
+    recentlyPropagated.set(latchKey, now);
+  }
 
   try {
     const prefs = await resolveSyncPrefs(args.tenantId);
     const autopilot = args.attribute === 'stock' ? prefs.autopilotStock : prefs.autopilotPrice;
-    const mode: 'notify' | 'autopilot' = autopilot && prefs.propagateMode === 'autopilot' ? 'autopilot' : 'notify';
+    const mode: 'notify' | 'autopilot' =
+      args.force || (autopilot && prefs.propagateMode === 'autopilot') ? 'autopilot' : 'notify';
 
     const internalSkus = await getProductSkusWithStock(args.tenantId, args.masterProductId);
     if (internalSkus.length === 0) return;
