@@ -1,6 +1,8 @@
 // Applies (or dismisses) a NOTIFY propagation proposal. "apply"/"apply_always" re-run the engine with
-// force=true, which RE-VALIDATES against the current internal truth and pushes — so a stale snapshot is
-// never blindly applied. "apply_always" also flips the tenant to autopilot for that attribute.
+// force=true, passing the proposal's internal-master deltas so the engine applies the internal stock
+// change AND pushes the (re-validated, projected) values to the other stores in one go — a stale
+// snapshot is never blindly pushed. "dismiss" leaves BOTH internal and the stores untouched.
+// "apply_always" also flips the tenant to autopilot for that attribute.
 import { getProposalById, markProposal } from '../integrations/products/sync-proposals-repo';
 import { setSyncPrefs } from '../integrations/shared/sync-prefs';
 import { propagateAttributeChange } from './propagate-attribute-change';
@@ -54,12 +56,15 @@ export async function applySyncProposal(args: {
     prefUpdated = true;
   }
 
-  // Re-validate against CURRENT internal truth and push (force = skip latch + force autopilot path).
+  // Apply the gated internal-master change + push to the other stores (force = skip latch + autopilot
+  // path). Passing the proposal's internalDeltas applies the internal stock change now (on approval),
+  // and the engine recomputes/pushes the projected per-store values — no stale snapshot is blindly sent.
   await propagateAttributeChange({
     tenantId: args.tenantId,
     masterProductId: proposal.master_product_id,
     attribute: proposal.attribute,
     sourceConnectionId: proposal.source_connection_id,
+    internalDeltas: proposal.payload.internalDeltas,
     force: true,
   });
   await markProposal(proposal.id, 'applied');

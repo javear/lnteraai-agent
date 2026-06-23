@@ -21,10 +21,18 @@ export interface SyncProposalTarget {
   skus: SyncProposalTargetSku[];
 }
 
+/** Proposed internal-master stock change, applied on approve (never silently). Stock only. */
+export interface SyncProposalInternalDelta {
+  internalSkuId: string;
+  delta: number;
+}
+
 export interface SyncProposalPayload {
   productTitle: string;
   sourceSummary: string;
   targets: SyncProposalTarget[];
+  /** Internal-master deltas to apply on approve (marketplace → internal). Absent/[] for price edits. */
+  internalDeltas?: SyncProposalInternalDelta[];
 }
 
 export interface SyncProposalRow {
