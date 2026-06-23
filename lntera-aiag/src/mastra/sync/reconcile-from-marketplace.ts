@@ -1,7 +1,8 @@
 // Marketplace feeder: after the ingest path refreshes a DECIDED product from a webhook, compute the
-// per-SKU stock DELTA vs our last-seen baseline, apply it to internal truth (atomic RPC), and fan out
-// to the OTHER stores. The echo write-marker skips values we ourselves just pushed (no bounce loop).
-// PRICE is intentionally NOT pulled back from marketplaces (internal → stores only).
+// per-SKU stock DELTA vs our last-seen baseline and hand it to the sync engine, which gates BOTH the
+// internal-master update AND the fan-out to the other stores under one notify/autopilot permission —
+// nothing is written silently. The echo write-marker skips values we ourselves just pushed (no bounce
+// loop). PRICE is intentionally NOT pulled back from marketplaces (internal → stores only).
 import type { MarketplaceConnection } from '../integrations/shared/types';
 import type { NormalizedProductDetail } from '../integrations/shared/products';
 import { logErrorBrief } from '../logger/compact-error';
@@ -9,7 +10,7 @@ import { getMappingById, isDecidedStatus } from '../integrations/products/produc
 import { getProductSkusWithStock, applyInventoryDelta } from '../integrations/products/inventory-repo';
 import { updateLinkSnapshot } from '../integrations/products/sku-links-repo';
 import { ensureSkuLinks } from './sku-link-seeder';
-import { propagateAttributeChange } from './propagate-attribute-change';
+import { propagateAttributeChange, type InternalStockDelta } from './propagate-attribute-change';
 
 const ECHO_WINDOW_MS = 90_000;
 
@@ -44,7 +45,7 @@ export async function reconcileAndPropagateFromMarketplace(args: {
     }
 
     const now = Date.now();
-    let appliedAnyDelta = false;
+    const internalDeltas: InternalStockDelta[] = [];
     for (const link of links) {
       if (!link.external_sku_id) continue;
       const fresh = extStockBySku.get(link.external_sku_id);
@@ -67,8 +68,9 @@ export async function reconcileAndPropagateFromMarketplace(args: {
       await updateLinkSnapshot(link.id, { lastSeenExternalStock: fresh });
 
       if (baseline == null) {
-        // First sight of this link → adopt the marketplace's current stock as internal truth so the
-        // internal master tracks reality immediately. No fan-out: an initial sync isn't a "change".
+        // First sight of this link → adopt the marketplace's current stock as the internal baseline so
+        // future deltas are computed correctly. This is initial DISCOVERY, not a change the seller made,
+        // so it's applied directly (silent) and is NOT routed through the notify/autopilot gate.
         const adopt = fresh - internal.quantity;
         if (adopt !== 0) await applyInventoryDelta(internal.id, internal.primaryWarehouseId, adopt);
         continue;
@@ -76,22 +78,25 @@ export async function reconcileAndPropagateFromMarketplace(args: {
 
       const delta = fresh - baseline;
       if (delta === 0) continue;
-      await applyInventoryDelta(internal.id, internal.primaryWarehouseId, delta);
-      appliedAnyDelta = true;
+      // A real change: do NOT touch internal here. Hand the delta to the engine so the internal-master
+      // update is gated by the same notify/autopilot permission as the cross-store fan-out.
+      internalDeltas.push({ internalSkuId: internal.id, delta });
     }
 
-    if (appliedAnyDelta) {
-      const platformLabel = args.connection.platform === 'tiktok' ? 'TikTok' : 'Shopee';
-      await propagateAttributeChange({
-        tenantId: args.tenantId,
-        masterProductId,
-        attribute: 'stock',
-        sourceConnectionId: args.connection.id,
-        sourceSummary: `${platformLabel} stock for "${args.detail.title}" changed.`,
-      });
-    } else {
-      console.info(`[sync] reconcile "${args.detail.title}": internal stock synced; no delta to propagate.`);
+    if (internalDeltas.length === 0) {
+      console.info(`[sync] reconcile "${args.detail.title}": no stock change to sync (baseline/echo/unchanged).`);
+      return;
     }
+
+    const platformLabel = args.connection.platform === 'tiktok' ? 'TikTok' : 'Shopee';
+    await propagateAttributeChange({
+      tenantId: args.tenantId,
+      masterProductId,
+      attribute: 'stock',
+      sourceConnectionId: args.connection.id,
+      sourceSummary: `${platformLabel} stock for "${args.detail.title}" changed.`,
+      internalDeltas,
+    });
   } catch (err) {
     logErrorBrief(`[sync] reconcile-from-marketplace failed (mapping=${args.mappingId})`, err);
   }
