@@ -3,47 +3,60 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 /**
  * TikTok Shop webhook signature verification.
  *
- * Per Partner Center docs:
- *   header  = `X-TTS-Signature: <hex>`
- *   message = `${app_secret}${rawBody}`
- *   sig     = lowercase hex HMAC-SHA256(app_secret, message)
- *
- * Note: TikTok prepends the app_secret to the body (and uses app_secret as the HMAC key) —
- * we follow that convention literally so we stay binary-compatible with Partner Center test
- * harnesses.
+ * TikTok Shop sends the signature in the `Authorization` header (a plain lowercase-hex HMAC-SHA256 —
+ * NOT the `t=,s=` format of TikTok-for-Developers webhooks). The documented Partner Center scheme is
+ * `HMAC-SHA256(app_secret, app_key + rawBody)`. We try that first, plus a couple of historical
+ * fallbacks, against every candidate header value — and report WHICH scheme matched, so once the logs
+ * confirm one we can lock to it and hard-reject mismatches.
  */
 export interface TiktokWebhookVerifyInput {
   /** Raw, un-mutated request body string. */
   rawBody: string;
-  /** Value of the `X-TTS-Signature` (or compatible) header. */
-  signatureHeader: string | null;
-  /** TikTok Shop app secret (from `TIKTOK_APP_SECRET`). */
+  /** Candidate signature header values to check (e.g. Authorization + X-TTS-Signature). */
+  signatures: Array<string | null | undefined>;
+  appKey: string;
   appSecret: string;
 }
 
 export interface TiktokWebhookVerifyResult {
   ok: boolean;
   reason?: string;
+  /** Which candidate scheme matched (for logging → lock-in later). */
+  scheme?: string;
+}
+
+function hmacHex(key: string, message: string): string {
+  return createHmac('sha256', key).update(message).digest('hex');
+}
+
+function eqHex(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  try {
+    const ba = Buffer.from(a, 'hex');
+    const bb = Buffer.from(b, 'hex');
+    return ba.length === bb.length && timingSafeEqual(ba, bb);
+  } catch {
+    return false;
+  }
 }
 
 export function verifyTiktokWebhookSignature(input: TiktokWebhookVerifyInput): TiktokWebhookVerifyResult {
-  if (!input.appSecret) return { ok: false, reason: 'app_secret_missing' };
-  if (!input.signatureHeader) return { ok: false, reason: 'signature_header_missing' };
+  if (!input.appSecret || !input.appKey) return { ok: false, reason: 'app_config_missing' };
+  const provided = input.signatures.map((s) => (s ?? '').trim().toLowerCase()).filter(Boolean);
+  if (provided.length === 0) return { ok: false, reason: 'signature_header_missing' };
 
-  const provided = input.signatureHeader.trim().toLowerCase();
-  const expected = createHmac('sha256', input.appSecret)
-    .update(`${input.appSecret}${input.rawBody}`)
-    .digest('hex');
-
-  if (provided.length !== expected.length) return { ok: false, reason: 'signature_length_mismatch' };
-  try {
-    const a = Buffer.from(expected, 'hex');
-    const b = Buffer.from(provided, 'hex');
-    if (a.length !== b.length) return { ok: false, reason: 'signature_length_mismatch' };
-    return timingSafeEqual(a, b) ? { ok: true } : { ok: false, reason: 'signature_mismatch' };
-  } catch {
-    return { ok: false, reason: 'signature_decode_failed' };
+  // Documented scheme first, then fallbacks (raw body; legacy app_secret-prefixed).
+  const candidates: Array<{ scheme: string; value: string }> = [
+    { scheme: 'app_key+body', value: hmacHex(input.appSecret, `${input.appKey}${input.rawBody}`) },
+    { scheme: 'body', value: hmacHex(input.appSecret, input.rawBody) },
+    { scheme: 'app_secret+body', value: hmacHex(input.appSecret, `${input.appSecret}${input.rawBody}`) },
+  ];
+  for (const cand of candidates) {
+    for (const sig of provided) {
+      if (eqHex(sig, cand.value)) return { ok: true, scheme: cand.scheme };
+    }
   }
+  return { ok: false, reason: 'signature_mismatch' };
 }
 
 /**

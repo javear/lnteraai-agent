@@ -37,9 +37,12 @@ export const tiktokWebhookRoute = registerApiRoute(WEBHOOK_PATH, {
     },
   },
   handler: async (c) => {
+    let appKey: string;
     let appSecret: string;
     try {
-      appSecret = getTiktokConfig().appSecret;
+      const cfg = getTiktokConfig();
+      appKey = cfg.appKey;
+      appSecret = cfg.appSecret;
     } catch (err) {
       logErrorBrief('[webhook] TikTok app secret not configured', err);
       return c.json({ ok: false, error: 'tiktok_not_configured' }, 503);
@@ -72,15 +75,20 @@ export const tiktokWebhookRoute = registerApiRoute(WEBHOOK_PATH, {
       logErrorBrief('[webhook] tiktok header introspection failed', err);
     }
 
-    if (signatureHeader) {
-      const verification = verifyTiktokWebhookSignature({ rawBody, signatureHeader, appSecret });
-      if (!verification.ok) {
-        console.warn(
-          `[webhook] tiktok signature NOT verified (${verification.reason}) via '${sigHeaderName}' — proceeding via shop_id; will tighten once the scheme is confirmed`,
-        );
-      }
+    // TikTok Shop signs in `Authorization` (plain hex). Check it + `x-tt-signature` against the
+    // documented + fallback schemes; log which one matched so we can lock to it and hard-reject later.
+    const verification = verifyTiktokWebhookSignature({
+      rawBody,
+      signatures: [c.req.header('authorization'), c.req.header('x-tt-signature'), signatureHeader],
+      appKey,
+      appSecret,
+    });
+    if (verification.ok) {
+      console.info(`[webhook] tiktok signature verified (scheme=${verification.scheme})`);
     } else {
-      console.warn('[webhook] tiktok: no signature header found — proceeding via shop_id (see logged header keys)');
+      console.warn(
+        `[webhook] tiktok signature NOT verified (${verification.reason}) — proceeding via shop_id; will tighten once the scheme is confirmed`,
+      );
     }
 
     let payload: unknown;
