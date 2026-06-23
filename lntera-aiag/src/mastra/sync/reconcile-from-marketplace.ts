@@ -48,10 +48,18 @@ export async function reconcileAndPropagateFromMarketplace(args: {
 
     const now = Date.now();
     const internalDeltas: InternalStockDelta[] = [];
+    const diag: string[] = []; // per-SKU verdict (fetched vs last-seen) so "no change" is self-explanatory
     for (const link of links) {
-      if (!link.external_sku_id) continue;
-      const fresh = extStockBySku.get(link.external_sku_id);
-      if (typeof fresh !== 'number') continue;
+      if (!link.external_sku_id) {
+        diag.push('sku?:no-external-id');
+        continue;
+      }
+      const sku = link.external_sku_id;
+      const fresh = extStockBySku.get(sku);
+      if (typeof fresh !== 'number') {
+        diag.push(`${sku}:no-stock-in-detail`);
+        continue;
+      }
 
       // Echo guard: a value we just pushed bouncing back as a webhook → not a real change.
       if (
@@ -61,11 +69,15 @@ export async function reconcileAndPropagateFromMarketplace(args: {
         now - new Date(link.last_push_at).getTime() < ECHO_WINDOW_MS
       ) {
         await updateLinkSnapshot(link.id, { lastSeenExternalStock: fresh });
+        diag.push(`${sku}:echo(${fresh})`);
         continue;
       }
 
       const internal = internalById.get(link.internal_sku_id);
-      if (!internal) continue;
+      if (!internal) {
+        diag.push(`${sku}:no-internal-sku`);
+        continue;
+      }
       const baseline = link.last_seen_external_stock;
       await updateLinkSnapshot(link.id, { lastSeenExternalStock: fresh });
 
@@ -75,18 +87,24 @@ export async function reconcileAndPropagateFromMarketplace(args: {
         // so it's applied directly (silent) and is NOT routed through the notify/autopilot gate.
         const adopt = fresh - internal.quantity;
         if (adopt !== 0) await applyInventoryDelta(internal.id, internal.primaryWarehouseId, adopt);
+        diag.push(`${sku}:baseline-adopt(→${fresh})`);
         continue;
       }
 
       const delta = fresh - baseline;
-      if (delta === 0) continue;
+      if (delta === 0) {
+        diag.push(`${sku}:unchanged(${fresh})`);
+        continue;
+      }
       // A real change: do NOT touch internal here. Hand the delta to the engine so the internal-master
       // update is gated by the same notify/autopilot permission as the cross-store fan-out.
       internalDeltas.push({ internalSkuId: internal.id, delta });
+      diag.push(`${sku}:delta(${baseline}→${fresh})`);
     }
 
     if (internalDeltas.length === 0) {
-      console.info(`[sync] reconcile "${args.detail.title}": no stock change to sync (baseline/echo/unchanged).`);
+      // No net change → log what we fetched vs the baseline so it's obvious WHY (re-sent webhook, echo, etc.).
+      console.info(`[sync] reconcile "${args.detail.title}": no stock change to sync — ${diag.join(', ')}`);
       return;
     }
 
