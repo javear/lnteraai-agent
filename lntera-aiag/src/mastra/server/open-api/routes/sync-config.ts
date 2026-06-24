@@ -5,6 +5,7 @@ import {
   setStoreSyncConfig,
   listStoreTransforms,
   STORE_TRANSFORM_DEFAULTS,
+  type PriceAdjustment,
 } from '../../../integrations/shared/sync-prefs';
 import { listConnectionsByTenant } from '../../../integrations/shared/supabase';
 import { OPEN_API_PREFIX, OPENAPI_TAGS } from '../constants';
@@ -152,20 +153,36 @@ const storesPut = registerApiRoute(`${OPEN_API_PREFIX}/sync/stores/:connectionId
     }
 
     const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
-    const flat = num(body.priceFeeFlat);
-    const up = num(body.priceFeeUpPct);
-    const other = num(body.priceFeeOtherPct);
     const cap = num(body.stockCapPct);
-    for (const [name, val] of [['priceFeeFlat', flat], ['priceFeeUpPct', up], ['priceFeeOtherPct', other]] as const) {
-      if (val !== undefined && val < 0) return openApiJsonError(c, 400, 'bad_request', `${name} must be ≥ 0.`);
-    }
     if (cap !== undefined && (cap <= 0 || cap > 100)) {
       return openApiJsonError(c, 400, 'bad_request', 'stockCapPct must be in (0, 100].');
     }
+
+    // Dynamic price adjustments: a list of { kind: 'percent'|'fixed', value, label? }.
+    let priceAdjustments: PriceAdjustment[] | undefined;
+    if (body.priceAdjustments !== undefined) {
+      if (!Array.isArray(body.priceAdjustments)) {
+        return openApiJsonError(c, 400, 'bad_request', 'priceAdjustments must be an array.');
+      }
+      const cleaned: PriceAdjustment[] = [];
+      for (const raw of body.priceAdjustments) {
+        const o = (raw ?? {}) as Record<string, unknown>;
+        const kind = o.kind === 'fixed' ? 'fixed' : o.kind === 'percent' ? 'percent' : null;
+        const value = Number(o.value);
+        if (!kind || !Number.isFinite(value)) {
+          return openApiJsonError(c, 400, 'bad_request', 'Each adjustment needs kind ("percent"|"fixed") and a numeric value.');
+        }
+        if (kind === 'percent' && (value <= -100 || value > 1000)) {
+          return openApiJsonError(c, 400, 'bad_request', 'A percent adjustment must be between -100 and 1000.');
+        }
+        cleaned.push({ kind, value, ...(typeof o.label === 'string' && o.label.trim() ? { label: o.label.trim().slice(0, 60) } : {}) });
+      }
+      if (cleaned.length > 20) return openApiJsonError(c, 400, 'bad_request', 'Too many adjustments (max 20).');
+      priceAdjustments = cleaned;
+    }
+
     await setStoreSyncConfig(auth.tenantId, connectionId, {
-      ...(flat !== undefined ? { priceFeeFlat: flat } : {}),
-      ...(up !== undefined ? { priceFeeUpPct: up } : {}),
-      ...(other !== undefined ? { priceFeeOtherPct: other } : {}),
+      ...(priceAdjustments !== undefined ? { priceAdjustments } : {}),
       ...(cap !== undefined ? { stockCapPct: cap } : {}),
       ...(typeof body.feeCurrency === 'string' ? { feeCurrency: body.feeCurrency.trim() || null } : {}),
     });

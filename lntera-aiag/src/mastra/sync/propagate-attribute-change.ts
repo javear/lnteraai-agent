@@ -144,12 +144,7 @@ export async function propagateAttributeChange(args: {
           if (internal.price == null) continue;
           const r = applyPriceMargin(
             internal.price,
-            {
-              feeFlat: transform.priceFeeFlat,
-              feeUpPct: transform.priceFeeUpPct,
-              feeOtherPct: transform.priceFeeOtherPct,
-              feeCurrency: transform.feeCurrency,
-            },
+            { adjustments: transform.priceAdjustments, feeCurrency: transform.feeCurrency },
             internal.currency,
           );
           if ('skipped' in r) continue;
