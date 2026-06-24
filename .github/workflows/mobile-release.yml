@@ -1,0 +1,142 @@
+name: Mobile build & distribute
+
+# Build the Capacitor apps and ship them to Firebase App Distribution.
+# Triggered ONLY by pushes to `mobile-release` (cut a build: merge main into mobile-release and push),
+# or manually via the Actions tab. The project lives under lntera-aiag/ (web/ + android/[+ ios/]).
+on:
+  push:
+    branches: [mobile-release]
+  workflow_dispatch:
+
+# Public native build config (baked into the web bundle at build time). Not secret — the Supabase anon
+# key + URLs are client-side values. Move to repo Variables if you prefer to manage them in the UI.
+env:
+  VITE_API_BASE_URL: "https://lnteraai-mastra-production.up.railway.app"
+  VITE_SUPABASE_URL: "https://ptcronhzstmrmclohodt.supabase.co"
+  VITE_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0Y3Jvbmh6c3Rtcm1jbG9ob2R0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0MzY5ODksImV4cCI6MjA5MzAxMjk4OX0.1qZwsnZ9UhhuYnmkPaYqSu431-Mu3LL1RcWOjnynQkA"
+  VITE_WEB_APP_ORIGIN: "https://lntera.ai"
+
+jobs:
+  android:
+    name: Android → Firebase
+    runs-on: ubuntu-latest
+    env:
+      FIREBASE_ANDROID_APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: lntera-aiag/web/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Write native build env (web/.env.native is gitignored)
+        working-directory: lntera-aiag/web
+        run: |
+          cat > .env.native <<EOF
+          VITE_API_BASE_URL=$VITE_API_BASE_URL
+          VITE_SUPABASE_URL=$VITE_SUPABASE_URL
+          VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+          VITE_WEB_APP_ORIGIN=$VITE_WEB_APP_ORIGIN
+          EOF
+
+      - name: Build web (native) + Capacitor sync
+        working-directory: lntera-aiag/web
+        run: |
+          npm ci
+          npm run build:native
+          npx cap sync android
+
+      - name: Build debug APK
+        working-directory: lntera-aiag/android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug
+
+      # Always keep the APK as a workflow artifact (works even before Firebase is configured).
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: lntera-aiag/android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Distribute to Firebase App Distribution
+        if: ${{ env.FIREBASE_ANDROID_APP_ID != '' }}
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          groups: testers
+          releaseNotes: "Android build from ${{ github.sha }}"
+          file: lntera-aiag/android/app/build/outputs/apk/debug/app-debug.apk
+
+  # ───────────────────────────────────────────────────────────────────────────────────────────────
+  # iOS → Firebase. DISABLED until Apple signing is configured (see MOBILE_CI.md). Flip `if:` to true
+  # once these repo secrets exist: IOS_DIST_CERT_P12_BASE64, IOS_DIST_CERT_PASSWORD,
+  # IOS_PROVISIONING_PROFILE_BASE64, IOS_EXPORT_OPTIONS_PLIST_BASE64, FIREBASE_IOS_APP_ID
+  # (FIREBASE_SERVICE_ACCOUNT is shared with Android). The iOS project is generated on the runner.
+  ios:
+    name: iOS → Firebase
+    runs-on: macos-14
+    if: ${{ false }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: lntera-aiag/web/package-lock.json
+
+      - name: Write native build env
+        working-directory: lntera-aiag/web
+        run: |
+          cat > .env.native <<EOF
+          VITE_API_BASE_URL=$VITE_API_BASE_URL
+          VITE_SUPABASE_URL=$VITE_SUPABASE_URL
+          VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+          VITE_WEB_APP_ORIGIN=$VITE_WEB_APP_ORIGIN
+          EOF
+
+      - name: Build web (native) + add/sync iOS
+        working-directory: lntera-aiag/web
+        run: |
+          npm ci
+          npm run build:native
+          [ -d ../ios ] || npx cap add ios
+          npx cap sync ios
+
+      - name: Import signing certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.IOS_DIST_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+
+      - name: Install provisioning profile
+        run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision
+          echo "${{ secrets.IOS_EXPORT_OPTIONS_PLIST_BASE64 }}" | base64 --decode > lntera-aiag/ios/App/ExportOptions.plist
+
+      - name: Archive + export IPA
+        working-directory: lntera-aiag/ios/App
+        run: |
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" -allowProvisioningUpdates archive
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" -exportOptionsPlist ExportOptions.plist
+
+      - name: Distribute to Firebase App Distribution
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_IOS_APP_ID }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          groups: testers
+          releaseNotes: "iOS build from ${{ github.sha }}"
+          file: ${{ runner.temp }}/export/App.ipa
