@@ -13,7 +13,8 @@
 workflows:
   android-debug:
     name: Lntera Android (debug APK)
-    instance_type: linux_x2
+    # Free plan runs on mac_mini_m2 (macOS builds Android fine). Switch to linux_x2 on a paid plan.
+    instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
       node: 20
@@ -62,7 +63,7 @@ workflows:
   #
   # android-release:
   #   name: Lntera Android (release AAB)
-  #   instance_type: linux_x2
+  #   instance_type: mac_mini_m2
   #   environment:
   #     node: 20
   #     java: 17
