@@ -2,7 +2,10 @@
 #
 # Repo layout: the project lives under `lntera-aiag/` — the web app in `lntera-aiag/web` (Vite + Capacitor
 # config) and the native Android project in `lntera-aiag/android`. This file MUST sit at the repository
-# root; Codemagic auto-detects it when you connect the repo. Trigger on pushes to `main`.
+# root; Codemagic auto-detects it when you connect the repo. Builds fire ONLY on pushes to the dedicated
+# `mobile-release` branch (NOT main) — so routine backend/web merges to main never kick off an APK build.
+# To cut a mobile build: `git checkout mobile-release && git merge main && git push` (or open a PR into
+# mobile-release).
 #
 # The native web build bakes its config from `web/.env.native` (gitignored), so the first step writes
 # that file from Codemagic environment variables. All values here are PUBLIC (backend URL, Supabase
@@ -24,7 +27,7 @@ workflows:
       events:
         - push
       branch_patterns:
-        - pattern: main
+        - pattern: mobile-release
           include: true
           source: true
     scripts:
