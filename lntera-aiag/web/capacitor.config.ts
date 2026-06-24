@@ -8,6 +8,11 @@ const config: CapacitorConfig = {
   appId: 'com.lntera.app',
   appName: 'Lntera',
   webDir: 'dist',
+  // Generate the native projects as SIBLINGS of web/ (lntera-aiag/android, lntera-aiag/ios)
+  // instead of nesting them under web/. Paths are relative to this config (web/). cap sync still
+  // copies web/dist into them. See NATIVE.md.
+  android: { path: '../android' },
+  ios: { path: '../ios' },
 };
 
 export default config;
