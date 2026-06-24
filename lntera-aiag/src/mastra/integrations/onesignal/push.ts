@@ -29,8 +29,8 @@ export async function sendTenantPush(tenantId: string, input: TenantPushInput): 
       body: JSON.stringify({
         app_id: appId,
         filters: [{ field: 'tag', key: 'tenant_id', relation: '=', value: tenantId }],
-        headings: { en: truncate(input.heading, 64) },
-        contents: { en: truncate(input.content, 240) },
+        headings: { en: truncate(stripMarkdown(input.heading), 64) },
+        contents: { en: truncate(stripMarkdown(input.content), 240) },
         ...(input.url ? { url: input.url } : {}),
         ...(input.data ? { data: input.data } : {}),
       }),
@@ -49,6 +49,27 @@ export async function sendTenantPush(tenantId: string, input: TenantPushInput): 
 function truncate(s: string, max: number): string {
   const t = s.trim();
   return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+}
+
+/**
+ * Push payloads are plain text — strip Markdown so LLM-written copy doesn't show raw `**`, `###`, `***`,
+ * backticks, or `[text](url)` on the lock screen. Best-effort, order matters (fences → code → links →
+ * headings → emphasis).
+ */
+function stripMarkdown(s: string): string {
+  return s
+    .replace(/```[\s\S]*?```/g, ' ') // fenced code blocks
+    .replace(/`([^`]+)`/g, '$1') // inline code
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '') // images
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1') // links → label
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '') // ATX headings
+    .replace(/^\s{0,3}>\s?/gm, '') // blockquotes
+    .replace(/^\s*[-*+]\s+/gm, '• ') // bullet markers → •
+    .replace(/~~([^~]+)~~/g, '$1') // strikethrough
+    .replace(/\*\*\*|\*\*|\*|___|__|_/g, '') // bold / italic markers (incl. ***)
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 async function safeText(res: Response): Promise<string> {
   try {
