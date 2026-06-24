@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
 import { IS_NATIVE } from './lib/runtime';
+import { initNativeShell } from './lib/native-shell';
 import { fetchPublicConfig, makeSupabase } from './lib/supabase';
 import { SessionProvider, useAuth } from './auth';
 import { ThemeProvider } from './theme';
@@ -178,6 +179,9 @@ function Boot() {
 const Router = IS_NATIVE ? HashRouter : BrowserRouter;
 const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
 const routerProps = IS_NATIVE ? {} : { basename };
+
+// Native shell setup (Android status bar) — fire-and-forget before render; self-guards on platform.
+void initNativeShell();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
