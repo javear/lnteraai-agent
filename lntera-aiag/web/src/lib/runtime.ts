@@ -3,6 +3,9 @@ import { Capacitor } from '@capacitor/core';
 /** True inside a Capacitor shell (iOS/Android). Electron is treated as web (served locally). */
 export const IS_NATIVE = Capacitor.isNativePlatform();
 
+/** 'android' | 'ios' | 'web' (synchronous). Android draws under the status bar; see native-shell. */
+export const NATIVE_PLATFORM = Capacitor.getPlatform();
+
 /**
  * Base URL for the backend API.
  *  - Web (served by the Mastra server at /app): empty string → same-origin relative requests.

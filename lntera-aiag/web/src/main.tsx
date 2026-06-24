@@ -4,7 +4,7 @@ import { BrowserRouter, HashRouter, Navigate, Route, Routes, useMatch, useNaviga
 import type { SupabaseClient } from '@supabase/supabase-js';
 import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
-import { IS_NATIVE } from './lib/runtime';
+import { IS_NATIVE, NATIVE_PLATFORM } from './lib/runtime';
 import { initNativeShell } from './lib/native-shell';
 import { fetchPublicConfig, makeSupabase } from './lib/supabase';
 import { SessionProvider, useAuth } from './auth';
@@ -179,6 +179,11 @@ function Boot() {
 const Router = IS_NATIVE ? HashRouter : BrowserRouter;
 const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
 const routerProps = IS_NATIVE ? {} : { basename };
+
+// Mark Android synchronously (before the async status-bar bridge call lands) so the first screen —
+// the login page — can reserve status-bar space via CSS and not render under the system bar during
+// that cold-start window. See `.cap-android` in index.css.
+if (NATIVE_PLATFORM === 'android') document.documentElement.classList.add('cap-android');
 
 // Native shell setup (Android status bar) — fire-and-forget before render; self-guards on platform.
 void initNativeShell();
