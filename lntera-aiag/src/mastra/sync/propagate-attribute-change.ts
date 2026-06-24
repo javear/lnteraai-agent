@@ -171,6 +171,20 @@ export async function propagateAttributeChange(args: {
     const productTitle = await getProductTitle(args.tenantId, args.masterProductId);
     const sourceSummary = args.sourceSummary ?? (args.attribute === 'stock' ? 'Stock changed.' : 'Price changed.');
 
+    // Human "from X to Y" for the notification, computed from the (post-fold) internal stock deltas.
+    let changeDetail: string | undefined;
+    if (args.attribute === 'stock' && hasInternalChange) {
+      const parts = [...deltaBySku]
+        .filter(([, d]) => d !== 0)
+        .map(([skuId, delta]) => {
+          const it = internalById.get(skuId);
+          return it ? { from: it.quantity, to: it.quantity + delta } : null;
+        })
+        .filter((p): p is { from: number; to: number } => p !== null);
+      if (parts.length === 1) changeDetail = `from ${parts[0].from} to ${parts[0].to}`;
+      else if (parts.length > 1) changeDetail = parts.map((p) => `${p.from}→${p.to}`).join(', ');
+    }
+
     if (mode === 'autopilot') {
       // 1) Apply the internal-master change (atomic, never-negative). Gated work, not silent —
       //    autopilot is the user's standing "yes".
@@ -213,6 +227,7 @@ export async function propagateAttributeChange(args: {
         applied,
         failed,
         internalUpdated: hasInternalChange,
+        changeDetail,
       });
     } else {
       const targets: SyncProposalTarget[] = plans.map((p) => ({
@@ -241,6 +256,7 @@ export async function propagateAttributeChange(args: {
         masterProductId: args.masterProductId,
         targetCount: plans.length,
         internalUpdate: hasInternalChange,
+        changeDetail,
       });
     }
   } catch (err) {
