@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { WifiOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../auth';
@@ -59,18 +59,19 @@ export default function Integrations() {
   const onStoreCfgSaved = (saved: StoreSyncRow) =>
     setStoreCfgs((m) => new Map(m).set(saved.connectionId, saved));
 
-  // Show a toast when returning from an OAuth callback (?connected=…&status=…), then clean the URL
-  // (router-aware so it works under both the /app basename and native hash routing).
+  // Show a toast when returning from an OAuth callback (?connected=…&status=…), then clean the URL.
+  // Reads the ROUTER query (useSearchParams) so it works under both the /app basename and native hash
+  // routing — on native the App Link return is navigated in via NativeDeepLinks, not the page URL.
+  const [searchParams] = useSearchParams();
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const connected = params.get('connected');
+    const connected = searchParams.get('connected');
     if (!connected) return;
-    const ok = params.get('status') !== 'error';
+    const ok = searchParams.get('status') !== 'error';
     if (ok) celebrate(label(connected));
-    else toast.error(`${label(connected)} failed`, { description: params.get('message') ?? 'Unknown error' });
+    else toast.error(`${label(connected)} failed`, { description: searchParams.get('message') ?? 'Unknown error' });
     navigate('/integrations', { replace: true });
     void refreshStatus(true);
-  }, [refreshStatus, navigate]);
+  }, [searchParams, refreshStatus, navigate]);
 
   // Backstop for the seamless connect flow: when the backend broadcasts a `connection` event (a store
   // linked), refresh the list and clear any spinner — covers mobile, where the OAuth tab can't always
@@ -93,11 +94,13 @@ export default function Integrations() {
       const data = (await res.json()) as { url?: string; message?: string };
       if (!res.ok || !data.url) throw new Error(data.message || `Could not start ${label(platform)} connect.`);
 
-      // Native shell: open the system browser; the app stays alive and refreshes on the realtime
-      // `connection` event above when the user returns. (Installing @capacitor/browser would enable an
-      // in-app browser that auto-dismisses — see NATIVE.md.)
+      // Native shell: open the OAuth flow in the Capacitor Browser (Chrome Custom Tab). The backend
+      // redirects back to https://lntera.ai/integrations?connected=… — a verified App Link reopens THIS
+      // app, where NativeDeepLinks dismisses the tab + routes here (and the realtime `connection` event
+      // is the backstop refresh).
       if (IS_NATIVE) {
-        window.open(data.url, '_blank');
+        const { Browser } = await import('@capacitor/browser');
+        await Browser.open({ url: data.url });
         window.setTimeout(() => setBusy((b) => (b === platform ? null : b)), 1500);
         return;
       }

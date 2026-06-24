@@ -8,7 +8,10 @@ import {
   type ReactNode,
 } from 'react';
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
-import { apiUrl } from './lib/runtime';
+import { apiUrl, IS_NATIVE } from './lib/runtime';
+
+/** Frontend web origin for native OAuth returns (App Links host). Web uses location.origin instead. */
+const NATIVE_WEB_ORIGIN = (import.meta.env.VITE_WEB_APP_ORIGIN as string | undefined)?.replace(/\/$/, '') ?? '';
 
 interface AuthContextValue {
   supabase: SupabaseClient;
@@ -150,7 +153,22 @@ export function SessionProvider({
         if (error) throw error;
       },
       signInGoogle: async () => {
-        // Full-page redirect in the SAME tab — robust everywhere. (A popup/new tab can't be reliably
+        // Native (Capacitor): the app loads from localhost, so redirect to the real web origin's App
+        // Link (https://lntera.ai/login). Open Google in the system browser (skipBrowserRedirect) — the
+        // verified App Link reopens THIS app, where NativeDeepLinks completes the PKCE session.
+        if (IS_NATIVE) {
+          const { data, error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: { redirectTo: `${NATIVE_WEB_ORIGIN}/login`, skipBrowserRedirect: true },
+          });
+          if (error) throw error;
+          if (data?.url) {
+            const { Browser } = await import('@capacitor/browser');
+            await Browser.open({ url: data.url });
+          }
+          return;
+        }
+        // Web: full-page redirect in the SAME tab — robust everywhere. (A popup/new tab can't be reliably
         // closed once Google's Cross-Origin-Opener-Policy severs window.opener, which left a second
         // logged-in session tab; single-tab redirect avoids that entirely.)
         // BASE_URL ends with '/', so `${origin}/app/login` (monolith) or `${origin}/login` (Vercel).
@@ -161,10 +179,12 @@ export function SessionProvider({
         if (error) throw error;
       },
       resetPassword: async (email) => {
-        // BASE_URL ends with '/', so this is `${origin}/app/reset-password` (monolith) or `${origin}/reset-password`.
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${location.origin}${import.meta.env.BASE_URL}reset-password`,
-        });
+        // Native opens the email link via the App Link (https://lntera.ai/reset-password → this app);
+        // web stays on its own origin. BASE_URL ends with '/'.
+        const redirectTo = IS_NATIVE
+          ? `${NATIVE_WEB_ORIGIN}/reset-password`
+          : `${location.origin}${import.meta.env.BASE_URL}reset-password`;
+        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
         if (error) throw error;
       },
       updatePassword: async (password) => {

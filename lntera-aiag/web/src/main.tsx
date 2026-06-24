@@ -14,6 +14,7 @@ import { PwaUpdater } from './components/PwaUpdater';
 import { Button, Centered } from './ui';
 import { AppLayout } from './components/AppLayout';
 import { ChatRouteSkeleton, PageRouteSkeleton } from './components/Skeletons';
+import { NativeDeepLinks } from './components/NativeDeepLinks';
 import { Logo } from './ui';
 import './index.css';
 
@@ -116,6 +117,7 @@ function Boot() {
   return (
     <SessionProvider supabase={supabase}>
       <RecoveryRedirect />
+      <NativeDeepLinks />
       <Routes>
         <Route
           path="/login"

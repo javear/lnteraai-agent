@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.lntera.app",
+      "sha256_cert_fingerprints": [
+        "74:30:27:2B:33:44:F4:9B:0C:FA:1D:71:1A:B0:57:F4:B1:07:78:00:66:33:DF:FC:B0:CD:9A:CB:F3:1C:F9:C1"
+      ]
+    }
+  }
+]

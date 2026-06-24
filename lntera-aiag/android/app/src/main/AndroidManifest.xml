@@ -22,6 +22,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- App Links: an installed + verified app opens these https://lntera.ai paths (OAuth return
+                 targets) instead of the browser; otherwise they fall back to the web. Verified against
+                 https://lntera.ai/.well-known/assetlinks.json (the app's signing SHA-256). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="lntera.ai" android:pathPrefix="/login" />
+                <data android:scheme="https" android:host="lntera.ai" android:pathPrefix="/integrations" />
+                <data android:scheme="https" android:host="lntera.ai" android:pathPrefix="/reset-password" />
+            </intent-filter>
+
         </activity>
 
         <provider
