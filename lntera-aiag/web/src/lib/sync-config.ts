@@ -15,14 +15,19 @@ export interface RecognitionPrefs {
   mediumThreshold: number;
 }
 
+/** One dynamic price adjustment: percent of base, or a fixed amount in feeCurrency (mirrors backend). */
+export interface PriceAdjustment {
+  kind: 'percent' | 'fixed';
+  value: number;
+  label?: string;
+}
+
 export interface StoreSyncRow {
   connectionId: string;
   platform: string;
   shopName: string | null;
   region: string | null;
-  priceFeeFlat: number;
-  priceFeeUpPct: number;
-  priceFeeOtherPct: number;
+  priceAdjustments: PriceAdjustment[];
   feeCurrency: string | null;
   stockCapPct: number;
 }
@@ -58,15 +63,17 @@ export function roundForCurrency(value: number, currency?: string | null): numbe
   return ZERO_DECIMAL.has((currency ?? '').toUpperCase()) ? Math.round(value) : Math.round(value * 100) / 100;
 }
 
-/** pushed = base × (1 + up%/100 + other%/100) + flat. */
-export function computePushedPrice(
-  base: number,
-  cfg: { priceFeeFlat: number; priceFeeUpPct: number; priceFeeOtherPct: number },
-  currency?: string | null,
-): number {
+/** pushed = base × (1 + Σpercent/100) + Σfixed. Mirrors server applyPriceMargin. */
+export function computePushedPrice(base: number, adjustments: PriceAdjustment[], currency?: string | null): number {
   if (!Number.isFinite(base) || base <= 0) return 0;
-  const value = base * (1 + (cfg.priceFeeUpPct || 0) / 100 + (cfg.priceFeeOtherPct || 0) / 100) + (cfg.priceFeeFlat || 0);
-  return roundForCurrency(value, currency);
+  let percentTotal = 0;
+  let fixedTotal = 0;
+  for (const a of adjustments ?? []) {
+    if (!a || !Number.isFinite(a.value)) continue;
+    if (a.kind === 'percent') percentTotal += a.value;
+    else fixedTotal += a.value;
+  }
+  return roundForCurrency(base * (1 + percentTotal / 100) + fixedTotal, currency);
 }
 
 /** pushed = floor(internalQty × cap%/100); internal>0 but rounds to 0 → 1; internal=0 → 0. */

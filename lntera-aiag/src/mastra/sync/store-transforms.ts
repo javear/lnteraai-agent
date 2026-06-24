@@ -5,17 +5,39 @@
 /** Currencies with no minor unit (whole-number prices). Mirrors the marketplace price formatters. */
 const ZERO_DECIMAL_CURRENCIES = new Set(['IDR', 'VND', 'JPY', 'KRW', 'CLP', 'TWD', 'HUF']);
 
+/**
+ * One dynamic price adjustment the seller adds for a store. `percent` is applied to the base price;
+ * `fixed` is an absolute amount in `feeCurrency`. Values may be negative (a discount). The seller can
+ * stack any number of these.
+ */
+export interface PriceAdjustment {
+  kind: 'percent' | 'fixed';
+  value: number;
+  label?: string;
+}
+
 export interface PriceMarginConfig {
-  /** Flat fee added after the percentages, in `feeCurrency`. */
-  feeFlat: number;
-  /** "Up" margin, percent (e.g. 1 = +1%). */
-  feeUpPct: number;
-  /** Other fee, percent (e.g. 0.5 = +0.5%). */
-  feeOtherPct: number;
-  /** Currency the flat fee is denominated in; the flat fee is only applied when it matches the SKU currency. */
+  /** Ordered list of adjustments. Percents are summed onto the base; fixed amounts are added after. */
+  adjustments: PriceAdjustment[];
+  /** Currency the FIXED adjustments are denominated in; they're applied only when it matches the SKU currency. */
   feeCurrency?: string | null;
   /** Optional hard floor for the pushed price. */
   priceFloor?: number | null;
+}
+
+/** Sum a list of adjustments into a total percent and a total fixed amount. */
+export function sumAdjustments(adjustments: PriceAdjustment[] | null | undefined): {
+  percentTotal: number;
+  fixedTotal: number;
+} {
+  let percentTotal = 0;
+  let fixedTotal = 0;
+  for (const a of adjustments ?? []) {
+    if (!a || !Number.isFinite(a.value)) continue;
+    if (a.kind === 'percent') percentTotal += a.value;
+    else if (a.kind === 'fixed') fixedTotal += a.value;
+  }
+  return { percentTotal, fixedTotal };
 }
 
 export interface StockCapConfig {
@@ -29,9 +51,9 @@ export function roundForCurrency(value: number, currency?: string | null): numbe
 }
 
 /**
- * Margin formula (locked decision): `pushed = base × (1 + up%/100 + other%/100) + flat`.
- * The flat fee is skipped when its currency differs from the SKU currency (no FX). Returns the rounded
- * push price, or a `skipped` reason when the result is non-finite/≤0 so the caller can flag + skip.
+ * Margin formula: `pushed = base × (1 + Σpercent/100) + Σfixed`.
+ * Fixed adjustments are skipped when their currency differs from the SKU currency (no FX). Returns the
+ * rounded push price, or a `skipped` reason when the result is non-finite/≤0 so the caller can flag + skip.
  */
 export function applyPriceMargin(
   basePrice: number,
@@ -39,16 +61,16 @@ export function applyPriceMargin(
   skuCurrency?: string | null,
 ): { value: number } | { skipped: string } {
   if (!Number.isFinite(basePrice) || basePrice <= 0) return { skipped: 'invalid_base_price' };
-  if (!cfg) return { value: roundForCurrency(basePrice, skuCurrency) };
+  if (!cfg || !cfg.adjustments?.length) return { value: roundForCurrency(basePrice, skuCurrency) };
 
-  const pct = 1 + (cfg.feeUpPct || 0) / 100 + (cfg.feeOtherPct || 0) / 100;
-  let value = basePrice * pct;
+  const { percentTotal, fixedTotal } = sumAdjustments(cfg.adjustments);
+  let value = basePrice * (1 + percentTotal / 100);
 
-  // Flat fee only when its currency matches the SKU's (avoid silently adding e.g. USD to an IDR price).
+  // Fixed adjustments only when their currency matches the SKU's (avoid silently adding e.g. USD to IDR).
   const feeCur = (cfg.feeCurrency ?? skuCurrency ?? '').toUpperCase();
   const skuCur = (skuCurrency ?? '').toUpperCase();
-  if (cfg.feeFlat) {
-    if (!skuCur || !feeCur || feeCur === skuCur) value += cfg.feeFlat;
+  if (fixedTotal) {
+    if (!skuCur || !feeCur || feeCur === skuCur) value += fixedTotal;
     // else: currency mismatch → percentages only (caller may flag).
   }
 
@@ -58,9 +80,12 @@ export function applyPriceMargin(
   return { value };
 }
 
-/** True when the flat fee is set but its currency differs from the SKU currency (fee was skipped). */
-export function flatFeeCurrencyMismatch(cfg: PriceMarginConfig | null | undefined, skuCurrency?: string | null): boolean {
-  if (!cfg?.feeFlat) return false;
+/** True when fixed adjustments exist but their currency differs from the SKU currency (they were skipped). */
+export function fixedAdjustmentCurrencyMismatch(
+  cfg: PriceMarginConfig | null | undefined,
+  skuCurrency?: string | null,
+): boolean {
+  if (!cfg || sumAdjustments(cfg.adjustments).fixedTotal === 0) return false;
   const feeCur = (cfg.feeCurrency ?? skuCurrency ?? '').toUpperCase();
   const skuCur = (skuCurrency ?? '').toUpperCase();
   return Boolean(skuCur && feeCur && feeCur !== skuCur);

@@ -3,11 +3,13 @@
 // propagate_mode) is tenant-wide (read from the default row). Per-store transforms (price margin +
 // stock cap) live on the per-connection row. See migrations 0014 + 0021.
 import { getSupabase } from './supabase';
+import type { PriceAdjustment } from '../../sync/store-transforms';
+
+export type { PriceAdjustment };
 
 export interface StoreTransform {
-  priceFeeFlat: number;
-  priceFeeUpPct: number;
-  priceFeeOtherPct: number;
+  /** Dynamic stack of price adjustments (percent + fixed). Canonical price config. */
+  priceAdjustments: PriceAdjustment[];
   feeCurrency: string | null;
   stockCapPct: number;
 }
@@ -25,9 +27,7 @@ export interface ResolvedSyncPrefs {
 }
 
 export const STORE_TRANSFORM_DEFAULTS: StoreTransform = {
-  priceFeeFlat: 0,
-  priceFeeUpPct: 0,
-  priceFeeOtherPct: 0,
+  priceAdjustments: [],
   feeCurrency: null,
   stockCapPct: 100,
 };
@@ -55,22 +55,51 @@ interface SyncPrefRow {
   price_fee_flat: number | string | null;
   price_fee_up_pct: number | string | null;
   price_fee_other_pct: number | string | null;
+  price_adjustments: unknown;
   fee_currency: string | null;
   stock_cap_pct: number | string | null;
 }
 
 const COLS =
   'marketplace_connection_id, auto_create_new, auto_map_high_confidence, high_threshold, medium_threshold, ' +
-  'autopilot_stock, autopilot_price, propagate_mode, price_fee_flat, price_fee_up_pct, price_fee_other_pct, fee_currency, stock_cap_pct';
+  'autopilot_stock, autopilot_price, propagate_mode, price_fee_flat, price_fee_up_pct, price_fee_other_pct, ' +
+  'price_adjustments, fee_currency, stock_cap_pct';
 
 const num = (v: number | string | null | undefined, fallback: number): number => (v == null ? fallback : Number(v));
 
+/** Coerce stored JSON into a clean PriceAdjustment[] (drop malformed entries). */
+function parseAdjustments(raw: unknown): PriceAdjustment[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PriceAdjustment[] = [];
+  for (const a of raw) {
+    if (!a || typeof a !== 'object') continue;
+    const o = a as Record<string, unknown>;
+    const kind = o.kind === 'fixed' ? 'fixed' : o.kind === 'percent' ? 'percent' : null;
+    const value = Number(o.value);
+    if (!kind || !Number.isFinite(value)) continue;
+    out.push({ kind, value, ...(typeof o.label === 'string' && o.label.trim() ? { label: o.label.trim() } : {}) });
+  }
+  return out;
+}
+
+/** Backward compat: synthesize the legacy up%/other%/flat triplet into the adjustments list. */
+function legacyToAdjustments(r: SyncPrefRow): PriceAdjustment[] {
+  const out: PriceAdjustment[] = [];
+  const up = num(r.price_fee_up_pct, 0);
+  const other = num(r.price_fee_other_pct, 0);
+  const flat = num(r.price_fee_flat, 0);
+  if (up) out.push({ kind: 'percent', value: up, label: 'Up' });
+  if (other) out.push({ kind: 'percent', value: other, label: 'Other fee' });
+  if (flat) out.push({ kind: 'fixed', value: flat, label: 'Flat fee' });
+  return out;
+}
+
 function rowToTransform(r: SyncPrefRow | null): StoreTransform {
-  if (!r) return { ...STORE_TRANSFORM_DEFAULTS };
+  if (!r) return { ...STORE_TRANSFORM_DEFAULTS, priceAdjustments: [] };
+  const parsed = parseAdjustments(r.price_adjustments);
   return {
-    priceFeeFlat: num(r.price_fee_flat, 0),
-    priceFeeUpPct: num(r.price_fee_up_pct, 0),
-    priceFeeOtherPct: num(r.price_fee_other_pct, 0),
+    // Prefer the dynamic list; fall back to the legacy columns for rows saved before migration 0024.
+    priceAdjustments: parsed.length > 0 ? parsed : legacyToAdjustments(r),
     feeCurrency: r.fee_currency,
     stockCapPct: num(r.stock_cap_pct, 100),
   };
@@ -151,12 +180,17 @@ export async function setSyncPrefs(tenantId: string, patch: SyncPrefsPatch, conn
   await upsertPrefRow(tenantId, connectionId ?? null, f);
 }
 
-/** Set a store's one-directional transform (price margin + stock cap) on its per-connection row. */
+/** Set a store's one-directional transform (price adjustments + stock cap) on its per-connection row. */
 export async function setStoreSyncConfig(tenantId: string, connectionId: string, patch: Partial<StoreTransform>): Promise<void> {
   const f: Record<string, unknown> = {};
-  if (patch.priceFeeFlat !== undefined) f.price_fee_flat = patch.priceFeeFlat;
-  if (patch.priceFeeUpPct !== undefined) f.price_fee_up_pct = patch.priceFeeUpPct;
-  if (patch.priceFeeOtherPct !== undefined) f.price_fee_other_pct = patch.priceFeeOtherPct;
+  if (patch.priceAdjustments !== undefined) {
+    // The list is canonical now → persist it and zero the legacy columns so a later read never
+    // resurrects stale up%/other%/flat values (e.g. when the seller clears all adjustments).
+    f.price_adjustments = patch.priceAdjustments;
+    f.price_fee_flat = 0;
+    f.price_fee_up_pct = 0;
+    f.price_fee_other_pct = 0;
+  }
   if (patch.feeCurrency !== undefined) f.fee_currency = patch.feeCurrency;
   if (patch.stockCapPct !== undefined) f.stock_cap_pct = patch.stockCapPct;
   await upsertPrefRow(tenantId, connectionId, f);
