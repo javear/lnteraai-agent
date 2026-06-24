@@ -53,6 +53,9 @@ jobs:
           npm run build:native
           npx cap sync android
 
+      - name: Ensure Android SDK 35
+        run: yes | sdkmanager "platforms;android-35" "build-tools;35.0.0" >/dev/null 2>&1 || true
+
       - name: Build debug APK
         working-directory: lntera-aiag/android
         run: |
