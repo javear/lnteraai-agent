@@ -78,6 +78,16 @@
     height: 100%;
   }
 
+  /* Never let the DOCUMENT scroll sideways. In the installed PWA a stray fixed/overflowing element
+     (toast, push prompt, overlay) can otherwise make the whole page scroll horizontally, shifting
+     content so right-edge controls (toggles, Save/Remove) land off-screen and can't be tapped. The
+     app's real scrolling is internal (<main> + dialogs), so clipping the document horizontally is safe. */
+  html,
+  body {
+    overflow-x: hidden;
+    max-width: 100%;
+  }
+
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
