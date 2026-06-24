@@ -1,0 +1,77 @@
+# Codemagic CI for the Lntera Capacitor Android app.
+#
+# Repo layout: the project lives under `lntera-aiag/` — the web app in `lntera-aiag/web` (Vite + Capacitor
+# config) and the native Android project in `lntera-aiag/android`. This file MUST sit at the repository
+# root; Codemagic auto-detects it when you connect the repo. Trigger on pushes to `main`.
+#
+# The native web build bakes its config from `web/.env.native` (gitignored), so the first step writes
+# that file from Codemagic environment variables. All values here are PUBLIC (backend URL, Supabase
+# project URL + anon key, web origin) — override them per-app in the Codemagic UI if you prefer.
+workflows:
+  android-debug:
+    name: Lntera Android (debug APK)
+    instance_type: linux_x2
+    max_build_duration: 60
+    environment:
+      node: 20
+      java: 17
+      vars:
+        VITE_API_BASE_URL: "https://lnteraai-mastra-production.up.railway.app"
+        VITE_SUPABASE_URL: "https://ptcronhzstmrmclohodt.supabase.co"
+        VITE_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0Y3Jvbmh6c3Rtcm1jbG9ob2R0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0MzY5ODksImV4cCI6MjA5MzAxMjk4OX0.1qZwsnZ9UhhuYnmkPaYqSu431-Mu3LL1RcWOjnynQkA"
+        VITE_WEB_APP_ORIGIN: "https://lntera.ai"
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+    scripts:
+      - name: Write native build env (web/.env.native is gitignored)
+        script: |
+          cd lntera-aiag/web
+          cat > .env.native <<EOF
+          VITE_API_BASE_URL=$VITE_API_BASE_URL
+          VITE_SUPABASE_URL=$VITE_SUPABASE_URL
+          VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+          VITE_WEB_APP_ORIGIN=$VITE_WEB_APP_ORIGIN
+          EOF
+      - name: Install web dependencies
+        script: |
+          cd lntera-aiag/web
+          npm ci
+      - name: Build web (native mode) + Capacitor sync
+        script: |
+          cd lntera-aiag/web
+          npm run build:native
+          npx cap sync android
+      - name: Build debug APK
+        script: |
+          cd lntera-aiag/android
+          chmod +x ./gradlew
+          ./gradlew assembleDebug
+    artifacts:
+      - lntera-aiag/android/app/build/outputs/**/*.apk
+
+  # Release (signed AAB for Play) — uncomment once you've uploaded a keystore to Codemagic
+  # (Code signing identities → "lntera_release") and set the key alias/passwords as env vars.
+  #
+  # android-release:
+  #   name: Lntera Android (release AAB)
+  #   instance_type: linux_x2
+  #   environment:
+  #     node: 20
+  #     java: 17
+  #     android_signing:
+  #       - lntera_release
+  #     vars:
+  #       VITE_API_BASE_URL: "https://lnteraai-mastra-production.up.railway.app"
+  #       VITE_SUPABASE_URL: "https://ptcronhzstmrmclohodt.supabase.co"
+  #       VITE_SUPABASE_ANON_KEY: "<anon key>"
+  #       VITE_WEB_APP_ORIGIN: "https://lntera.ai"
+  #   scripts:
+  #     - cd lntera-aiag/web && npm ci && npm run build:native && npx cap sync android
+  #     - cd lntera-aiag/android && ./gradlew bundleRelease
+  #   artifacts:
+  #     - lntera-aiag/android/app/build/outputs/**/*.aab

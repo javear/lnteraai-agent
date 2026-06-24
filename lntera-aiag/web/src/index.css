@@ -128,6 +128,14 @@
   padding-top: env(safe-area-inset-top);
 }
 
+/* Android draws under the status bar, and `overlay:false` (native-shell) applies a beat AFTER first
+   paint — so the very first screen (login) can flash under the system bar. On Android only, give the
+   pre-login header a real status-bar-height top inset so the logo never collides with the system bar
+   during that window. (In-app screens settle below the bar via overlay:false and are left untouched.) */
+.cap-android .safe-t-native {
+  padding-top: max(env(safe-area-inset-top), 1.85rem);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

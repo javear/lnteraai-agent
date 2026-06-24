@@ -13,7 +13,7 @@ export default function Login() {
   return (
     <div className="lp lp-space flex min-h-dvh flex-col overflow-hidden bg-[hsl(var(--bg))] text-[hsl(var(--fg))]">
       <SpaceBackdrop glow="center" />
-      <header className="safe-t relative z-10 px-5 py-5 sm:px-8 sm:py-6">
+      <header className="safe-t safe-t-native relative z-10 px-5 py-5 sm:px-8 sm:py-6">
         <button
           onClick={() => navigate('/')}
           aria-label="Lntera — home"
