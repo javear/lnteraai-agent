@@ -6,6 +6,7 @@ import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
 import { IS_NATIVE, NATIVE_PLATFORM } from './lib/runtime';
 import { initNativeShell } from './lib/native-shell';
+import { initOta } from './lib/ota';
 import { fetchPublicConfig, makeSupabase } from './lib/supabase';
 import { SessionProvider, useAuth } from './auth';
 import { ThemeProvider } from './theme';
@@ -201,3 +202,7 @@ createRoot(document.getElementById('root')!).render(
     </ThemeProvider>
   </StrictMode>,
 );
+
+// Native OTA: mark this bundle healthy (cancels capgo rollback) + stage any newer web bundle for next
+// launch. Fire-and-forget after render; no-op on web/Electron.
+initOta();
