@@ -47,6 +47,32 @@ export async function postPropagate(
   };
 }
 
+export type ProposalState = 'pending' | 'applied' | 'dismissed' | 'superseded' | 'expired' | 'not_found' | 'unknown';
+
+/** Current display state of a propagation proposal (so decided/superseded prompts render resolved). */
+export async function getProposalState(api: Api, proposalId: string): Promise<ProposalState> {
+  try {
+    const res = await api(`/svc/v1/products/sync-proposals/${encodeURIComponent(proposalId)}`);
+    if (!res.ok) return 'unknown';
+    const data = (await res.json().catch(() => ({}))) as { state?: ProposalState };
+    return data.state ?? 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+/** Whether a recognition prompt is still actionable + its mapping status. */
+export async function getLinkState(api: Api, linkId: string): Promise<{ actionable: boolean; status: string } | null> {
+  try {
+    const res = await api(`/svc/v1/products/sync-actions/${encodeURIComponent(linkId)}`);
+    if (!res.ok) return null;
+    const data = (await res.json().catch(() => ({}))) as { actionable?: boolean; status?: string };
+    return { actionable: data.actionable ?? true, status: data.status ?? '' };
+  } catch {
+    return null;
+  }
+}
+
 export async function postResync(
   api: Api,
   opts: { platform?: string; mode?: string } = {},
