@@ -13,6 +13,16 @@ const config: CapacitorConfig = {
   // copies web/dist into them. See NATIVE.md.
   android: { path: '../android' },
   ios: { path: '../ios' },
+  plugins: {
+    // OTA web-bundle updates (@capgo/capacitor-updater). autoUpdate:false → WE control the check/download
+    // (src/lib/ota.ts) against our self-hosted Supabase manifest. The app still auto-ROLLS BACK to the
+    // last-good (or APK-built-in) bundle if a freshly-applied bundle doesn't call notifyAppReady() — so a
+    // broken web deploy can't brick the app. Bundles apply on the NEXT launch.
+    CapacitorUpdater: {
+      autoUpdate: false,
+      resetWhenUpdate: true,
+    },
+  },
 };
 
 export default config;
