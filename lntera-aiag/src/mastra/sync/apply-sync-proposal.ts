@@ -3,9 +3,40 @@
 // change AND pushes the (re-validated, projected) values to the other stores in one go — a stale
 // snapshot is never blindly pushed. "dismiss" leaves BOTH internal and the stores untouched.
 // "apply_always" also flips the tenant to autopilot for that attribute.
-import { getProposalById, markProposal } from '../integrations/products/sync-proposals-repo';
+import { getProposalById, hasNewerProposal, markProposal } from '../integrations/products/sync-proposals-repo';
 import { setSyncPrefs } from '../integrations/shared/sync-prefs';
 import { propagateAttributeChange } from './propagate-attribute-change';
+
+/**
+ * Current display state of a proposal for the UI — so a decided/superseded NOTIFY prompt renders as a
+ * resolved chip instead of fresh, clickable buttons. 'superseded' is an expired proposal that a newer
+ * change replaced (vs a plain TTL 'expired').
+ */
+export type SyncProposalDisplayState =
+  | 'pending'
+  | 'applied'
+  | 'dismissed'
+  | 'superseded'
+  | 'expired'
+  | 'not_found';
+
+export async function getSyncProposalState(
+  tenantId: string,
+  proposalId: string,
+): Promise<SyncProposalDisplayState> {
+  const p = await getProposalById(proposalId, tenantId);
+  if (!p) return 'not_found';
+  if (p.status === 'pending') {
+    if (p.expires_at && new Date(p.expires_at).getTime() < Date.now()) return 'expired';
+    return 'pending';
+  }
+  if (p.status === 'expired') {
+    return (await hasNewerProposal(tenantId, p.master_product_id, p.attribute, p.created_at))
+      ? 'superseded'
+      : 'expired';
+  }
+  return p.status; // applied | dismissed
+}
 
 export interface ApplyProposalResult {
   status: 'applied' | 'dismissed' | 'already' | 'not_found' | 'expired' | 'invalid';

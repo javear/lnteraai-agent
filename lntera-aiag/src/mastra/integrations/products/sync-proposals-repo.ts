@@ -123,6 +123,25 @@ export async function supersedePendingStockDeltas(
   return summed;
 }
 
+/** True if a later proposal exists for the same product+attribute — i.e. this one was superseded. */
+export async function hasNewerProposal(
+  tenantId: string,
+  masterProductId: string,
+  attribute: SyncAttribute,
+  createdAtIso: string,
+): Promise<boolean> {
+  const { data, error } = await getSupabase()
+    .from(TABLE)
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('master_product_id', masterProductId)
+    .eq('attribute', attribute)
+    .gt('created_at', createdAtIso)
+    .limit(1);
+  if (error) throw new Error(`Failed to check for newer proposals: ${error.message}`);
+  return (data?.length ?? 0) > 0;
+}
+
 export async function markProposal(id: string, status: SyncProposalStatus): Promise<void> {
   const row: Record<string, unknown> = { status };
   if (status === 'applied') row.applied_at = new Date().toISOString();

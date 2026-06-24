@@ -1,7 +1,8 @@
 import { registerApiRoute } from '@mastra/core/server';
 import { logErrorBrief } from '../../../logger/compact-error';
 import { applyProductSyncAction } from '../../../sync/product-sync-actions';
-import { applySyncProposal } from '../../../sync/apply-sync-proposal';
+import { applySyncProposal, getSyncProposalState } from '../../../sync/apply-sync-proposal';
+import { getMappingById, isDecidedStatus } from '../../../integrations/products/product-mappings-repo';
 import { resyncMarketplaceProducts } from '../../../sync/product-sync-engine';
 import { notifyResyncOutcome } from '../../../sync/product-sync-notifier';
 import { setSyncPrefs } from '../../../integrations/shared/sync-prefs';
@@ -153,4 +154,66 @@ const syncProposalRoute = registerApiRoute(`${OPEN_API_PREFIX}/products/sync-pro
   },
 });
 
-export const productSyncActionRoutes = [syncActionRoute, resyncRoute, syncProposalRoute];
+/**
+ * GET /svc/v1/products/sync-proposals/:proposalId — current display state of a propagation proposal so
+ * the client renders a decided/superseded NOTIFY prompt as a resolved chip, not fresh buttons.
+ */
+const syncProposalStateRoute = registerApiRoute(`${OPEN_API_PREFIX}/products/sync-proposals/:proposalId`, {
+  method: 'GET',
+  requiresAuth: false,
+  openapi: {
+    summary: 'Get the display state of a bidirectional-sync proposal',
+    tags: [...OPENAPI_TAGS.root],
+    parameters: [authHeaderParam],
+    responses: { 200: { description: 'State' }, 401: { description: 'Unauthorized' } },
+  },
+  handler: async (c: ActionContext) => {
+    const auth = await resolveTenantFromBearer(c);
+    if (auth instanceof Response) return auth;
+    const proposalId = c.req.param('proposalId');
+    if (!proposalId) return openApiJsonError(c, 400, 'bad_request', 'A proposalId is required.');
+    const state = await getSyncProposalState(auth.tenantId, proposalId).catch((err) => {
+      logErrorBrief('[sync] proposal state lookup failed', err);
+      return 'pending' as const; // fail open → leave actionable; the POST guards on click anyway
+    });
+    return c.json({ ok: true, state });
+  },
+});
+
+/**
+ * GET /svc/v1/products/sync-actions/:linkId — whether a recognition prompt's mapping is still
+ * undecided (actionable) plus its current status, so decided prompts render as resolved chips.
+ */
+const syncActionStateRoute = registerApiRoute(`${OPEN_API_PREFIX}/products/sync-actions/:linkId`, {
+  method: 'GET',
+  requiresAuth: false,
+  openapi: {
+    summary: 'Get the decision state of a product-recognition mapping',
+    tags: [...OPENAPI_TAGS.root],
+    parameters: [authHeaderParam],
+    responses: { 200: { description: 'State' }, 401: { description: 'Unauthorized' } },
+  },
+  handler: async (c: ActionContext) => {
+    const auth = await resolveTenantFromBearer(c);
+    if (auth instanceof Response) return auth;
+    const linkId = c.req.param('linkId');
+    if (!linkId) return openApiJsonError(c, 400, 'bad_request', 'A linkId is required.');
+    const mapping = await getMappingById(linkId).catch((err) => {
+      logErrorBrief('[sync] mapping state lookup failed', err);
+      return null;
+    });
+    // Unknown / cross-tenant → report actionable=false so we don't show buttons that can't work.
+    if (!mapping || mapping.tenant_id !== auth.tenantId) {
+      return c.json({ ok: true, status: 'gone', actionable: false });
+    }
+    return c.json({ ok: true, status: mapping.status, actionable: !isDecidedStatus(mapping.status) });
+  },
+});
+
+export const productSyncActionRoutes = [
+  syncActionRoute,
+  syncActionStateRoute,
+  resyncRoute,
+  syncProposalRoute,
+  syncProposalStateRoute,
+];
