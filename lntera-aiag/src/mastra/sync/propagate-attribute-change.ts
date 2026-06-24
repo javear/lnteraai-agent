@@ -10,7 +10,12 @@ import { resolveSyncPrefs, listStoreTransforms, STORE_TRANSFORM_DEFAULTS } from 
 import { getDecidedMappingsByInternal, type ProductMappingRow } from '../integrations/products/product-mappings-repo';
 import { getProductSkusWithStock, applyInventoryDelta } from '../integrations/products/inventory-repo';
 import { updateLinkSnapshot } from '../integrations/products/sku-links-repo';
-import { createProposal, type SyncProposalTarget, type SyncProposalInternalDelta } from '../integrations/products/sync-proposals-repo';
+import {
+  createProposal,
+  supersedePendingStockDeltas,
+  type SyncProposalTarget,
+  type SyncProposalInternalDelta,
+} from '../integrations/products/sync-proposals-repo';
 import { applyPriceMargin, applyStockCap } from './store-transforms';
 import { ensureSkuLinks } from './sku-link-seeder';
 import { pushToStore, type PushSkuUpdate } from './marketplace-push';
@@ -84,8 +89,21 @@ export async function propagateAttributeChange(args: {
     for (const d of args.internalDeltas ?? []) {
       if (d.delta !== 0) deltaBySku.set(d.internalSkuId, (deltaBySku.get(d.internalSkuId) ?? 0) + d.delta);
     }
+    let hasInternalChange = [...deltaBySku.values()].some((v) => v !== 0);
+
+    // Collapse any still-pending proposal for this product+attribute into this one (sum its deltas,
+    // expire it) so ignoring a NOTIFY prompt and changing stock again doesn't leave stale, double-counting
+    // notifications. Skip on force (the proposal-apply path already carries its own deltas).
+    if (!args.force && hasInternalChange) {
+      try {
+        const carried = await supersedePendingStockDeltas(args.tenantId, args.masterProductId, args.attribute);
+        for (const [sku, d] of carried) deltaBySku.set(sku, (deltaBySku.get(sku) ?? 0) + d);
+        hasInternalChange = [...deltaBySku.values()].some((v) => v !== 0);
+      } catch (err) {
+        logErrorBrief('[sync] supersede pending proposals failed', err);
+      }
+    }
     const projectedQty = (skuId: string, current: number): number => current + (deltaBySku.get(skuId) ?? 0);
-    const hasInternalChange = deltaBySku.size > 0;
 
     const mappings = (await getDecidedMappingsByInternal(args.masterProductId)).filter(
       (m) => m.internal_product_id && m.marketplace_connection_id !== args.sourceConnectionId,
@@ -158,6 +176,7 @@ export async function propagateAttributeChange(args: {
       //    autopilot is the user's standing "yes".
       if (hasInternalChange) {
         for (const [skuId, delta] of deltaBySku) {
+          if (delta === 0) continue;
           const internal = internalById.get(skuId);
           if (internal) await applyInventoryDelta(internal.id, internal.primaryWarehouseId, delta);
         }
@@ -203,10 +222,9 @@ export async function propagateAttributeChange(args: {
         externalProductId: p.mapping.external_product_id,
         skus: p.updates.map((u) => ({ internalSkuId: u.internalSkuId, externalSkuId: u.externalSkuId, value: u.value })),
       }));
-      const internalDeltas: SyncProposalInternalDelta[] = [...deltaBySku].map(([internalSkuId, delta]) => ({
-        internalSkuId,
-        delta,
-      }));
+      const internalDeltas: SyncProposalInternalDelta[] = [...deltaBySku]
+        .filter(([, delta]) => delta !== 0)
+        .map(([internalSkuId, delta]) => ({ internalSkuId, delta }));
       const proposal = await createProposal({
         tenantId: args.tenantId,
         masterProductId: args.masterProductId,

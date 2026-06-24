@@ -86,6 +86,43 @@ export async function getProposalById(id: string, tenantId: string): Promise<Syn
   return (data as SyncProposalRow | null) ?? null;
 }
 
+/**
+ * Collapse still-pending proposals for the same product+attribute into the next one: sum their internal
+ * deltas, mark them `expired`, and return the carried-forward total. Without this, ignoring a NOTIFY
+ * proposal and changing the stock again would leave TWO pending notifications with stale, non-cumulative
+ * deltas — applying both would double-count. The new proposal carries the full change since the last
+ * applied state instead.
+ */
+export async function supersedePendingStockDeltas(
+  tenantId: string,
+  masterProductId: string,
+  attribute: SyncAttribute,
+): Promise<Map<string, number>> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('id, payload')
+    .eq('tenant_id', tenantId)
+    .eq('master_product_id', masterProductId)
+    .eq('attribute', attribute)
+    .eq('status', 'pending');
+  if (error) throw new Error(`Failed to read pending proposals: ${error.message}`);
+  const rows = (data as Array<{ id: string; payload: SyncProposalPayload }> | null) ?? [];
+  const summed = new Map<string, number>();
+  const ids: string[] = [];
+  for (const r of rows) {
+    ids.push(r.id);
+    for (const d of r.payload?.internalDeltas ?? []) {
+      summed.set(d.internalSkuId, (summed.get(d.internalSkuId) ?? 0) + d.delta);
+    }
+  }
+  if (ids.length > 0) {
+    const { error: upErr } = await supabase.from(TABLE).update({ status: 'expired' }).in('id', ids);
+    if (upErr) throw new Error(`Failed to expire superseded proposals: ${upErr.message}`);
+  }
+  return summed;
+}
+
 export async function markProposal(id: string, status: SyncProposalStatus): Promise<void> {
   const row: Record<string, unknown> = { status };
   if (status === 'applied') row.applied_at = new Date().toISOString();
