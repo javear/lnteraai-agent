@@ -339,7 +339,7 @@ function tzOffsetMs(timeZone: string, date: Date): number {
 }
 
 /** UTC instant for a local wall time ('HH:MM' on a YYYY-MM-DD civil date) in an IANA timezone. */
-function zonedWallTimeToUtc(ymd: string, hhmm: string, timeZone: string): Date {
+export function zonedWallTimeToUtc(ymd: string, hhmm: string, timeZone: string): Date {
   const [y, m, d] = ymd.split('-').map(Number);
   const [hh, mm] = hhmm.split(':').map(Number);
   const guess = Date.UTC(y, m - 1, d, hh, mm);
