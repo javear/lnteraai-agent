@@ -8,6 +8,7 @@ import {
 } from '../../../integrations/finance/transactions-repo';
 import { maybePostTransaction, backfillUnposted } from '../../../integrations/finance/posting-engine';
 import { getFinanceSettings, setAccountingEnabled } from '../../../integrations/finance/finance-settings-repo';
+import { getTaxConfig, setTaxConfig, type WithholdingRule } from '../../../integrations/finance/tax-config-repo';
 import { getSupabase } from '../../../integrations/shared/supabase';
 import { OPEN_API_PREFIX, OPENAPI_TAGS } from '../constants';
 import { openApiJsonError, resolveTenantFromBearer, type OpenApiHandlerContext } from '../middleware/bearer-tenant';
@@ -172,4 +173,49 @@ const financeSettingsPut = registerApiRoute(`${OPEN_API_PREFIX}/finance/settings
   },
 });
 
-export const transactionRoutes = [ingestRoute, listRoute, financeSettingsGet, financeSettingsPut];
+/** GET /svc/v1/finance/tax — the tenant's tax profile (NPWP, PPN, withholding). */
+const taxConfigGet = registerApiRoute(`${OPEN_API_PREFIX}/finance/tax`, {
+  method: 'GET',
+  requiresAuth: false,
+  openapi: { summary: 'Get tax profile', tags: [...OPENAPI_TAGS.root], parameters: [authHeaderParam], responses: { 200: { description: 'OK' } } },
+  handler: async (c: Ctx) => {
+    const auth = await resolveTenantFromBearer(c);
+    if (auth instanceof Response) return auth;
+    return c.json(await getTaxConfig(auth.tenantId));
+  },
+});
+
+/** PUT /svc/v1/finance/tax — update the tax profile. */
+const taxConfigPut = registerApiRoute(`${OPEN_API_PREFIX}/finance/tax`, {
+  method: 'PUT',
+  requiresAuth: false,
+  openapi: { summary: 'Update tax profile', tags: [...OPENAPI_TAGS.root], parameters: [authHeaderParam], responses: { 200: { description: 'OK' }, 400: { description: 'Bad request' } } },
+  handler: async (c: Ctx) => {
+    const auth = await resolveTenantFromBearer(c);
+    if (auth instanceof Response) return auth;
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const config: Record<string, unknown> = {};
+    if (typeof body.ppnEnabled === 'boolean') config.ppnEnabled = body.ppnEnabled;
+    if (typeof body.ppnRate === 'number' && Number.isFinite(body.ppnRate)) config.ppnRate = body.ppnRate;
+    if (Array.isArray(body.withholding)) {
+      config.withholding = body.withholding
+        .map((w) => {
+          const o = (w ?? {}) as Record<string, unknown>;
+          return typeof o.type === 'string' ? ({ type: o.type, ...(typeof o.rate === 'number' ? { rate: o.rate } : {}) } as WithholdingRule) : null;
+        })
+        .filter(Boolean);
+    }
+    try {
+      const saved = await setTaxConfig(auth.tenantId, {
+        ...(typeof body.npwp === 'string' ? { npwp: body.npwp.trim() || null } : {}),
+        config,
+      });
+      return c.json({ ok: true, ...saved });
+    } catch (err) {
+      logErrorBrief('[finance] tax config update failed', err);
+      return openApiJsonError(c, 400, 'update_failed', err instanceof Error ? err.message : 'Could not update tax profile.');
+    }
+  },
+});
+
+export const transactionRoutes = [ingestRoute, listRoute, financeSettingsGet, financeSettingsPut, taxConfigGet, taxConfigPut];

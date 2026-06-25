@@ -15,6 +15,8 @@ import { ProviderConnect, PROVIDER_CONNECT_CONFIGS } from '../components/Provide
 import { Alert, Button, Logo, Modal } from '../ui';
 import { InsightSettings } from '../components/InsightSettings';
 import { AutopilotSettings } from '../components/AutopilotSettings';
+import { FinanceSettings } from '../components/FinanceSettings';
+import { TaxSettings } from '../components/TaxSettings';
 import { MessageBubble, type ChatMessage } from '../components/chat/Message';
 import { Suggestions } from '../components/chat/Suggestions';
 import { Composer } from '../components/chat/Composer';
@@ -59,6 +61,7 @@ export default function Chat() {
   const [error, setError] = useState<string | null>(null);
   const [connectProvider, setConnectProvider] = useState<'groq' | 'gemini' | null>(null);
   const [automationOpen, setAutomationOpen] = useState(false);
+  const [financeEnabled, setFinanceEnabled] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
 
@@ -555,6 +558,14 @@ export default function Chat() {
           <div className="border-t pt-6">
             <InsightSettings />
           </div>
+          <div className="border-t pt-6">
+            <FinanceSettings onChange={setFinanceEnabled} />
+          </div>
+          {financeEnabled ? (
+            <div className="border-t pt-6">
+              <TaxSettings />
+            </div>
+          ) : null}
         </div>
       </Modal>
     </div>
