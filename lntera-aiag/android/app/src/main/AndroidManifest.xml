@@ -34,6 +34,17 @@
                 <data android:scheme="https" android:host="lntera.ai" android:pathPrefix="/reset-password" />
             </intent-filter>
 
+            <!-- Custom-scheme deep link for OAuth return (Google sign-in, password reset). Unlike the
+                 https App Links above, a custom scheme always hands the OAuth Custom Tab back to the app
+                 and needs no domain/assetlinks verification — so it works on ANY signing (incl. CI debug
+                 builds). Redirect target: com.lntera.app://login (also allowlisted in Supabase Auth). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.lntera.app" />
+            </intent-filter>
+
         </activity>
 
         <provider

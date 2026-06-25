@@ -10,8 +10,13 @@ import {
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
 import { apiUrl, IS_NATIVE } from './lib/runtime';
 
-/** Frontend web origin for native OAuth returns (App Links host). Web uses location.origin instead. */
-const NATIVE_WEB_ORIGIN = (import.meta.env.VITE_WEB_APP_ORIGIN as string | undefined)?.replace(/\/$/, '') ?? '';
+/**
+ * Native OAuth return target. A CUSTOM SCHEME (not an https App Link) — Chrome Custom Tabs reliably hand
+ * a custom scheme back to the app, and it needs no domain/assetlinks verification (works on any signing,
+ * incl. CI debug builds). The app registers this scheme in AndroidManifest; the value must also be in the
+ * Supabase Auth → Redirect URLs allowlist. NativeDeepLinks handles the inbound `com.lntera.app://…` URL.
+ */
+const NATIVE_AUTH_SCHEME = 'com.lntera.app';
 
 interface AuthContextValue {
   supabase: SupabaseClient;
@@ -159,7 +164,7 @@ export function SessionProvider({
         if (IS_NATIVE) {
           const { data, error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
-            options: { redirectTo: `${NATIVE_WEB_ORIGIN}/login`, skipBrowserRedirect: true },
+            options: { redirectTo: `${NATIVE_AUTH_SCHEME}://login`, skipBrowserRedirect: true },
           });
           if (error) throw error;
           if (data?.url) {
@@ -182,7 +187,7 @@ export function SessionProvider({
         // Native opens the email link via the App Link (https://lntera.ai/reset-password → this app);
         // web stays on its own origin. BASE_URL ends with '/'.
         const redirectTo = IS_NATIVE
-          ? `${NATIVE_WEB_ORIGIN}/reset-password`
+          ? `${NATIVE_AUTH_SCHEME}://reset-password`
           : `${location.origin}${import.meta.env.BASE_URL}reset-password`;
         const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
         if (error) throw error;
