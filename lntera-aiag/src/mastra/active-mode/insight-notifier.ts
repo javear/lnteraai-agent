@@ -81,6 +81,7 @@ export async function notifyTenantOfInsights(
     kind: 'insight',
     charts: charts.length ? charts : undefined,
     deterministic: false,
+    discord: true, // mirror the marketplace/connection notifications to Discord when linked
   });
   return { status: 'delivered', insightsReported: reportable.length, usedFallback };
 }

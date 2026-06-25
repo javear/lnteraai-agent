@@ -89,6 +89,7 @@ export const runScheduledTaskFn = inngest.createFunction(
           text: delivered,
           heading: 'Scheduled task',
           kind: 'insight',
+          discord: true, // also reaches Discord when the tenant has it linked
         });
         await markScheduledTaskStatus(task.id, 'done', { result: delivered, ranAt: new Date() });
         return { ran: true as const, status: 'done' };
@@ -101,6 +102,7 @@ export const runScheduledTaskFn = inngest.createFunction(
           text: `I couldn't finish your scheduled task this time. You can ask me to try it again.\n\nRequest: ${task.prompt}`,
           heading: 'Scheduled task failed',
           kind: 'insight',
+          discord: true,
         }).catch(() => {});
         return { ran: false as const, reason: 'error' };
       }

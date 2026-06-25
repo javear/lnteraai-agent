@@ -10,6 +10,10 @@ import {
 } from '../integrations/realtime/broadcast';
 import type { ChartSpec } from '../insights/types';
 import { sendTenantPush } from '../integrations/onesignal/push';
+import { resolveDiscordChannelsForTenant, sendDiscordToTenant } from '../integrations/discord/outbound';
+import { sanitizeMarkdownTablesForDiscord } from '../processors/discord-markdown-sanitize';
+import { parseDiscordReplyFromUnknown } from '../processors/discord-reply-formatter';
+import type { DiscordReply } from '../integrations/discord/reply-schema';
 import { webAppAbsoluteUrl } from '../server/web-app-origin';
 
 export interface DeliverTenantWebNotificationInput {
@@ -30,6 +34,13 @@ export interface DeliverTenantWebNotificationInput {
   broadcast?: boolean;
   /** OS push. Default true; set false for coalesced persist-only writes. */
   push?: boolean;
+  /**
+   * Also fan out to the tenant's linked Discord channel(s). Default FALSE — most callers either don't
+   * want Discord or (marketplace/connection events) send it themselves with a richer thread-persisting
+   * path. Set true for proactive Active-Agent messages (scheduled insights, scheduled tasks) so Discord
+   * reaches parity with web/push. Best-effort and no-op when the tenant has no Discord linked.
+   */
+  discord?: boolean;
 }
 
 /** Per-tenant "Notifications" thread — the dedicated chat where proactive notifications persist. */
@@ -71,7 +82,26 @@ export async function deliverTenantWebNotification(input: DeliverTenantWebNotifi
       }),
     );
   }
+  if (input.discord) tasks.push(deliverToDiscord(input.tenantId, input.text));
   await Promise.allSettled(tasks);
+}
+
+/** Best-effort fan-out of a proactive notification to the tenant's linked Discord channel(s). */
+async function deliverToDiscord(tenantId: string, text: string): Promise<void> {
+  try {
+    const channels = await resolveDiscordChannelsForTenant(tenantId);
+    if (channels.length === 0) return;
+    await sendDiscordToTenant(tenantId, toDiscordReply(text));
+  } catch (err) {
+    logErrorBrief(`[active] Discord fan-out failed tenant=${tenantId}`, err);
+  }
+}
+
+function toDiscordReply(text: string): DiscordReply {
+  const sanitized = sanitizeMarkdownTablesForDiscord(text);
+  const opportunistic = parseDiscordReplyFromUnknown(sanitized);
+  if (opportunistic.success) return opportunistic.data;
+  return { ops: [{ message_type: 'text', content: sanitized }] };
 }
 
 /**
