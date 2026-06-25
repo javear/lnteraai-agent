@@ -49,7 +49,15 @@ export const scheduleTaskTool = createTool({
     const action = (str(raw.action) ?? 'set').toLowerCase();
     const prompt = str(raw.prompt ?? raw.instruction ?? raw.task);
     const when = str(raw.when ?? raw.time ?? raw.at);
-    const tz = str(raw.timezone);
+    // Prefer an explicit timezone arg, else the user's local tz from the client requestContext.
+    let ctxTz: string | undefined;
+    try {
+      const v = context?.requestContext?.get?.('timezone');
+      ctxTz = typeof v === 'string' && v.trim() ? v.trim() : undefined;
+    } catch {
+      ctxTz = undefined;
+    }
+    const tz = str(raw.timezone) ?? ctxTz;
     const now = new Date();
 
     const existing = await getScheduledTask(tenantId);
@@ -92,12 +100,12 @@ export const scheduleTaskTool = createTool({
       }
       const combined = await combineScheduledTask(existing, prompt, runAt, resolvedTz);
       await cancelScheduledTaskRun(tenantId);
-      await armScheduledTask(combined);
+      const armed = await armScheduledTask(combined);
       const tzUsed = combined.timezone || tz || 'Asia/Jakarta';
       return {
         status: 'combined' as const,
         runAt: combined.runAt,
-        summaryText: `You already had a task scheduled, so I added this to it (one scheduled task at a time). It now runs ${describeRunAt(new Date(combined.runAt), tzUsed, now)} and covers:\n${combined.prompt}`,
+        summaryText: `You already had a task scheduled, so I added this to it (one scheduled task at a time). It now runs ${describeRunAt(new Date(combined.runAt), tzUsed, now)} and covers:\n${combined.prompt}${queueNote(armed)}`,
       };
     }
 
@@ -110,11 +118,19 @@ export const scheduleTaskTool = createTool({
 
     const saved = await setScheduledTask(tenantId, prompt, resolved.at, resolved.timezone);
     await cancelScheduledTaskRun(tenantId); // drop any superseded run before arming the new one
-    await armScheduledTask(saved);
+    const armed = await armScheduledTask(saved);
     return {
       status: pending && action === 'replace' ? ('replaced' as const) : ('scheduled' as const),
       runAt: saved.runAt,
-      summaryText: `Done — I'll ${prompt.replace(/\.$/, '')} and message you ${describeRunAt(resolved.at, resolved.timezone, now)}.`,
+      summaryText: `Done — I'll ${prompt.replace(/\.$/, '')} and message you ${describeRunAt(resolved.at, resolved.timezone, now)}.${queueNote(armed)}`,
     };
   },
 });
+
+/** Honest note when the scheduler couldn't confirm the queue (e.g. Inngest unreachable). The recovery
+ *  sweep re-arms pending tasks, so it'll still fire once the scheduler is back — but say so plainly. */
+function queueNote(armed: number | null): string {
+  return armed == null
+    ? " (Heads up: I couldn't confirm the scheduler queued it just now — it'll be picked up automatically once the scheduler reconnects.)"
+    : '';
+}
