@@ -31,7 +31,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Node 22: @supabase/supabase-js (realtime) needs a native global WebSocket, which Node 20 lacks.
+          node-version: 22
           cache: npm
           cache-dependency-path: lntera-aiag/web/package-lock.json
 
