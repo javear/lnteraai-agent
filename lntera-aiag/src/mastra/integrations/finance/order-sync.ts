@@ -91,7 +91,7 @@ export async function reconcileOrderTransaction(args: {
       marketplaceConnectionId: args.connection.id,
       platform: args.connection.platform,
       externalId: args.orderId,
-      type: 'sale',
+      type: 'marketplace_sale',
       status: 'completed',
       currency: detail.currency,
       grossAmount: detail.totalAmount, // marketplace order total is the authoritative gross

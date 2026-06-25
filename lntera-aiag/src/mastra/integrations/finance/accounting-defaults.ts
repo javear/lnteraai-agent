@@ -71,4 +71,15 @@ export const DEFAULT_POSTING_RULES: DefaultPostingRule[] = [
   { transactionType: 'expense', sequence: 1, accountCode: '1100', side: 'credit', amountSource: 'gross' },
   { transactionType: 'refund', sequence: 0, accountCode: '4200', side: 'debit', amountSource: 'gross' },
   { transactionType: 'refund', sequence: 1, accountCode: '1100', side: 'credit', amountSource: 'gross' },
+  // Marketplace flow (Phase 2): sales land in the Marketplace Clearing account (1310); the settlement feed
+  // (Phase 2b) draws fees/refunds out of it and the payout moves the remainder to Bank — so 1310 nets to
+  // ~0 per cycle (built-in reconciliation).
+  { transactionType: 'marketplace_sale', sequence: 0, accountCode: '1310', side: 'debit', amountSource: 'gross' },
+  { transactionType: 'marketplace_sale', sequence: 1, accountCode: '4100', side: 'credit', amountSource: 'gross' },
+  { transactionType: 'marketplace_fee', sequence: 0, accountCode: '6100', side: 'debit', amountSource: 'gross' },
+  { transactionType: 'marketplace_fee', sequence: 1, accountCode: '1310', side: 'credit', amountSource: 'gross' },
+  { transactionType: 'marketplace_refund', sequence: 0, accountCode: '4200', side: 'debit', amountSource: 'gross' },
+  { transactionType: 'marketplace_refund', sequence: 1, accountCode: '1310', side: 'credit', amountSource: 'gross' },
+  { transactionType: 'marketplace_payout', sequence: 0, accountCode: '1200', side: 'debit', amountSource: 'gross' },
+  { transactionType: 'marketplace_payout', sequence: 1, accountCode: '1310', side: 'credit', amountSource: 'gross' },
 ];
