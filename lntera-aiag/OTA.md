@@ -7,11 +7,11 @@ permissions, manifest, `capacitor.config`, splash, deep links) still require a r
 ## How it works
 
 - Plugin: [`@capgo/capacitor-updater`](https://capgo.app), **self-hosted** on Supabase Storage (public
-  bucket `app-bundles`). `autoUpdate: false` — we drive it ourselves in `web/src/components/OtaUpdateGate.tsx`.
-- On launch the app calls `notifyAppReady()` (marks the running bundle healthy), then checks
-  `app-bundles/latest.json`. If a newer `version` exists, it shows a **blocking "Updating…" splash with a
-  progress bar**, downloads the bundle, then **applies it immediately** (`set` + `reload`). No-update
-  launches stay instant — the splash only appears once an update is confirmed.
+  bucket `app-bundles`). `autoUpdate: false` — we drive it ourselves in `web/src/lib/ota.ts`.
+- **Background mode:** on launch the app calls `notifyAppReady()` (marks the running bundle healthy),
+  then checks `app-bundles/latest.json`. If a newer `version` exists, it downloads the bundle **in the
+  background** (small non-blocking "Updating… N%" toast) and **stages it for the next launch** (`next()`)
+  — the app stays fully usable. A "Restart now" toast action can apply it immediately if the user wants.
 - **Rollback safety:** if a freshly-applied bundle fails to boot (never reaches `notifyAppReady()`),
   capgo automatically reverts to the previous good bundle — a broken web deploy can't brick the app.
 
