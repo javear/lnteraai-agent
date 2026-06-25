@@ -75,7 +75,7 @@ jobs:
         with:
           appId: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
           serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          groups: testers
+          groups: lntera-internal-testers
           releaseNotes: "Android build from ${{ github.sha }}"
           file: lntera-aiag/android/app/build/outputs/apk/debug/app-debug.apk
 
@@ -140,6 +140,6 @@ jobs:
         with:
           appId: ${{ secrets.FIREBASE_IOS_APP_ID }}
           serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          groups: testers
+          groups: lntera-internal-testers
           releaseNotes: "iOS build from ${{ github.sha }}"
           file: ${{ runner.temp }}/export/App.ipa
