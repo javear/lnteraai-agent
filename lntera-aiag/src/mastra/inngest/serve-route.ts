@@ -15,10 +15,15 @@ import { scheduledTaskSweepFn } from './functions/sweep-scheduled-tasks';
 
 export const INNGEST_SERVE_PATH = '/inngest';
 
+// Public origin Inngest Cloud should call back. Set so the deploy-time self-sync (entrypoint.sh PUTs
+// localhost:$PORT/inngest) registers the PUBLIC function URL instead of localhost — no rollout race.
+const serveOrigin = process.env.MASTRA_PUBLIC_BASE_URL?.trim();
+
 const inngestHandler = serve({
   client: inngest,
   functions: [insightArmSweepFn, runInsightFn, runScheduledTaskFn, scheduledTaskSweepFn],
   servePath: INNGEST_SERVE_PATH,
+  ...(serveOrigin ? { serveOrigin } : {}),
 });
 
 export const inngestRoutes = (['GET', 'PUT', 'POST'] as const).map((method) =>
