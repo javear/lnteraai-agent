@@ -79,7 +79,7 @@ export function repairTiktokBigIntIds(rawBody: string, payload: unknown): void {
   if (!payload || typeof payload !== 'object') return;
   const obj = payload as Record<string, unknown>;
   const data = obj.data && typeof obj.data === 'object' ? (obj.data as Record<string, unknown>) : null;
-  for (const key of ['product_id', 'sku_id', 'seller_id', 'shop_id'] as const) {
+  for (const key of ['product_id', 'sku_id', 'seller_id', 'shop_id', 'order_id'] as const) {
     // Match the first unquoted-or-quoted run of >=12 digits for this key in the raw JSON text.
     const m = rawBody.match(new RegExp(`"${key}"\\s*:\\s*"?(\\d{12,})"?`));
     if (!m) continue;

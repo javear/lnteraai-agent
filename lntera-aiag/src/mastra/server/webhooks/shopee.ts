@@ -14,6 +14,7 @@ import {
 } from '../../integrations/shared/webhook-event-classifier';
 import { notifyTenantOfMarketplaceEvent } from '../../active-mode/notifier';
 import { ingestMarketplaceProductEvent } from '../../sync/ingest-product-event';
+import { extractOrderId, reconcileOrderTransaction } from '../../integrations/finance/order-sync';
 
 const WEBHOOK_PATH = '/webhooks/shopee';
 
@@ -105,6 +106,17 @@ export const shopeeWebhookRoute = registerApiRoute(WEBHOOK_PATH, {
         payload,
       }).catch((err) => logErrorBrief('[webhook] shopee product ingest threw', err));
       return c.json({ ok: true, tenant_id: connection.tenant_id, code: event.code, product: true });
+    }
+
+    // Order events also record a `sale` once the order is completed (Phase 2a). Fire-and-forget; the
+    // reconciler re-fetches the order detail and only records on normalized `completed` status.
+    if (event.category === 'orders') {
+      const orderId = extractOrderId('shopee', payload);
+      if (orderId) {
+        void reconcileOrderTransaction({ tenantId: connection.tenant_id, connection, orderId }).catch((err) =>
+          logErrorBrief('[webhook] shopee order reconcile threw', err),
+        );
+      }
     }
 
     // Fire-and-forget: ack immediately so Shopee does not retry on slow LLM responses.
