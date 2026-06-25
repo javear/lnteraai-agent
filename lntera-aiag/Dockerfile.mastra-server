@@ -27,8 +27,12 @@ ENV NODE_ENV=production
 # (the server reads process.env.PORT, default 4111).
 ENV MASTRA_HOST=0.0.0.0
 COPY --from=builder /app/.mastra/output ./
+# Entrypoint starts the server AND self-syncs Inngest on deploy (see entrypoint.sh). Copied from the
+# build context (lntera-aiag/), not the builder output.
+COPY entrypoint.sh /app/entrypoint.sh
 EXPOSE 4111
 USER bun
-# Run the Mastra production bundle on Bun. (If a future build's pnpm-style node_modules layout ever
-# trips Bun, the fallback is to regenerate them here: `RUN bun install --production`.)
-CMD ["bun", "index.mjs"]
+# Run via the entrypoint: `exec bun index.mjs` as PID 1 + a background Inngest auto-sync. (If a future
+# build's pnpm-style node_modules layout ever trips Bun, the fallback is to regenerate them here:
+# `RUN bun install --production`.)
+CMD ["sh", "/app/entrypoint.sh"]
