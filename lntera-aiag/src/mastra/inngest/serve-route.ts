@@ -10,12 +10,14 @@ import { registerApiRoute } from '@mastra/core/server';
 import { inngest } from './client';
 import { insightArmSweepFn } from './functions/sweep-insight-arms';
 import { runInsightFn } from './functions/run-insight';
+import { runScheduledTaskFn } from './functions/run-scheduled-task';
+import { scheduledTaskSweepFn } from './functions/sweep-scheduled-tasks';
 
 export const INNGEST_SERVE_PATH = '/inngest';
 
 const inngestHandler = serve({
   client: inngest,
-  functions: [insightArmSweepFn, runInsightFn],
+  functions: [insightArmSweepFn, runInsightFn, runScheduledTaskFn, scheduledTaskSweepFn],
   servePath: INNGEST_SERVE_PATH,
 });
 
