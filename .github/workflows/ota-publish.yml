@@ -1,0 +1,52 @@
+name: OTA publish (web → mobile)
+
+# Publish an over-the-air web bundle so INSTALLED apps update on next launch — no new APK. Fires on
+# pushes to main that touch the web app, or manually. Requires the SUPABASE_SERVICE_ROLE_KEY repo secret
+# (write access to the app-bundles Storage bucket); the step is skipped if it's missing.
+#
+# Note: this publishes to ALL installed apps immediately. capgo auto-rolls-back a bundle that fails to
+# boot, but not logic regressions — gate behind a branch/tag trigger if you want a review step.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'lntera-aiag/web/**'
+  workflow_dispatch:
+
+env:
+  VITE_API_BASE_URL: "https://lnteraai-mastra-production.up.railway.app"
+  VITE_SUPABASE_URL: "https://ptcronhzstmrmclohodt.supabase.co"
+  VITE_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0Y3Jvbmh6c3Rtcm1jbG9ob2R0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0MzY5ODksImV4cCI6MjA5MzAxMjk4OX0.1qZwsnZ9UhhuYnmkPaYqSu431-Mu3LL1RcWOjnynQkA"
+  VITE_WEB_APP_ORIGIN: "https://lntera.ai"
+
+jobs:
+  ota:
+    name: Build + publish OTA bundle
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: lntera-aiag/web/package-lock.json
+
+      - name: Write native build env
+        working-directory: lntera-aiag/web
+        run: |
+          cat > .env.native <<EOF
+          VITE_API_BASE_URL=$VITE_API_BASE_URL
+          VITE_SUPABASE_URL=$VITE_SUPABASE_URL
+          VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+          VITE_WEB_APP_ORIGIN=$VITE_WEB_APP_ORIGIN
+          EOF
+
+      - name: Build + publish OTA bundle
+        if: ${{ env.SUPABASE_SERVICE_ROLE_KEY != '' }}
+        working-directory: lntera-aiag/web
+        run: |
+          npm ci
+          npm run ota:publish
