@@ -15,6 +15,7 @@ import { useNotifications } from '../lib/notifications';
 import { IS_NATIVE } from '../lib/runtime';
 import { SyncPrefsSettings } from '../components/SyncPrefsSettings';
 import { StoreSyncConfig } from '../components/StoreSyncConfig';
+import { BuildTag } from '../components/BuildTag';
 import { getStores, type StoreSyncRow } from '../lib/sync-config';
 
 function label(key: string): string {
@@ -250,6 +251,7 @@ export default function Integrations() {
           <SyncPrefsSettings />
         </div>
       )}
+      <BuildTag />
     </div>
   );
 }
