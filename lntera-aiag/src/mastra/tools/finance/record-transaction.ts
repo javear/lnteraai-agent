@@ -6,6 +6,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { requireTenantContext, TENANT_MASTER_ID_KEY } from '../../integrations/shared/marketplace-auth';
 import { recordTransaction, type LineKind } from '../../integrations/finance/transactions-repo';
+import { maybePostTransaction } from '../../integrations/finance/posting-engine';
 
 const LINE_KINDS = ['product', 'service', 'fee', 'tax', 'shipping', 'discount', 'adjustment'] as const;
 
@@ -85,6 +86,8 @@ export const recordTransactionTool = createTool({
           taxAmount: l.taxAmount ?? 0,
         })),
       });
+      // Project into the ledger if advanced finance is enabled for this tenant (no-op otherwise).
+      void maybePostTransaction(tenantId, result.id);
       const total = p.lines.reduce((s, l) => s + l.amount, 0);
       return {
         success: true,

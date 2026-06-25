@@ -31,6 +31,7 @@ import { runInsightsNowTool } from '../tools/insights/run-insights-now';
 import { createChartTool } from '../tools/insights/create-chart';
 import { configureSyncAutopilotTool } from '../tools/sync/configure-sync-autopilot';
 import { recordTransactionTool } from '../tools/finance/record-transaction';
+import { configureFinanceTool } from '../tools/finance/configure-finance';
 import { TENANT_MASTER_ID_KEY } from '../integrations/shared/marketplace-auth';
 import { AUTH_USER_ID_KEY } from '../server/auth/tenant-context-middleware';
 import { resolveAllowedToolIds } from '../integrations/shared/tenant-access';
@@ -85,6 +86,7 @@ const ALL_TOOLS = {
   [createChartTool.id]: createChartTool,
   [configureSyncAutopilotTool.id]: configureSyncAutopilotTool,
   [recordTransactionTool.id]: recordTransactionTool,
+  [configureFinanceTool.id]: configureFinanceTool,
 };
 
 /**
@@ -140,7 +142,7 @@ export const generalAgent = new Agent({
   instructions: `You are the tenant's general assistant.
 
 Tools (read carefully): you start with only two meta-tools — \`search_tools\` and \`load_tool\`. To do anything with shops, orders, or products you MUST first discover the right tool:
-1. Call \`search_tools\` with plain keywords for the task (e.g. "list shops", "search orders", "fulfill/ship order", "order details", "shipping label", "edit product price", "edit stock", "edit attributes", "archive product", "create/update/publish/discard draft", "draw chart / plot / visualize data", "analyze my business / run insights", "record a transaction / sale / expense").
+1. Call \`search_tools\` with plain keywords for the task (e.g. "list shops", "search orders", "fulfill/ship order", "order details", "shipping label", "edit product price", "edit stock", "edit attributes", "archive product", "create/update/publish/discard draft", "draw chart / plot / visualize data", "analyze my business / run insights", "record a transaction / sale / expense", "enable/disable accounting / bookkeeping ledger").
 2. Call \`load_tool\` with the matching tool name(s) from the results to load them.
 3. Then call the loaded tool. Read its schema before calling and don't guess required fields.
 Loaded tools stay available for the rest of the conversation; search again whenever you need a capability you haven't loaded yet.

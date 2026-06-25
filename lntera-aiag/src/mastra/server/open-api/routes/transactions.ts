@@ -6,6 +6,8 @@ import {
   type TransactionLineInput,
   type TransactionSource,
 } from '../../../integrations/finance/transactions-repo';
+import { maybePostTransaction, backfillUnposted } from '../../../integrations/finance/posting-engine';
+import { getFinanceSettings, setAccountingEnabled } from '../../../integrations/finance/finance-settings-repo';
 import { getSupabase } from '../../../integrations/shared/supabase';
 import { OPEN_API_PREFIX, OPENAPI_TAGS } from '../constants';
 import { openApiJsonError, resolveTenantFromBearer, type OpenApiHandlerContext } from '../middleware/bearer-tenant';
@@ -100,6 +102,8 @@ const ingestRoute = registerApiRoute(`${OPEN_API_PREFIX}/transactions`, {
         metadata: body.metadata && typeof body.metadata === 'object' ? (body.metadata as Record<string, unknown>) : null,
         lines: parsed.lines,
       });
+      // Project into the ledger if advanced finance is on (no-op otherwise). Non-blocking.
+      void maybePostTransaction(auth.tenantId, result.id);
       return c.json({ ok: true, id: result.id, created: result.created });
     } catch (err) {
       logErrorBrief('[transactions] ingest failed', err);
@@ -132,4 +136,40 @@ const listRoute = registerApiRoute(`${OPEN_API_PREFIX}/transactions`, {
   },
 });
 
-export const transactionRoutes = [ingestRoute, listRoute];
+/** GET /svc/v1/finance/settings — advanced-finance toggle + base settings. */
+const financeSettingsGet = registerApiRoute(`${OPEN_API_PREFIX}/finance/settings`, {
+  method: 'GET',
+  requiresAuth: false,
+  openapi: { summary: 'Get finance settings', tags: [...OPENAPI_TAGS.root], parameters: [authHeaderParam], responses: { 200: { description: 'OK' } } },
+  handler: async (c: Ctx) => {
+    const auth = await resolveTenantFromBearer(c);
+    if (auth instanceof Response) return auth;
+    return c.json(await getFinanceSettings(auth.tenantId));
+  },
+});
+
+/** PUT /svc/v1/finance/settings — toggle advanced finance (accounting + tax). Enabling seeds the default
+ *  chart of accounts + posting rules and backfill-posts existing transactions. */
+const financeSettingsPut = registerApiRoute(`${OPEN_API_PREFIX}/finance/settings`, {
+  method: 'PUT',
+  requiresAuth: false,
+  openapi: { summary: 'Update finance settings (accounting on/off)', tags: [...OPENAPI_TAGS.root], parameters: [authHeaderParam], responses: { 200: { description: 'OK' }, 400: { description: 'Bad request' } } },
+  handler: async (c: Ctx) => {
+    const auth = await resolveTenantFromBearer(c);
+    if (auth instanceof Response) return auth;
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    if (typeof body.accountingEnabled !== 'boolean') {
+      return openApiJsonError(c, 400, 'bad_request', 'accountingEnabled (boolean) is required.');
+    }
+    try {
+      await setAccountingEnabled(auth.tenantId, body.accountingEnabled);
+      const backfill = body.accountingEnabled ? await backfillUnposted(auth.tenantId) : { posted: 0, skipped: 0 };
+      return c.json({ ok: true, ...(await getFinanceSettings(auth.tenantId)), backfill });
+    } catch (err) {
+      logErrorBrief('[finance] toggle failed', err);
+      return openApiJsonError(c, 400, 'update_failed', err instanceof Error ? err.message : 'Could not update finance settings.');
+    }
+  },
+});
+
+export const transactionRoutes = [ingestRoute, listRoute, financeSettingsGet, financeSettingsPut];
