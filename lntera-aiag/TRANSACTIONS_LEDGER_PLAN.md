@@ -11,6 +11,8 @@ literacy still get a working setup.
 - **Fees/refunds:** pulled from a **separate settlement/payout feed**, reconciled to orders by external id.
 - **Tax:** **per-tenant configurable** (no static config); set/retrieved via an AI tool that can also
   interview the tenant to define what applies. Drafts only — a human reviews before filing.
+- **Feature gating:** **transaction recording is always on** for every tenant. **Advanced finance
+  (accounting ledger + tax) is an opt-in per-tenant toggle** (default OFF) — not every business needs it.
 
 ## 1. Shape — three independent layers
 
@@ -123,7 +125,66 @@ reconciled to orders by external id.
 | **4** | Trial balance + GL + OWL export |
 | **5** | Tax: `tenant_tax_config` + `configure-tax` tool + recaps + `generate-tax-document` + Coretax export |
 
-## 9. Still needed to refine (not blocking Phase 1)
-- Tenant **default COA** content (we'll draft a generic Indonesian SME default; tenants edit).
+## 9. Feature gating
+- **Always on:** transaction recording/sync (Phases 1–2) for every tenant — the canonical record is the
+  foundation and useful standalone.
+- **Opt-in (default OFF):** advanced finance — the posting engine, journal/trial-balance, and tax
+  (Phases 3–5). Gated by **`tenant_finance_settings.accounting_enabled`** (+ later `base_currency`,
+  `fiscal_year_start`). Toggle via settings UI **and** a `configure-finance` AI tool.
+- **OFF:** transactions accumulate, no journal entries. **ON:** seed the COA + optionally **backfill-post**
+  existing transactions, or post from then on. Tax sits under accounting (needs the ledger), so it's only
+  available when accounting is ON.
+
+## 10. Still needed to refine (not blocking Phase 1)
 - **Settlement feed** specifics per platform (Shopee/TikTok statement APIs + fields).
 - **Coretax import sample** for the first tax document to support.
+
+## Appendix A — Default chart of accounts (Indonesian SME)
+Seeded per tenant when accounting is enabled; fully editable (tenants mirroring OWL just renumber).
+Simple 4-digit codes; Indonesian names (English in parens). Accounts referenced by the default posting
+rules are marked ★.
+
+| Code | Nama Akun | Type | Normal |
+|---|---|---|---|
+| 1100 | Kas (Cash) | asset | debit |
+| 1110 | Kas Kecil (Petty Cash) | asset | debit |
+| 1200 | ★ Bank | asset | debit |
+| 1300 | Piutang Usaha (Accounts Receivable) | asset | debit |
+| 1310 | ★ Saldo/Piutang Marketplace (clearing — funds held pending payout) | asset | debit |
+| 1400 | Persediaan Barang (Inventory) | asset | debit |
+| 1500 | PPN Masukan (Input VAT) | asset | debit |
+| 1600 | Biaya Dibayar Dimuka (Prepaid Expenses) | asset | debit |
+| 1700 | Aset Tetap (Fixed Assets) | asset | debit |
+| 1710 | Akumulasi Penyusutan (Accumulated Depreciation) | asset (contra) | credit |
+| 2100 | Utang Usaha (Accounts Payable) | liability | credit |
+| 2200 | ★ PPN Keluaran (Output VAT) | liability | credit |
+| 2310 | Utang PPh 21 | liability | credit |
+| 2320 | Utang PPh 23 | liability | credit |
+| 2330 | Utang PPh Final 4(2) | liability | credit |
+| 2340 | Utang PPh 25/29 | liability | credit |
+| 2400 | Utang Bank/Pinjaman (Loans payable) | liability | credit |
+| 3100 | Modal Pemilik (Owner's Capital) | equity | credit |
+| 3200 | Laba Ditahan (Retained Earnings) | equity | credit |
+| 3900 | Ikhtisar Laba Rugi (Income Summary) | equity | credit |
+| 4100 | ★ Penjualan (Sales Revenue) | revenue | credit |
+| 4110 | Pendapatan Jasa (Service Revenue) | revenue | credit |
+| 4200 | ★ Retur & Potongan Penjualan (Sales Returns & Discounts) | revenue (contra) | debit |
+| 4900 | Pendapatan Lain-lain (Other Income) | revenue | credit |
+| 5100 | Harga Pokok Penjualan (COGS) | expense | debit |
+| 5200 | Ongkos Kirim (Shipping cost borne by seller) | expense | debit |
+| 6100 | ★ Beban Komisi Marketplace (commission fees) | expense | debit |
+| 6110 | Beban Admin/Layanan Marketplace | expense | debit |
+| 6200 | Beban Gaji (Salaries) | expense | debit |
+| 6300 | Beban Iklan & Pemasaran (Advertising & Marketing) | expense | debit |
+| 6400 | Beban Sewa (Rent) | expense | debit |
+| 6500 | Beban Utilitas (Utilities) | expense | debit |
+| 6600 | Beban Administrasi Bank (Bank charges) | expense | debit |
+| 6700 | Beban Penyusutan (Depreciation) | expense | debit |
+| 6900 | Beban Lain-lain (Other Expenses) | expense | debit |
+| 9999 | Akun Sementara/Selisih (Suspense / Rounding) | asset | debit |
+
+**Default posting rules (settlement-aware — fees arrive separately from the order):**
+- **Sale** (order `completed`): Dr 1310 (gross) / Cr 4100 (gross) [+ Cr 2200 if PPN].
+- **Fee** (settlement): Dr 6100 / Cr 1310.
+- **Refund**: Dr 4200 / Cr 1310 (or 1200).
+- **Payout** (settlement): Dr 1200 / Cr 1310. → 1310 nets to ~0 per cycle (built-in reconciliation).
