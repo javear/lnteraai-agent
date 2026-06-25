@@ -18,12 +18,14 @@ permissions, manifest, `capacitor.config`, splash, deep links) still require a r
 
 ```bash
 cd lntera-aiag/web
-SUPABASE_SERVICE_ROLE_KEY=<your service role key> npm run ota:publish
+SUPABASE_SECRET_KEY=<sb_secret_… key> npm run ota:publish
 ```
 
 This runs `build:native`, zips `dist` (index.html at the zip root), uploads `<version>.zip` to the
 `app-bundles` bucket, and overwrites `latest.json → { version, url }`. (`VITE_SUPABASE_URL` is read from
-`.env.native`; the service role key is required for the write and is never bundled into the app.)
+`.env.native`; the secret key (`sb_secret_…`, the replacement for the legacy `service_role`) is required
+for the write and is never bundled into the app. The legacy `SUPABASE_SERVICE_ROLE_KEY` still works as a
+fallback.)
 
 Installed apps pick it up on their **next launch**. Version is `<pkg.version>-<timestamp>` (override with
 `OTA_VERSION=…`).

@@ -27,11 +27,13 @@ const SUPABASE_URL = (
   fromEnvNative('VITE_SUPABASE_URL') ||
   ''
 ).replace(/\/$/, '');
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+// New Supabase "secret" key (sb_secret_…, replaces the legacy service_role). Either works — both have
+// full access / bypass RLS, which the bucket write needs. The old name is accepted as a fallback.
+const SECRET_KEY = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const BUCKET = 'app-bundles';
 
-if (!SUPABASE_URL || !SERVICE_KEY) {
-  console.error('✗ Set VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY before publishing.');
+if (!SUPABASE_URL || !SECRET_KEY) {
+  console.error('✗ Set VITE_SUPABASE_URL and SUPABASE_SECRET_KEY (a Supabase secret key, sb_secret_…) before publishing.');
   process.exit(1);
 }
 
@@ -51,7 +53,7 @@ const zipPath = resolve(`ota-${ts}.zip`); // outside dist so it doesn't include 
 console.log(`• Zipping dist → ${objectName} …`);
 execSync(`cd "${dist}" && zip -r -q "${zipPath}" .`, { stdio: 'inherit' });
 
-const supabase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+const supabase = createClient(SUPABASE_URL, SECRET_KEY, { auth: { persistSession: false } });
 
 console.log('• Uploading bundle …');
 const zipUp = await supabase.storage

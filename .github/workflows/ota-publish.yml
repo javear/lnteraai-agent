@@ -1,8 +1,9 @@
 name: OTA publish (web → mobile)
 
 # Publish an over-the-air web bundle so INSTALLED apps update on next launch — no new APK. Fires on
-# pushes to main that touch the web app, or manually. Requires the SUPABASE_SERVICE_ROLE_KEY repo secret
-# (write access to the app-bundles Storage bucket); the step is skipped if it's missing.
+# pushes to main that touch the web app, or manually. Requires the SUPABASE_SECRET_KEY repo secret (a
+# Supabase secret key, sb_secret_… — replaces the legacy service_role; full access to write the
+# app-bundles Storage bucket); the step is skipped if it's missing.
 #
 # Note: this publishes to ALL installed apps immediately. capgo auto-rolls-back a bundle that fails to
 # boot, but not logic regressions — gate behind a branch/tag trigger if you want a review step.
@@ -24,7 +25,7 @@ jobs:
     name: Build + publish OTA bundle
     runs-on: ubuntu-latest
     env:
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -45,7 +46,7 @@ jobs:
           EOF
 
       - name: Build + publish OTA bundle
-        if: ${{ env.SUPABASE_SERVICE_ROLE_KEY != '' }}
+        if: ${{ env.SUPABASE_SECRET_KEY != '' }}
         working-directory: lntera-aiag/web
         run: |
           npm ci
