@@ -3,8 +3,13 @@
 import { getSupabase } from '../shared/supabase';
 import { logErrorBrief } from '../../logger/compact-error';
 import { getFinanceSettings } from './finance-settings-repo';
+import { getTaxConfig } from './tax-config-repo';
 import { createJournalEntry, type JournalLineInput } from './accounting-repo';
 import { SUSPENSE_CODE } from './accounting-defaults';
+
+// Sale-type transactions whose revenue is PPN-inclusive when the tenant is PPN-registered.
+const SALE_TYPES = new Set(['sale', 'marketplace_sale', 'service']);
+const PPN_OUTPUT_CODE = '2200';
 
 interface TxnRow {
   id: string;
@@ -71,9 +76,11 @@ export async function postTransaction(tenantId: string, txnId: string): Promise<
     .order('sequence', { ascending: true });
   if (!rules || rules.length === 0) return { status: 'no_rules' }; // unmapped type → left unposted for review
 
-  const { data: coa } = await supabase.from('chart_of_accounts').select('id, code').eq('tenant_id', tenantId);
-  const codeById = new Map((coa as { id: string; code: string }[] | null ?? []).map((r) => [r.id, r.code]));
-  const idByCode = new Map((coa as { id: string; code: string }[] | null ?? []).map((r) => [r.code, r.id]));
+  const { data: coa } = await supabase.from('chart_of_accounts').select('id, code, type').eq('tenant_id', tenantId);
+  const coaRows = (coa as { id: string; code: string; type: string }[] | null) ?? [];
+  const codeById = new Map(coaRows.map((r) => [r.id, r.code]));
+  const idByCode = new Map(coaRows.map((r) => [r.code, r.id]));
+  const typeByCode = new Map(coaRows.map((r) => [r.code, r.type]));
 
   const lines: JournalLineInput[] = [];
   for (const r of rules as { account_id: string; side: string; amount_source: string }[]) {
@@ -90,6 +97,29 @@ export async function postTransaction(tenantId: string, txnId: string): Promise<
     });
   }
   if (lines.length === 0) return { status: 'zero' };
+
+  // Tax-aware posting: if the tenant is PPN-registered, split output VAT out of sale revenue. Default is
+  // PPN-INCLUSIVE pricing (the common Indonesian case): ppn = revenue × rate/(100+rate). Balance-neutral —
+  // total credit is unchanged (revenue−ppn moves to PPN Keluaran). Configurable per tenant; adjust later.
+  if (SALE_TYPES.has(txn.type)) {
+    const taxCfg = await getTaxConfig(tenantId).catch(() => ({ config: {} as Record<string, unknown> }));
+    const cfg = taxCfg.config as { ppnEnabled?: boolean; ppnRate?: number };
+    const ppnAccountId = idByCode.get(PPN_OUTPUT_CODE);
+    if (cfg.ppnEnabled && ppnAccountId) {
+      const rate = Number(cfg.ppnRate) || 11;
+      let ppnTotal = 0;
+      for (const l of lines) {
+        if (l.credit > 0 && typeByCode.get(l.accountCode) === 'revenue') {
+          const ppn = round2((l.credit * rate) / (100 + rate));
+          l.credit = round2(l.credit - ppn);
+          ppnTotal = round2(ppnTotal + ppn);
+        }
+      }
+      if (ppnTotal > 0) {
+        lines.push({ accountId: ppnAccountId, accountCode: PPN_OUTPUT_CODE, debit: 0, credit: ppnTotal, description: `PPN ${rate}% (inclusive)` });
+      }
+    }
+  }
 
   // Auto-balance any rounding/rule gap into the suspense account so the entry always balances.
   const diff = round2(lines.reduce((s, l) => s + l.debit, 0) - lines.reduce((s, l) => s + l.credit, 0));
