@@ -50,36 +50,53 @@ export async function setAccountingEnabled(tenantId: string, enabled: boolean): 
   if (enabled) await seedDefaultAccounting(tenantId);
 }
 
-/** Seed the default chart of accounts + posting rules for a tenant. No-op if a chart already exists. */
+/**
+ * Seed the default chart of accounts (if none) + top up any MISSING default posting rules. Idempotent +
+ * additive — re-running picks up newly-shipped default rules (e.g. the marketplace flow) without
+ * duplicating or clobbering a tenant's edits.
+ */
 export async function seedDefaultAccounting(tenantId: string): Promise<void> {
   const supabase = getSupabase();
-  const { data: existing, error: checkErr } = await supabase
+
+  // 1) Chart of accounts — insert the default set only if the tenant has none.
+  const { data: existingCoa, error: coaCheckErr } = await supabase
     .from('chart_of_accounts')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .limit(1);
-  if (checkErr) throw new Error(`Failed to check chart of accounts: ${checkErr.message}`);
-  if (existing && existing.length > 0) return; // already seeded
+    .select('id, code')
+    .eq('tenant_id', tenantId);
+  if (coaCheckErr) throw new Error(`Failed to check chart of accounts: ${coaCheckErr.message}`);
+  let coa = (existingCoa as { id: string; code: string }[]) ?? [];
+  if (coa.length === 0) {
+    const coaRows = DEFAULT_COA.map((a) => ({
+      tenant_id: tenantId,
+      code: a.code,
+      name: a.name,
+      type: a.type,
+      normal_balance: a.normalBalance,
+    }));
+    const { data: inserted, error: coaErr } = await supabase.from('chart_of_accounts').insert(coaRows).select('id, code');
+    if (coaErr) throw new Error(`Failed to seed chart of accounts: ${coaErr.message}`);
+    coa = (inserted as { id: string; code: string }[]) ?? [];
+  }
+  const idByCode = new Map(coa.map((r) => [r.code, r.id]));
 
-  const coaRows = DEFAULT_COA.map((a) => ({
-    tenant_id: tenantId,
-    code: a.code,
-    name: a.name,
-    type: a.type,
-    normal_balance: a.normalBalance,
-  }));
-  const { data: inserted, error: coaErr } = await supabase.from('chart_of_accounts').insert(coaRows).select('id, code');
-  if (coaErr) throw new Error(`Failed to seed chart of accounts: ${coaErr.message}`);
-
-  const idByCode = new Map((inserted as { id: string; code: string }[]).map((r) => [r.code, r.id]));
+  // 2) Posting rules — add any default rule not already present (by type + account + side).
+  const { data: existingRules } = await supabase
+    .from('posting_rules')
+    .select('transaction_type, account_id, side')
+    .eq('tenant_id', tenantId);
+  const have = new Set(
+    ((existingRules as { transaction_type: string; account_id: string; side: string }[]) ?? []).map(
+      (r) => `${r.transaction_type}|${r.account_id}|${r.side}`,
+    ),
+  );
   const ruleRows = DEFAULT_POSTING_RULES.map((r) => ({
     tenant_id: tenantId,
     transaction_type: r.transactionType,
     sequence: r.sequence,
-    account_id: idByCode.get(r.accountCode),
+    account_id: idByCode.get(r.accountCode) ?? null,
     side: r.side,
     amount_source: r.amountSource,
-  })).filter((r) => Boolean(r.account_id));
+  })).filter((r) => r.account_id && !have.has(`${r.transaction_type}|${r.account_id}|${r.side}`));
   if (ruleRows.length > 0) {
     const { error: ruleErr } = await supabase.from('posting_rules').insert(ruleRows);
     if (ruleErr) throw new Error(`Failed to seed posting rules: ${ruleErr.message}`);

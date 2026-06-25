@@ -2,6 +2,7 @@ import { registerApiRoute } from '@mastra/core/server';
 import { openApiJsonError, resolveTenantFromBearer, type OpenApiHandlerContext } from '../middleware/bearer-tenant';
 import { OPEN_API_PREFIX, OPENAPI_TAGS } from '../constants';
 import { trialBalance, generalLedger, profitAndLoss, journalExportRows } from '../../../integrations/finance/reports-repo';
+import { taxRecap } from '../../../integrations/finance/tax-recap';
 
 type Ctx = OpenApiHandlerContext & { req: { param: (n: string) => string | undefined; query: (n: string) => string | undefined } };
 
@@ -96,4 +97,20 @@ const exportRoute = registerApiRoute(`${OPEN_API_PREFIX}/finance/export`, {
   },
 });
 
-export const financeReportRoutes = [trialBalanceRoute, ledgerRoute, profitLossRoute, exportRoute];
+/** GET /svc/v1/finance/tax-recap?from&to — PPN + PPh withholding recap from the ledger. */
+const taxRecapRoute = registerApiRoute(`${OPEN_API_PREFIX}/finance/tax-recap`, {
+  method: 'GET',
+  requiresAuth: false,
+  openapi: { summary: 'Tax recap (PPN + withholding) for a period', tags: [...OPENAPI_TAGS.root], parameters: [authHeaderParam], responses: { 200: { description: 'OK' } } },
+  handler: async (c: Ctx) => {
+    const auth = await resolveTenantFromBearer(c);
+    if (auth instanceof Response) return auth;
+    try {
+      return c.json(await taxRecap(auth.tenantId, q(c, 'from'), q(c, 'to')));
+    } catch (err) {
+      return openApiJsonError(c, 400, 'query_failed', err instanceof Error ? err.message : 'Failed.');
+    }
+  },
+});
+
+export const financeReportRoutes = [trialBalanceRoute, ledgerRoute, profitLossRoute, exportRoute, taxRecapRoute];
