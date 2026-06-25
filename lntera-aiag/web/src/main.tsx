@@ -6,7 +6,7 @@ import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
 import { IS_NATIVE, NATIVE_PLATFORM } from './lib/runtime';
 import { initNativeShell } from './lib/native-shell';
-import { initOta } from './lib/ota';
+import { OtaUpdateGate } from './components/OtaUpdateGate';
 import { fetchPublicConfig, makeSupabase } from './lib/supabase';
 import { SessionProvider, useAuth } from './auth';
 import { ThemeProvider } from './theme';
@@ -199,10 +199,9 @@ createRoot(document.getElementById('root')!).render(
       </Router>
       <Toaster />
       {!IS_NATIVE ? <PwaUpdater /> : null}
+      {/* Native OTA: notifyAppReady + a blocking "Updating…" progress splash when a newer web bundle
+          exists (downloads + applies immediately). No-op on web/Electron. */}
+      <OtaUpdateGate />
     </ThemeProvider>
   </StrictMode>,
 );
-
-// Native OTA: mark this bundle healthy (cancels capgo rollback) + stage any newer web bundle for next
-// launch. Fire-and-forget after render; no-op on web/Electron.
-initOta();
