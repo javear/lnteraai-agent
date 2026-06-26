@@ -28,7 +28,7 @@ import { ChatEmptyArt } from '../components/Lottie';
 let seq = 0;
 const newId = () => `m${++seq}-${Date.now()}`;
 const PAGE = 30;
-const EXAMPLES = ['List my connected shops', "Show today's orders", 'Search my products'];
+const EXAMPLE_KEYS = ['chat.example.shops', 'chat.example.orders', 'chat.example.products'];
 
 function deriveTitle(text: string): string {
   const t = text.replace(/\s+/g, ' ').trim();
@@ -337,7 +337,7 @@ export default function Chat() {
         navigate(`/c/${created.id}`, { replace: true });
       } catch {
         setMessages((m) => m.filter((x) => x.id !== aiId));
-        setError('Could not start a new chat. Check your connection and try again.');
+        setError(t('chat.error.start'));
         setStreaming(false);
         return;
       }
@@ -395,7 +395,7 @@ export default function Chat() {
       // No text and no error surfaced — show a gentle fallback instead of an empty bubble.
       setMessages((m) =>
         m.map((x) =>
-          x.id === aiId ? { ...x, content: 'I didn’t get a response — please try again.', pending: false, tool: null } : x,
+          x.id === aiId ? { ...x, content: t('chat.noResponse'), pending: false, tool: null } : x,
         ),
       );
     }
@@ -513,19 +513,19 @@ export default function Chat() {
             <div className="flex animate-fade-in flex-col items-center pt-10 text-center sm:pt-16">
               <ChatEmptyArt className="h-20 w-20" />
               <h1 className="mt-4 text-xl font-semibold tracking-tight sm:text-2xl">
-                How can I help with your business?
+                {t('chat.empty.title')}
               </h1>
               <p className="mt-2 text-[15px] text-muted-foreground">
-                Ask about orders, products, fulfillment, and your connected shops.
+                {t('chat.empty.subtitle')}
               </p>
               <div className="mt-6 flex flex-wrap justify-center gap-2">
-                {EXAMPLES.map((e) => (
+                {EXAMPLE_KEYS.map((key) => (
                   <button
-                    key={e}
-                    onClick={() => void send(e)}
+                    key={key}
+                    onClick={() => void send(t(key))}
                     className="rounded-full border bg-background px-3.5 py-2 text-sm text-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   >
-                    {e}
+                    {t(key)}
                   </button>
                 ))}
               </div>
