@@ -15,6 +15,7 @@ import { TENANT_MASTER_ID_KEY } from '../../integrations/shared/marketplace-auth
 import { AGENT_MODE_KEY, type AgentMode } from '../../active-mode/notifier';
 import { deliverTenantWebNotification } from '../../active-mode/web-delivery';
 import { getScheduledTask, markScheduledTaskStatus } from '../../integrations/shared/scheduled-task-prefs';
+import { getTenantLanguage } from '../../integrations/shared/language-prefs';
 import { SCHEDULED_TASK_RUN_EVENT, SCHEDULED_TASK_CANCEL_EVENT } from '../arm-scheduled-task';
 
 interface RunTaskEventData {
@@ -44,6 +45,8 @@ async function runAgentForTask(tenantId: string, prompt: string): Promise<string
   requestContext.set(TENANT_MASTER_ID_KEY, tenantId);
   requestContext.set('channel', 'web');
   requestContext.set(AGENT_MODE_KEY, 'active' satisfies AgentMode);
+  // Reply in the tenant's chosen language (server-initiated run has no client requestContext).
+  requestContext.set('language', await getTenantLanguage(tenantId).catch(() => 'en'));
 
   const maxAttempts = RETRY_BACKOFF_MS.length + 1;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {

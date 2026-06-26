@@ -17,6 +17,9 @@ import { InsightSettings } from '../components/InsightSettings';
 import { AutopilotSettings } from '../components/AutopilotSettings';
 import { FinanceSettings } from '../components/FinanceSettings';
 import { TaxSettings } from '../components/TaxSettings';
+import { LanguageSettings } from '../components/LanguageSettings';
+import { useI18n, isLang } from '../i18n';
+import { getLanguage } from '../lib/language';
 import { MessageBubble, type ChatMessage } from '../components/chat/Message';
 import { Suggestions } from '../components/chat/Suggestions';
 import { Composer } from '../components/chat/Composer';
@@ -46,6 +49,7 @@ function trailingSuggestionsOf(msgs: Array<{ role: string; content: string }>): 
 
 export default function Chat() {
   const { session, api } = useAuth();
+  const { t, setLang } = useI18n();
   const { status, loadingStatus, refreshStatus } = useApp();
   const { scope, createSession, touchThread } = useChats();
   const { subscribe: subscribeNotifications } = useNotifications();
@@ -342,6 +346,7 @@ export default function Chat() {
     let acc = '';
     let usedModel: string | undefined;
     let errored = false;
+    let langToolUsed = false; // the AI may switch language via the set-language tool → sync UI after
     const apply = (full: string) =>
       setMessages((m) =>
         // Clear `tool` too: once the answer is streaming, the "Using …" pulse must stop (otherwise it
@@ -359,7 +364,10 @@ export default function Chat() {
           acc += delta;
           apply(acc);
         },
-        onToolStart: (tool) => setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, tool } : x))),
+        onToolStart: (tool) => {
+          if (tool.toLowerCase().includes('language')) langToolUsed = true;
+          setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, tool } : x)));
+        },
         onModel: (label) => {
           usedModel = label;
           setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, model: label } : x)));
@@ -392,6 +400,15 @@ export default function Chat() {
       );
     }
     setStreaming(false);
+
+    // If the agent changed the language via the set-language tool, adopt it in the UI now.
+    if (langToolUsed) {
+      getLanguage(api)
+        .then((server) => {
+          if (isLang(server)) setLang(server);
+        })
+        .catch(() => {});
+    }
 
     // Persist the turn to the offline cache + float the session to the top of the sidebar.
     const completedAt = new Date().toISOString();
@@ -552,11 +569,14 @@ export default function Chat() {
       <Modal
         open={automationOpen}
         onClose={() => setAutomationOpen(false)}
-        title="Active Agent settings"
+        title={t('settings.title')}
         subtitle="Automatic analysis + stock/price sync across your stores."
       >
         <div className="flex flex-col gap-6">
-          <AutopilotSettings />
+          <LanguageSettings />
+          <div className="border-t pt-6">
+            <AutopilotSettings />
+          </div>
           <div className="border-t pt-6">
             <InsightSettings />
           </div>

@@ -37,6 +37,8 @@ import { configureTaxTool } from '../tools/finance/configure-tax';
 import { generateTaxDocumentTool } from '../tools/finance/generate-tax-document';
 import { exportReportTool } from '../tools/finance/export-report';
 import { scheduleTaskTool } from '../tools/scheduled/schedule-task';
+import { setLanguageTool } from '../tools/language/set-language';
+import { normalizeLanguage, languageLabel } from '../integrations/shared/language-prefs';
 import { TENANT_MASTER_ID_KEY } from '../integrations/shared/marketplace-auth';
 import { AUTH_USER_ID_KEY } from '../server/auth/tenant-context-middleware';
 import { resolveAllowedToolIds } from '../integrations/shared/tenant-access';
@@ -97,6 +99,7 @@ const ALL_TOOLS = {
   [generateTaxDocumentTool.id]: generateTaxDocumentTool,
   [exportReportTool.id]: exportReportTool,
   [scheduleTaskTool.id]: scheduleTaskTool,
+  [setLanguageTool.id]: setLanguageTool,
 };
 
 /**
@@ -164,6 +167,15 @@ function localTimeHint(requestContext?: { get?: (k: string) => unknown }): strin
   }
 }
 
+/** Injects the user's preferred reply language (from requestContext, set by the client UI). Overrides the
+ *  default "mirror the user's language" so replies follow the chosen preference even when the user types in
+ *  another language. Empty when no preference was passed (then the agent just mirrors the message). */
+function languageHint(requestContext?: { get?: (k: string) => unknown }): string {
+  const lang = normalizeLanguage(requestContext?.get?.('language'));
+  if (!lang) return '';
+  return `\n\nThe user's preferred language is ${languageLabel(lang)}. ALWAYS write your replies in ${languageLabel(lang)}, even if the user writes in another language — unless they explicitly ask you to switch (then use the set-language tool). Keep product names, numbers, and codes as-is.`;
+}
+
 export const generalAgent = new Agent({
   id: 'general-agent',
   name: 'General Agent',
@@ -191,7 +203,7 @@ export const generalAgent = new Agent({
 
 Tools (read carefully): the most common tools are ALREADY loaded and ready to call directly — listing shops, searching orders, and searching products. Use them immediately for those asks; do NOT call search_tools for them.
 For ANY OTHER capability you have two meta-tools — \`search_tools\` and \`load_tool\`:
-1. Call \`search_tools\` with plain keywords for the task (e.g. "fulfill/ship order", "order details", "shipping label", "edit product price", "edit stock", "edit attributes", "archive product", "create/update/publish/discard draft", "draw chart / plot / visualize data", "analyze my business / run insights", "record a transaction / sale / expense", "enable/disable accounting / bookkeeping ledger", "profit & loss / financial summary / trial balance", "tax setup (NPWP/PPN/PPh) / tax recap / tax planning document", "download/export report file (trial balance, P&L, journal, tax recap)", "schedule a future task / do this later / remind me / send at a time").
+1. Call \`search_tools\` with plain keywords for the task (e.g. "fulfill/ship order", "order details", "shipping label", "edit product price", "edit stock", "edit attributes", "archive product", "create/update/publish/discard draft", "draw chart / plot / visualize data", "analyze my business / run insights", "record a transaction / sale / expense", "enable/disable accounting / bookkeeping ledger", "profit & loss / financial summary / trial balance", "tax setup (NPWP/PPN/PPh) / tax recap / tax planning document", "download/export report file (trial balance, P&L, journal, tax recap)", "schedule a future task / do this later / remind me / send at a time", "change language / switch to Indonesian or English / ganti bahasa").
 2. Call \`load_tool\` with the matching tool name(s) from the results to load them.
 3. Then call the loaded tool. Read its schema before calling and don't guess required fields.
 Loaded tools stay available for the rest of the conversation; search again whenever you need a capability you haven't loaded yet.
@@ -220,7 +232,7 @@ Web app (requestContext.channel === "web"):
   \`\`\`suggest
   ["Show today's orders","Search products"]
   \`\`\`
-  Keep options to concise imperative phrases. Use sparingly and omit when not useful. To prompt connecting an integration, make an option begin with "Connect " (e.g. "Connect Shopee"). If you have no genuinely useful options, do NOT include the \`\`\`suggest block at all — never emit it empty or with an empty array.${localTimeHint(requestContext)}`,
+  Keep options to concise imperative phrases. Use sparingly and omit when not useful. To prompt connecting an integration, make an option begin with "Connect " (e.g. "Connect Shopee"). If you have no genuinely useful options, do NOT include the \`\`\`suggest block at all — never emit it empty or with an empty array.${localTimeHint(requestContext)}${languageHint(requestContext)}`,
   model: async ({ requestContext }) => {
     const pinned = requestContext?.get?.('groqModel');
     const pinnedStr = typeof pinned === 'string' ? pinned : undefined;
