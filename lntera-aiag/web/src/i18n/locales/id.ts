@@ -92,6 +92,16 @@ export const id: Record<string, string> = {
   'auth.useCode': 'Masuk dengan kode email',
   'auth.offlineSignIn': 'Luring — sambungkan kembali untuk masuk.',
 
+  // Notifications dialog
+  'notif.title': 'Notifikasi',
+  'notif.desc': 'Pilih cara Lntera memberi tahu Anda tentang pesanan dan kejadian.',
+  'notif.push.title': 'Notifikasi push',
+  'notif.push.blocked': 'Diblokir — aktifkan notifikasi untuk situs ini di pengaturan browser Anda.',
+  'notif.push.unavailable': 'Tidak tersedia di sini (masuk lewat browser yang didukung, via HTTPS).',
+  'notif.push.desc': 'Dapatkan pemberitahuan pesanan dan kejadian meski aplikasi tidak dibuka.',
+  'notif.inapp.title': 'Peringatan dalam aplikasi',
+  'notif.inapp.desc': 'Tampilkan pop-up dan pembaruan langsung di obrolan saat Anda memakai aplikasi.',
+
   // Active Agent settings modal
   'settings.title': 'Pengaturan Active Agent',
 

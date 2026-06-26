@@ -93,6 +93,16 @@ export const en: Record<string, string> = {
   'auth.useCode': 'Sign in with an email code',
   'auth.offlineSignIn': 'Offline — reconnect to sign in.',
 
+  // Notifications dialog
+  'notif.title': 'Notifications',
+  'notif.desc': 'Choose how Lntera tells you about orders and events.',
+  'notif.push.title': 'Push notifications',
+  'notif.push.blocked': 'Blocked — enable notifications for this site in your browser settings.',
+  'notif.push.unavailable': 'Not available here (sign in on a supported browser, over HTTPS).',
+  'notif.push.desc': 'Get notified about orders and events even when the app isn’t open.',
+  'notif.inapp.title': 'In-app alerts',
+  'notif.inapp.desc': 'Show pop-ups and live updates in the chat while you’re using the app.',
+
   // Active Agent settings modal
   'settings.title': 'Active Agent settings',
 
