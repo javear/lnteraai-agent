@@ -9,6 +9,7 @@ import {
 } from 'react';
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
 import { apiUrl, IS_NATIVE } from './lib/runtime';
+import { logoutPush } from './lib/push';
 
 /**
  * Native OAuth return target. A CUSTOM SCHEME (not an https App Link) — Chrome Custom Tabs reliably hand
@@ -200,6 +201,9 @@ export function SessionProvider({
       clearRecovery: () => setRecovery(false),
       signOut: async () => {
         setRecovery(false);
+        // Detach this device from the current tenant's push subscription BEFORE clearing the session,
+        // so a later login as a different account re-points cleanly (and old-tenant pushes stop).
+        await logoutPush().catch(() => {});
         await supabase.auth.signOut();
       },
     }),

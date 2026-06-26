@@ -6,6 +6,7 @@ const noop = (): void => {};
 export default {
   initialize: noop,
   login: noop,
-  User: { addTag: noop },
+  logout: noop,
+  User: { addTag: noop, removeTag: noop },
   Notifications: { requestPermission: async (): Promise<boolean> => false, addEventListener: noop },
 };
