@@ -189,14 +189,16 @@ function SidebarContent({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Brand bar — height-aligned with the app header so the drawer feels continuous. */}
-      <div className="flex h-14 shrink-0 items-center px-4 safe-t">
+      {/* Brand bar — height-aligned with the app header. min-h (not fixed h) so the safe-area inset on
+          native adds to the bar height instead of eating into it (which pushed the logo onto the nav). */}
+      <div className="flex min-h-14 shrink-0 items-center px-4 safe-t">
         <Logo />
       </div>
 
-      {/* One scroll region: every item stays reachable on short screens (account anchors to the bottom). */}
+      {/* One scroll region: every item stays reachable on short screens (account anchors to the bottom).
+          pt-2 keeps the first nav item ("New chat") off the brand bar on mobile. */}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <div className="flex min-h-full flex-col px-3 pb-3">
+        <div className="flex min-h-full flex-col px-3 pb-3 pt-2">
           <div className="flex flex-col gap-1">
             <NavLink to="/" end onClick={onNavigate} className={navItemClass}>
               <SquarePen />
