@@ -41,6 +41,10 @@ export async function streamChat(
   handlers: StreamHandlers,
   shouldStop: () => boolean = () => false,
 ): Promise<void> {
+  // Lightweight perf trace: time-to-first-token (first text) + total. Logged so we can compare before/
+  // after the tool-preload change on web and native (check devtools / Android logcat).
+  const t0 = (globalThis.performance?.now?.() ?? Date.now());
+  let firstTextAt: number | null = null;
   try {
     const res = await client.getAgent(AGENT_ID).stream([{ role: 'user', content: message }], {
       // `resource` is required by the stream endpoint's body schema; the server still
@@ -59,7 +63,13 @@ export async function streamChat(
         const payload = chunk?.payload ?? {};
         switch (chunk?.type) {
           case 'text-delta':
-            if (typeof payload.text === 'string') handlers.onText(payload.text);
+            if (typeof payload.text === 'string') {
+              if (firstTextAt === null) {
+                firstTextAt = (globalThis.performance?.now?.() ?? Date.now());
+                console.info(`[chat] time-to-first-token: ${Math.round(firstTextAt - t0)}ms`);
+              }
+              handlers.onText(payload.text);
+            }
             break;
           case 'tool-call':
             handlers.onToolStart?.(typeof payload.toolName === 'string' ? payload.toolName : 'tool');
@@ -81,6 +91,7 @@ export async function streamChat(
         }
       },
     });
+    console.info(`[chat] total stream time: ${Math.round((globalThis.performance?.now?.() ?? Date.now()) - t0)}ms`);
   } catch (err) {
     handlers.onError?.(friendlyStreamError(err));
   }
