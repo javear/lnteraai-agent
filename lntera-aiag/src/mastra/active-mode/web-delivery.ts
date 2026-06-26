@@ -78,7 +78,14 @@ export async function deliverTenantWebNotification(input: DeliverTenantWebNotifi
         heading: input.heading ?? 'Lntera',
         content: input.text,
         url: notificationsUrl(input.tenantId),
-        data: { kind: payload.kind, platform: payload.platform, category: payload.category, code: payload.code },
+        // threadId lets the NATIVE app navigate to the Notifications chat in-app on tap (no browser).
+        data: {
+          kind: payload.kind,
+          platform: payload.platform,
+          category: payload.category,
+          code: payload.code,
+          threadId: notificationsThreadId(input.tenantId),
+        },
       }),
     );
   }
