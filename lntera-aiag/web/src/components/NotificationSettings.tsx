@@ -7,6 +7,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
+import { useT } from '@/i18n';
 import { getPushState, onPushChange, subscribePush, unsubscribePush, type PushState } from '@/lib/push';
 
 export function NotificationSettings({
@@ -22,6 +23,7 @@ export function NotificationSettings({
 }) {
   const [push, setPush] = useState<PushState>(() => getPushState());
   const [busy, setBusy] = useState(false);
+  const t = useT();
 
   // Refresh state while the dialog is open (and react to changes from other tabs).
   useEffect(() => {
@@ -46,34 +48,25 @@ export function NotificationSettings({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Notifications</DialogTitle>
-          <DialogDescription>Choose how Lntera tells you about orders and events.</DialogDescription>
+          <DialogTitle>{t('notif.title')}</DialogTitle>
+          <DialogDescription>{t('notif.desc')}</DialogDescription>
         </DialogHeader>
 
         <div className="mt-5 flex flex-col gap-5">
           <Row
-            title="Push notifications"
-            desc={
-              denied
-                ? 'Blocked — enable notifications for this site in your browser settings.'
-                : pushUnavailable
-                  ? 'Not available here (sign in on a supported browser, over HTTPS).'
-                  : "Get notified about orders and events even when the app isn't open."
-            }
+            title={t('notif.push.title')}
+            desc={denied ? t('notif.push.blocked') : pushUnavailable ? t('notif.push.unavailable') : t('notif.push.desc')}
           >
             <Switch
               checked={push.optedIn}
               disabled={busy || pushUnavailable || denied}
               onCheckedChange={(v) => void togglePush(v)}
-              aria-label="Push notifications"
+              aria-label={t('notif.push.title')}
             />
           </Row>
 
-          <Row
-            title="In-app alerts"
-            desc="Show pop-ups and live updates in the chat while you're using the app."
-          >
-            <Switch checked={inAppEnabled} onCheckedChange={setInAppEnabled} aria-label="In-app alerts" />
+          <Row title={t('notif.inapp.title')} desc={t('notif.inapp.desc')}>
+            <Switch checked={inAppEnabled} onCheckedChange={setInAppEnabled} aria-label={t('notif.inapp.title')} />
           </Row>
         </div>
       </DialogContent>
