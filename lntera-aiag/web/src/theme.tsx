@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { Monitor, Moon, Sun } from 'lucide-react';
+import { useT } from './i18n';
 
 type Theme = 'light' | 'dark' | 'system';
 type Resolved = 'light' | 'dark';
@@ -69,10 +70,11 @@ export function useTheme(): ThemeContextValue {
 /** Compact icon toggle that flips between light and dark (used in the mobile top bar). */
 export function ThemeToggle({ className }: { className?: string }) {
   const { resolved, setTheme } = useTheme();
+  const t = useT();
   return (
     <button
       type="button"
-      aria-label={resolved === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+      aria-label={resolved === 'dark' ? t('theme.toLight') : t('theme.toDark')}
       onClick={() => setTheme(resolved === 'dark' ? 'light' : 'dark')}
       className={
         'relative inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors ease-soft hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 ' +
@@ -85,8 +87,9 @@ export function ThemeToggle({ className }: { className?: string }) {
   );
 }
 
+// `label` is an i18n key (theme.light/dark/system) — translate at the render site via t(opt.label).
 export const THEME_OPTIONS: { value: Theme; label: string; icon: typeof Sun }[] = [
-  { value: 'light', label: 'Light', icon: Sun },
-  { value: 'dark', label: 'Dark', icon: Moon },
-  { value: 'system', label: 'System', icon: Monitor },
+  { value: 'light', label: 'theme.light', icon: Sun },
+  { value: 'dark', label: 'theme.dark', icon: Moon },
+  { value: 'system', label: 'theme.system', icon: Monitor },
 ];
