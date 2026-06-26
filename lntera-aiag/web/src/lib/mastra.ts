@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { MastraClient } from '@mastra/client-js';
 import { useAuth } from '../auth';
 import { API_BASE } from './runtime';
+import { nativeFetch, nativeStreamingSupported } from './native-fetch';
 
 /** Matches the server agent id (src/mastra/agents/general-agent.ts). */
 export const AGENT_ID = 'general-agent';
@@ -11,6 +12,9 @@ export function makeMastraClient(token: string | undefined): MastraClient {
     // Same-origin on web; the configured remote backend in native/Electron shells.
     baseUrl: API_BASE || window.location.origin,
     headers: token ? { Authorization: `Bearer ${token}` } : {},
+    // On Android, route through the native OkHttp streaming bridge so chat streams smoothly (the
+    // WebView's fetch can buffer streamed responses). The SDK's stream parsing is unchanged.
+    ...(nativeStreamingSupported() ? { fetch: nativeFetch } : {}),
   });
 }
 
