@@ -9,6 +9,7 @@ import { useOnlineStatus } from '../lib/pwa';
 import { ChatSessionsProvider, useChats } from '../lib/chat-store';
 import { RealtimeNotificationsProvider, useNotifications, type TenantNotification } from '../lib/notifications';
 import { THEME_OPTIONS, ThemeToggle, useTheme } from '../theme';
+import { useT } from '../i18n';
 import { Avatar, Logo } from '../ui';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -86,14 +87,15 @@ function ChatSessionList({ activeId, onNavigate }: { activeId?: string; onNaviga
   const { threads, loading, deleteSession } = useChats();
   const { notificationsThreadId: notifId } = useNotifications();
   const navigate = useNavigate();
+  const tr = useT(); // `tr` (not `t`) — the threads map below binds `t` to a thread object
 
   async function onDelete(id: string) {
     try {
       await deleteSession(id);
-      toast.success('Chat deleted');
+      toast.success(tr('nav.chatDeleted'));
       if (activeId === id) navigate('/');
     } catch {
-      toast.error('Could not delete chat');
+      toast.error(tr('nav.chatDeleteError'));
     }
   }
 
@@ -122,7 +124,7 @@ function ChatSessionList({ activeId, onNavigate }: { activeId?: string; onNaviga
           ))}
         </div>
       ) : threads.length === 0 ? (
-        <p className="px-3 py-2 text-[13px] text-muted-foreground">No chats yet. Start a new one.</p>
+        <p className="px-3 py-2 text-[13px] text-muted-foreground">{tr('nav.noChats')}</p>
       ) : (
         threads.map((t) => {
         const active = t.id === activeId;
@@ -145,13 +147,13 @@ function ChatSessionList({ activeId, onNavigate }: { activeId?: string; onNaviga
                 active ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground',
               )}
             >
-              {t.title || 'New chat'}
+              {t.title || tr('chat.newChat')}
             </NavLink>
             <span className="shrink-0 pr-2 text-[11px] tabular-nums text-muted-foreground group-hover:hidden group-focus-within:hidden">
               {relativeTime(t.updatedAt)}
             </span>
             <button
-              aria-label="Delete chat"
+              aria-label={tr('nav.deleteChat')}
               onClick={() => void onDelete(t.id)}
               className="hidden shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:mr-1 group-hover:inline-flex group-focus-within:mr-1 group-focus-within:inline-flex"
             >
@@ -183,6 +185,7 @@ function SidebarContent({
 }) {
   const { theme, setTheme } = useTheme();
   const { openSettings } = useNotifications();
+  const t = useT();
 
   return (
     <div className="flex h-full flex-col">
@@ -197,24 +200,24 @@ function SidebarContent({
           <div className="flex flex-col gap-1">
             <NavLink to="/" end onClick={onNavigate} className={navItemClass}>
               <SquarePen />
-              New chat
+              {t('chat.newChat')}
             </NavLink>
             <NavLink to="/integrations" onClick={onNavigate} className={navItemClass}>
               <Plug />
-              Integrations
+              {t('nav.integrations')}
             </NavLink>
           </div>
 
           <div className="mt-6">
             <div className="mb-1.5 px-3 font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              Chats
+              {t('nav.chats')}
             </div>
             <ChatSessionList activeId={activeThreadId} onNavigate={onNavigate} />
           </div>
 
           <div className="mt-6 border-t px-3 pt-4">
             <div className="mb-2 font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              Connections
+              {t('nav.connections')}
             </div>
             {loading ? (
               <SidebarSkeleton />
@@ -230,7 +233,7 @@ function SidebarContent({
                         <span className={c.on ? 'text-foreground' : 'text-muted-foreground'}>{c.label}</span>
                       </div>
                     </TooltipTrigger>
-                    <TooltipContent side="right">{c.on ? 'Connected' : 'Not connected'}</TooltipContent>
+                    <TooltipContent side="right">{c.on ? t('nav.connected') : t('nav.notConnected')}</TooltipContent>
                   </Tooltip>
                 ))}
               </div>
@@ -252,10 +255,10 @@ function SidebarContent({
               <DropdownMenuContent align="start" className="w-[--radix-dropdown-menu-trigger-width] min-w-56">
                 <DropdownMenuItem onSelect={openSettings}>
                   <Bell className="text-muted-foreground" />
-                  Notification settings
+                  {t('nav.notificationSettings')}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuLabel>Theme</DropdownMenuLabel>
+                <DropdownMenuLabel>{t('nav.theme')}</DropdownMenuLabel>
                 {THEME_OPTIONS.map((opt) => (
                   <DropdownMenuItem key={opt.value} onSelect={() => setTheme(opt.value)}>
                     <opt.icon className="text-muted-foreground" />
@@ -266,7 +269,7 @@ function SidebarContent({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={onSignOut} className="text-destructive focus:text-destructive">
                   <LogOut />
-                  Sign out
+                  {t('nav.signOut')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -304,6 +307,7 @@ export function AppLayout() {
   const location = useLocation();
   const online = useOnlineStatus();
   const activeThreadId = useMatch('/c/:threadId')?.params.threadId;
+  const t = useT();
 
   // Drawer gestures (mobile): swipe the open drawer left to close; swipe in from the left edge to open.
   const drawerTouch = useRef({ x: 0, y: 0, active: false });
@@ -360,7 +364,7 @@ export function AppLayout() {
 
   const email = session?.user.email ?? 'Workspace';
   const anyConnected = connectionRows(status).some((c) => c.on);
-  const routeLabel = location.pathname.startsWith('/integrations') ? 'Integrations' : 'Chat';
+  const routeLabel = location.pathname.startsWith('/integrations') ? t('nav.integrations') : t('nav.chat');
 
   return (
     <RealtimeNotificationsProvider>
@@ -397,7 +401,7 @@ export function AppLayout() {
               onTouchStart={onDrawerTouchStart}
               onTouchEnd={onDrawerTouchEnd}
             >
-              <SheetTitle className="sr-only">Navigation</SheetTitle>
+              <SheetTitle className="sr-only">{t('nav.navigation')}</SheetTitle>
               <SidebarContent
                 status={status}
                 loading={loadingStatus}
@@ -413,7 +417,7 @@ export function AppLayout() {
             {/* Mobile top bar — fixed height, brand left, controls clustered right. */}
             <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background/80 px-3 backdrop-blur safe-t sm:hidden">
               <button
-                aria-label="Open menu"
+                aria-label={t('nav.openMenu')}
                 onClick={() => setDrawerOpen(true)}
                 className="-ml-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
@@ -422,13 +426,13 @@ export function AppLayout() {
               <Logo />
               <div className="ml-auto flex items-center gap-0.5">
                 {!online ? (
-                  <WifiOff className="mr-1 h-4 w-4 text-muted-foreground" aria-label="Offline" />
+                  <WifiOff className="mr-1 h-4 w-4 text-muted-foreground" aria-label={t('common.offline')} />
                 ) : null}
                 <NotificationBell />
                 <ThemeToggle />
                 <span
                   className={cn('ml-1 h-2 w-2 rounded-full', anyConnected ? 'bg-success' : 'bg-muted-foreground/40')}
-                  title={anyConnected ? 'Integrations connected' : 'No integrations connected'}
+                  title={anyConnected ? t('nav.integrationsConnected') : t('nav.noIntegrationsConnected')}
                 />
               </div>
             </header>
@@ -441,7 +445,7 @@ export function AppLayout() {
                 <ThemeToggle />
                 <span
                   className={cn('ml-1.5 h-2 w-2 rounded-full', anyConnected ? 'bg-success' : 'bg-muted-foreground/40')}
-                  title={anyConnected ? 'Integrations connected' : 'No integrations connected'}
+                  title={anyConnected ? t('nav.integrationsConnected') : t('nav.noIntegrationsConnected')}
                 />
               </div>
             </header>
@@ -449,7 +453,7 @@ export function AppLayout() {
             {!online ? (
               <div className="hidden items-center justify-center gap-1.5 border-b bg-muted/60 py-1 text-xs text-muted-foreground sm:flex">
                 <WifiOff className="h-3.5 w-3.5" />
-                You're offline — showing cached data
+                {t('common.offlineBanner')}
               </div>
             ) : null}
 

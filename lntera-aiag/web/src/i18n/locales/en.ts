@@ -14,6 +14,7 @@ export const en: Record<string, string> = {
   'common.back': 'Back',
   'common.online': 'Online',
   'common.offline': 'Offline',
+  'common.offlineBanner': 'You’re offline — showing cached data',
   'common.enabled': 'Enabled',
   'common.disabled': 'Disabled',
 
@@ -23,6 +24,28 @@ export const en: Record<string, string> = {
   'language.save': 'Save language',
   'language.saved': 'Language updated.',
   'language.error': 'Could not change language.',
+
+  // Navigation / app chrome
+  'nav.chat': 'Chat',
+  'nav.integrations': 'Integrations',
+  'nav.navigation': 'Navigation',
+  'nav.openMenu': 'Open menu',
+  'nav.theme': 'Theme',
+  'nav.account': 'Account',
+  'nav.settings': 'Settings',
+  'nav.notificationSettings': 'Notification settings',
+  'nav.signOut': 'Sign out',
+  'nav.notifications': 'Notifications',
+  'nav.chats': 'Chats',
+  'nav.connections': 'Connections',
+  'nav.connected': 'Connected',
+  'nav.noChats': 'No chats yet. Start a new one.',
+  'nav.deleteChat': 'Delete chat',
+  'nav.chatDeleted': 'Chat deleted',
+  'nav.chatDeleteError': 'Could not delete chat',
+  'nav.notConnected': 'Not connected',
+  'nav.integrationsConnected': 'Integrations connected',
+  'nav.noIntegrationsConnected': 'No integrations connected',
 
   // Active Agent settings modal
   'settings.title': 'Active Agent settings',

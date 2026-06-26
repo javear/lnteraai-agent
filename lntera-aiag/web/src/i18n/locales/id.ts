@@ -13,6 +13,7 @@ export const id: Record<string, string> = {
   'common.back': 'Kembali',
   'common.online': 'Daring',
   'common.offline': 'Luring',
+  'common.offlineBanner': 'Anda sedang luring — menampilkan data tersimpan',
   'common.enabled': 'Aktif',
   'common.disabled': 'Nonaktif',
 
@@ -22,6 +23,28 @@ export const id: Record<string, string> = {
   'language.save': 'Simpan bahasa',
   'language.saved': 'Bahasa diperbarui.',
   'language.error': 'Tidak bisa mengganti bahasa.',
+
+  // Navigation / app chrome
+  'nav.chat': 'Obrolan',
+  'nav.integrations': 'Integrasi',
+  'nav.navigation': 'Navigasi',
+  'nav.openMenu': 'Buka menu',
+  'nav.theme': 'Tema',
+  'nav.account': 'Akun',
+  'nav.settings': 'Pengaturan',
+  'nav.notificationSettings': 'Pengaturan notifikasi',
+  'nav.signOut': 'Keluar',
+  'nav.notifications': 'Notifikasi',
+  'nav.chats': 'Obrolan',
+  'nav.connections': 'Koneksi',
+  'nav.connected': 'Terhubung',
+  'nav.noChats': 'Belum ada obrolan. Mulai yang baru.',
+  'nav.deleteChat': 'Hapus obrolan',
+  'nav.chatDeleted': 'Obrolan dihapus',
+  'nav.chatDeleteError': 'Tidak bisa menghapus obrolan',
+  'nav.notConnected': 'Belum terhubung',
+  'nav.integrationsConnected': 'Integrasi terhubung',
+  'nav.noIntegrationsConnected': 'Belum ada integrasi terhubung',
 
   // Active Agent settings modal
   'settings.title': 'Pengaturan Active Agent',
