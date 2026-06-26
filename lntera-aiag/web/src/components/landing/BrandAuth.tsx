@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { useT } from '@/i18n';
 import { GoogleGlyph } from '../auth/GoogleGlyph';
 import { GoogleOneTap } from '../auth/GoogleOneTap';
 import { useAuthForm } from '../auth/useAuthForm';
@@ -17,6 +18,7 @@ export function BrandAuth({
 }) {
   const f = useAuthForm({ defaultMode, redirectTo: '/' });
   const navigate = useNavigate();
+  const t = useT();
   const showPassword = f.mode === 'signup' || (f.mode === 'signin' && !f.useCode);
 
   // ── Code entry (signup confirmation OR passwordless login) ──────────────────
@@ -26,7 +28,7 @@ export function BrandAuth({
         <form onSubmit={f.onVerify} className="space-y-3">
           {f.info ? <p className="text-[13px] leading-relaxed text-[hsl(var(--fg-soft))]">{f.info}</p> : null}
           <label className="block">
-            <span className={labelCls}>6-digit code</span>
+            <span className={labelCls}>{t('auth.codeLabel')}</span>
             <input
               inputMode="numeric"
               autoComplete="one-time-code"
@@ -38,19 +40,19 @@ export function BrandAuth({
               value={f.code}
               // Supabase OTP length is configurable (6–10) — accept the full code, don't truncate.
               onChange={(e) => f.setCode(e.target.value.replace(/\D/g, '').slice(0, 10))}
-              placeholder="Enter code"
+              placeholder={t('auth.codePlaceholder')}
             />
           </label>
           <button type="submit" disabled={f.busy || !f.online || f.code.length < 6} className="lp-btn w-full">
-            {f.busy ? 'Verifying…' : f.step === 'confirm' ? 'Confirm & continue' : 'Verify & sign in'}
+            {f.busy ? t('auth.verifying') : f.step === 'confirm' ? t('auth.confirmContinue') : t('auth.verifySignIn')}
           </button>
         </form>
         <div className="mt-4 flex items-center justify-between text-[0.82rem]">
           <button type="button" onClick={f.backToForm} className="lp-link">
-            ← Back
+            {t('auth.back')}
           </button>
           <button type="button" onClick={f.resendCode} disabled={!f.online} className="lp-link">
-            Resend code
+            {t('auth.resend')}
           </button>
         </div>
         {f.error ? (
@@ -81,7 +83,7 @@ export function BrandAuth({
                 : 'text-[hsl(var(--fg-soft))] hover:text-[hsl(var(--fg))]',
             )}
           >
-            {m === 'signup' ? 'Create account' : 'Sign in'}
+            {m === 'signup' ? t('auth.createAccount') : t('auth.signIn')}
           </button>
         ))}
       </div>
@@ -89,17 +91,17 @@ export function BrandAuth({
       <form onSubmit={f.onSubmit} className="mt-4 space-y-3">
         {f.mode === 'signup' && (
           <label className="block">
-            <span className={labelCls}>Workspace · optional</span>
+            <span className={labelCls}>{t('auth.workspaceOptional')}</span>
             <input
               className="lp-field"
               value={f.workspace}
               onChange={(e) => f.setWorkspace(e.target.value)}
-              placeholder="My Store"
+              placeholder={t('auth.workspacePlaceholder')}
             />
           </label>
         )}
         <label className="block">
-          <span className={labelCls}>Email</span>
+          <span className={labelCls}>{t('auth.email')}</span>
           <input
             type="email"
             autoComplete="email"
@@ -107,12 +109,12 @@ export function BrandAuth({
             className="lp-field"
             value={f.email}
             onChange={(e) => f.setEmail(e.target.value)}
-            placeholder="you@store.com"
+            placeholder={t('auth.emailPlaceholder')}
           />
         </label>
         {showPassword && (
           <label className="block">
-            <span className={labelCls}>Password</span>
+            <span className={labelCls}>{t('auth.password')}</span>
             <input
               type="password"
               required
@@ -120,39 +122,39 @@ export function BrandAuth({
               className="lp-field"
               value={f.password}
               onChange={(e) => f.setPassword(e.target.value)}
-              placeholder={f.mode === 'signin' ? '••••••••' : 'At least 8 characters'}
+              placeholder={f.mode === 'signin' ? '••••••••' : t('auth.passwordMin')}
             />
           </label>
         )}
         {f.mode === 'signin' && !f.useCode ? (
           <div className="-mt-1 flex justify-end">
             <button type="button" onClick={() => navigate('/forgot-password')} className="lp-link text-[0.82rem]">
-              Forgot password?
+              {t('auth.forgot')}
             </button>
           </div>
         ) : null}
         <button type="submit" disabled={f.busy || !f.online} className="lp-btn w-full">
           {f.busy
-            ? 'One moment…'
+            ? t('auth.oneMoment')
             : f.mode === 'signin'
               ? f.useCode
-                ? 'Email me a code'
-                : 'Sign in'
-              : 'Start free'}
+                ? t('auth.emailCode')
+                : t('auth.signIn')
+              : t('auth.startFree')}
         </button>
       </form>
 
       {f.mode === 'signin' ? (
         <div className="mt-3 text-center">
           <button type="button" onClick={f.toggleUseCode} className="lp-link text-[0.82rem]">
-            {f.useCode ? 'Use a password instead' : 'Sign in with an email code'}
+            {f.useCode ? t('auth.usePassword') : t('auth.useCode')}
           </button>
         </div>
       ) : null}
 
       <div className="my-4 flex items-center gap-3">
         <span className="h-px flex-1 bg-[hsl(var(--line))]" />
-        <span className="lp-mono text-[0.66rem] uppercase tracking-[0.2em] text-[hsl(var(--fg-soft))]">or</span>
+        <span className="lp-mono text-[0.66rem] uppercase tracking-[0.2em] text-[hsl(var(--fg-soft))]">{t('auth.or')}</span>
         <span className="h-px flex-1 bg-[hsl(var(--line))]" />
       </div>
 
@@ -163,11 +165,11 @@ export function BrandAuth({
         className="lp-btn-ghost w-full justify-center disabled:opacity-50"
       >
         <GoogleGlyph />
-        Continue with Google
+        {t('auth.continueGoogle')}
       </button>
 
       {!f.online ? (
-        <p className="lp-mono mt-3 text-[0.72rem] text-[hsl(var(--fg-soft))]">Offline — reconnect to sign in.</p>
+        <p className="lp-mono mt-3 text-[0.72rem] text-[hsl(var(--fg-soft))]">{t('auth.offlineSignIn')}</p>
       ) : null}
       {f.error ? (
         <p className="mt-3 rounded-lg border bg-[hsl(var(--bg-2))] px-3 py-2 text-[0.82rem] text-[hsl(var(--fg))]">

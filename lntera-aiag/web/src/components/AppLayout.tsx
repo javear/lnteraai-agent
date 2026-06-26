@@ -262,7 +262,7 @@ function SidebarContent({
                 {THEME_OPTIONS.map((opt) => (
                   <DropdownMenuItem key={opt.value} onSelect={() => setTheme(opt.value)}>
                     <opt.icon className="text-muted-foreground" />
-                    <span className="flex-1">{opt.label}</span>
+                    <span className="flex-1">{t(opt.label)}</span>
                     {theme === opt.value ? <span className="h-1.5 w-1.5 rounded-full bg-foreground" /> : null}
                   </DropdownMenuItem>
                 ))}
