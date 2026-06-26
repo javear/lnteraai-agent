@@ -115,6 +115,11 @@ export const id: Record<string, string> = {
   'chat.noResponse': 'Saya tidak menerima respons — silakan coba lagi.',
   'chat.error.start': 'Tidak bisa memulai obrolan baru. Periksa koneksi Anda dan coba lagi.',
   'chat.loadingOlder': 'Memuat pesan lama…',
+  // Status berpikir — diputar saat agen bekerja. Dipisah dengan tanda |.
+  'thinking.words':
+    'Berpikir|Menimbang|Sedang mengerjakan|Menghitung angka|Menghubungkan titik|Menalar|Hampir selesai',
+  'thinking.label': 'Berpikir',
+  'thinking.tool': 'Memakai {tool}…',
   'chat.placeholder.offline': 'Anda sedang luring — sambungkan kembali untuk mengobrol',
   'chat.composer.settings': 'Analisis otomatis',
   'chat.hint.send': 'Enter untuk kirim · Shift+Enter untuk baris baru',

@@ -14,6 +14,8 @@ function currentLang(): string {
 
 export interface StreamHandlers {
   onText: (delta: string) => void;
+  /** Reasoning ("thinking") deltas — shown live while generating, never part of the final content. */
+  onReasoning?: (delta: string) => void;
   onToolStart?: (toolName: string) => void;
   /** Processor abort (e.g. provider not configured) — code is the metadata.code, reason is the message. */
   onTripwire?: (code: string | undefined, reason: string) => void;
@@ -77,6 +79,12 @@ export async function streamChat(
         if (shouldStop()) return;
         const payload = chunk?.payload ?? {};
         switch (chunk?.type) {
+          case 'reasoning-delta': {
+            // Separate "thinking" stream (most reasoning models) → live indicator only.
+            const r = typeof payload.text === 'string' ? payload.text : typeof payload.delta === 'string' ? payload.delta : '';
+            if (r) handlers.onReasoning?.(r);
+            break;
+          }
           case 'text-delta':
             if (typeof payload.text === 'string') {
               if (firstTextAt === null) {

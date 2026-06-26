@@ -16,6 +16,7 @@ import { AGENT_MODE_KEY, type AgentMode } from '../../active-mode/notifier';
 import { deliverTenantWebNotification } from '../../active-mode/web-delivery';
 import { getScheduledTask, markScheduledTaskStatus } from '../../integrations/shared/scheduled-task-prefs';
 import { getTenantLanguage } from '../../integrations/shared/language-prefs';
+import { stripReasoning } from '../../integrations/shared/strip-reasoning';
 import { SCHEDULED_TASK_RUN_EVENT, SCHEDULED_TASK_CANCEL_EVENT } from '../arm-scheduled-task';
 
 interface RunTaskEventData {
@@ -56,7 +57,7 @@ async function runAgentForTask(tenantId: string, prompt: string): Promise<string
         tripwire?: unknown;
       };
       if (answer.tripwire) return '';
-      return typeof answer.text === 'string' ? answer.text.trim() : '';
+      return typeof answer.text === 'string' ? stripReasoning(answer.text).trim() : '';
     } catch (err) {
       if (!isTransientLlmError(err) || attempt === maxAttempts) throw err;
       await sleep(RETRY_BACKOFF_MS[attempt - 1]);

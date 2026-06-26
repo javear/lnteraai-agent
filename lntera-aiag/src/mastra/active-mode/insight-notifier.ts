@@ -4,6 +4,7 @@
 // even if the LLM is empty/rate-limited. Used by the Inngest scheduled run AND the run-now tool.
 import { RequestContext } from '@mastra/core/request-context';
 import { notificationAgent } from '../agents/notification-agent';
+import { stripReasoning } from '../integrations/shared/strip-reasoning';
 import { TENANT_MASTER_ID_KEY } from '../integrations/shared/marketplace-auth';
 import { logErrorBrief } from '../logger/compact-error';
 import { AGENT_MODE_KEY, type AgentMode } from './notifier';
@@ -128,7 +129,8 @@ async function narrateInsights(facts: string, requestContext: RequestContext, te
       };
       // A tripwire (no LLM key, regex guard) is permanent — fall back now rather than burn retries.
       if (answer.tripwire) return '';
-      if (typeof answer.text === 'string' && answer.text.trim()) return answer.text.trim();
+      if (typeof answer.text === 'string' && stripReasoning(answer.text).trim())
+        return stripReasoning(answer.text).trim();
       return ''; // empty (non-error) response → deterministic fallback
     } catch (err) {
       lastErr = err;

@@ -1,4 +1,5 @@
 import { REGEX_INPUT_BLOCKED_FRIENDLY_MESSAGE } from '../../agents/agent-regex-filter-config';
+import { stripReasoning } from './strip-reasoning';
 
 export type AgentGenerateResultLike = {
   text?: unknown;
@@ -41,5 +42,6 @@ export function resolveAgentTextFromResult(result: AgentGenerateResultLike): str
   if (typeof tripwireReason === 'string' && tripwireReason.trim().length > 0) {
     return tripwireReason.trim();
   }
-  return typeof result.text === 'string' ? result.text.trim() : '';
+  // Strip any inline reasoning (<think>…</think> etc.) so notifications/replies never show it.
+  return typeof result.text === 'string' ? stripReasoning(result.text).trim() : '';
 }
