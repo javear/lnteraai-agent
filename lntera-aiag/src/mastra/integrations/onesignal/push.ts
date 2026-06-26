@@ -56,8 +56,9 @@ function truncate(s: string, max: number): string {
 
 /**
  * Push payloads are plain text — strip Markdown so LLM-written copy doesn't show raw `**`, `###`, `***`,
- * backticks, or `[text](url)` on the lock screen. Best-effort, order matters (fences → code → links →
- * headings → emphasis).
+ * backticks, or `[text](url)` on the lock screen. Best-effort, order matters (fences → code → tables →
+ * links → headings → emphasis). Push payloads are plain text, so GFM pipe tables are flattened to
+ * readable lines (a table on a lock screen otherwise shows as messy `| col | col |` rows).
  */
 function stripMarkdown(s: string): string {
   return s
@@ -65,11 +66,17 @@ function stripMarkdown(s: string): string {
     .replace(/`([^`]+)`/g, '$1') // inline code
     .replace(/!\[[^\]]*\]\([^)]*\)/g, '') // images
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1') // links → label
+    // GFM tables: drop separator rows (|---|:--:|), then flatten data/header rows to "a · b · c".
+    .replace(/^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/gm, '')
+    .replace(/^\s*\|(.+?)\|?\s*$/gm, (_m, row: string) =>
+      row.split('|').map((c) => c.trim()).filter(Boolean).join(' · '),
+    )
     .replace(/^\s{0,3}#{1,6}\s+/gm, '') // ATX headings
     .replace(/^\s{0,3}>\s?/gm, '') // blockquotes
     .replace(/^\s*[-*+]\s+/gm, '• ') // bullet markers → •
     .replace(/~~([^~]+)~~/g, '$1') // strikethrough
     .replace(/\*\*\*|\*\*|\*|___|__|_/g, '') // bold / italic markers (incl. ***)
+    .replace(/\|/g, ' ') // any stray table pipes
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
