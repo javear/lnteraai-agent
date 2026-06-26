@@ -116,6 +116,11 @@ export const en: Record<string, string> = {
   'chat.noResponse': 'I didn’t get a response — please try again.',
   'chat.error.start': 'Could not start a new chat. Check your connection and try again.',
   'chat.loadingOlder': 'Loading older messages…',
+  // Thinking / generation status — cycled while the agent works (Claude-Code-style). Pipe-separated.
+  'thinking.words':
+    'Thinking|Pondering|Working on it|Crunching the numbers|Connecting the dots|Reasoning it through|Almost there',
+  'thinking.label': 'Thinking',
+  'thinking.tool': 'Using {tool}…',
   'chat.placeholder.offline': 'You’re offline — reconnect to chat',
   'chat.composer.settings': 'Automatic analysis',
   'chat.hint.send': 'Enter to send · Shift+Enter for a new line',

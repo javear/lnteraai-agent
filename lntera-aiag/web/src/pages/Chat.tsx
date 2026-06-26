@@ -5,6 +5,7 @@ import { useAuth } from '../auth';
 import { useApp } from '../components/AppLayout';
 import { useMastra } from '../lib/mastra';
 import { parseSuggestions, streamChat } from '../lib/chat';
+import { stripReasoning } from '../lib/reasoning';
 import { apiErrorMessage, isAnyLlmActive } from '../lib/integrations';
 import { useChats } from '../lib/chat-store';
 import { useNotifications, type TenantNotification } from '../lib/notifications';
@@ -344,14 +345,17 @@ export default function Chat() {
     }
 
     let acc = '';
+    let reasoningAcc = '';
     let usedModel: string | undefined;
     let errored = false;
     let langToolUsed = false; // the AI may switch language via the set-language tool → sync UI after
     const apply = (full: string) =>
       setMessages((m) =>
         // Clear `tool` too: once the answer is streaming, the "Using …" pulse must stop (otherwise it
-        // looks stuck/loading even though text has arrived).
-        m.map((x) => (x.id === aiId ? { ...x, content: parseSuggestions(full).body, pending: false, tool: null } : x)),
+        // looks stuck/loading even though text has arrived). stripReasoning keeps any inline <think> out.
+        m.map((x) =>
+          x.id === aiId ? { ...x, content: parseSuggestions(stripReasoning(full)).body, pending: false, tool: null } : x,
+        ),
       );
 
     await streamChat(
@@ -363,6 +367,11 @@ export default function Chat() {
         onText: (delta) => {
           acc += delta;
           apply(acc);
+        },
+        onReasoning: (delta) => {
+          reasoningAcc += delta;
+          // Live "thinking" preview only while no content yet — gone once the answer streams in.
+          if (!acc) setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, reasoning: reasoningAcc } : x)));
         },
         onToolStart: (tool) => {
           if (tool.toLowerCase().includes('language')) langToolUsed = true;
@@ -387,15 +396,18 @@ export default function Chat() {
       () => stopRef.current,
     );
 
-    const { body, suggestions: sugg } = parseSuggestions(acc);
-    if (acc.trim()) {
-      setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, content: body, pending: false, tool: null } : x)));
+    // Drop any inline reasoning from the persisted/displayed content, and clear the live thinking.
+    const { body, suggestions: sugg } = parseSuggestions(stripReasoning(acc));
+    if (body.trim()) {
+      setMessages((m) =>
+        m.map((x) => (x.id === aiId ? { ...x, content: body, pending: false, tool: null, reasoning: undefined } : x)),
+      );
       setSuggestions(sugg);
     } else if (!errored) {
       // No text and no error surfaced — show a gentle fallback instead of an empty bubble.
       setMessages((m) =>
         m.map((x) =>
-          x.id === aiId ? { ...x, content: t('chat.noResponse'), pending: false, tool: null } : x,
+          x.id === aiId ? { ...x, content: t('chat.noResponse'), pending: false, tool: null, reasoning: undefined } : x,
         ),
       );
     }

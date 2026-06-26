@@ -1,11 +1,14 @@
 import { Sparkles } from 'lucide-react';
-import { Avatar, TypingDots } from '../../ui';
+import { Avatar } from '../../ui';
 import { parseSuggestions } from '../../lib/chat';
+import { stripReasoning } from '../../lib/reasoning';
+import { useT } from '../../i18n';
 import type { NotificationAction, NotificationContextRef } from '../../lib/notifications';
 import type { ChartSpec } from '../../lib/insights';
 import { Markdown } from './Markdown';
 import { NotificationActions } from './NotificationActions';
 import { InsightChart } from './InsightChart';
+import { ThinkingIndicator } from './Thinking';
 
 export interface ChatMessage {
   id: string;
@@ -17,6 +20,8 @@ export interface ChatMessage {
   pending?: boolean;
   /** Tool the agent is currently invoking, shown as a subtle activity line. */
   tool?: string | null;
+  /** Live reasoning ("thinking") text while streaming — ephemeral, never persisted to content. */
+  reasoning?: string;
   /** Agent-initiated message surfaced live (not a reply to the user). */
   proactive?: boolean;
   /** A heads-up shown in a non-home chat — rendered but never cached/persisted to that thread. */
@@ -46,16 +51,8 @@ function formatMessageTime(iso?: string): string | null {
   return `${date}, ${time}`;
 }
 
-function ToolActivity({ tool }: { tool: string }) {
-  return (
-    <div className="mb-1.5 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-      <span className="h-1 w-1 animate-pulse rounded-full bg-brand" />
-      Using {tool}…
-    </div>
-  );
-}
-
 export function MessageBubble({ message }: { message: ChatMessage }) {
+  const t = useT();
   const timeLabel = formatMessageTime(message.createdAt);
   if (message.role === 'user') {
     return (
@@ -77,14 +74,22 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
             Active Agent
           </div>
         ) : null}
-        {message.tool ? <ToolActivity tool={message.tool} /> : null}
-        {message.content ? (
-          // Strip the trailing ```suggest [...]``` block — its items render as chips, never raw text.
-          // (Live messages are already stripped; this covers history/cache reloads.)
-          <Markdown>{parseSuggestions(message.content).body}</Markdown>
-        ) : message.pending ? (
-          <TypingDots />
-        ) : null}
+        {(() => {
+          // Strip the trailing ```suggest``` block + any inline reasoning that slipped into content.
+          const body = message.content ? parseSuggestions(stripReasoning(message.content)).body : '';
+          if (body) return <Markdown>{body}</Markdown>;
+          // No content yet → show the live "thinking" state (tool action, reasoning preview, or rotating
+          // words). Ephemeral: once content streams in, this is gone — reasoning never joins the content.
+          const working = message.pending || message.tool || (message.reasoning?.trim().length ?? 0) > 0;
+          if (working)
+            return (
+              <ThinkingIndicator
+                reasoning={message.reasoning}
+                label={message.tool ? t('thinking.tool', { tool: message.tool }) : undefined}
+              />
+            );
+          return null;
+        })()}
         {message.charts && message.charts.length > 0 ? <InsightChart charts={message.charts} /> : null}
         {message.actions && message.actions.length > 0 ? (
           <NotificationActions actions={message.actions} contextRef={message.contextRef} />
