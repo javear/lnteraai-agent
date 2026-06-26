@@ -115,6 +115,29 @@ async function isToolAllowedForRequest(args: ToolSearchFilterArgs): Promise<bool
 }
 
 /**
+ * The few highest-use tools are PRELOADED (always available) instead of forcing the search_tools →
+ * load_tool round-trips for the most common asks ("my orders / products / shops"). This cuts 1-2 hidden
+ * LLM round-trips → much lower time-to-first-token. The long tail stays behind dynamic discovery to keep
+ * the always-on schema small. Role-scoped per request (mirrors isToolAllowedForRequest) so disallowed
+ * tools never appear.
+ */
+const PRELOADED_TOOLS = [listMarketplaceShopsTool, searchOrdersTool, searchProductsTool];
+
+async function resolvePreloadedTools(args: { requestContext?: { get?: (k: string) => unknown } }) {
+  const tenantId = args.requestContext?.get?.(TENANT_MASTER_ID_KEY);
+  const authUserId = args.requestContext?.get?.(AUTH_USER_ID_KEY);
+  const allowed = await resolveAllowedToolIds({
+    tenantId: typeof tenantId === 'string' ? tenantId : null,
+    authUserId: typeof authUserId === 'string' ? authUserId : null,
+  });
+  const out: Record<string, (typeof PRELOADED_TOOLS)[number]> = {};
+  for (const t of PRELOADED_TOOLS) {
+    if (allowed === '*' || allowed.has(t.id)) out[t.id] = t;
+  }
+  return out;
+}
+
+/**
  * Dynamic tool discovery: the model gets only `search_tools` + `load_tool` (BM25, in-process — no
  * embeddings/model), then loads the relevant tools per thread. This turns ~2.5k tokens of always-on
  * tool schemas into ~0.4k, which keeps requests under Groq's per-model TPM ceilings. All tools stay
@@ -166,8 +189,9 @@ export const generalAgent = new Agent({
   ],
   instructions: ({ requestContext }) => `You are the tenant's general assistant.
 
-Tools (read carefully): you start with only two meta-tools — \`search_tools\` and \`load_tool\`. To do anything with shops, orders, or products you MUST first discover the right tool:
-1. Call \`search_tools\` with plain keywords for the task (e.g. "list shops", "search orders", "fulfill/ship order", "order details", "shipping label", "edit product price", "edit stock", "edit attributes", "archive product", "create/update/publish/discard draft", "draw chart / plot / visualize data", "analyze my business / run insights", "record a transaction / sale / expense", "enable/disable accounting / bookkeeping ledger", "profit & loss / financial summary / trial balance", "tax setup (NPWP/PPN/PPh) / tax recap / tax planning document", "download/export report file (trial balance, P&L, journal, tax recap)", "schedule a future task / do this later / remind me / send at a time").
+Tools (read carefully): the most common tools are ALREADY loaded and ready to call directly — listing shops, searching orders, and searching products. Use them immediately for those asks; do NOT call search_tools for them.
+For ANY OTHER capability you have two meta-tools — \`search_tools\` and \`load_tool\`:
+1. Call \`search_tools\` with plain keywords for the task (e.g. "fulfill/ship order", "order details", "shipping label", "edit product price", "edit stock", "edit attributes", "archive product", "create/update/publish/discard draft", "draw chart / plot / visualize data", "analyze my business / run insights", "record a transaction / sale / expense", "enable/disable accounting / bookkeeping ledger", "profit & loss / financial summary / trial balance", "tax setup (NPWP/PPN/PPh) / tax recap / tax planning document", "download/export report file (trial balance, P&L, journal, tax recap)", "schedule a future task / do this later / remind me / send at a time").
 2. Call \`load_tool\` with the matching tool name(s) from the results to load them.
 3. Then call the loaded tool. Read its schema before calling and don't guess required fields.
 Loaded tools stay available for the rest of the conversation; search again whenever you need a capability you haven't loaded yet.
@@ -240,7 +264,7 @@ Web app (requestContext.channel === "web"):
       semanticRecall: false,
     },
   }),
-  // No always-on tools: the model discovers them via search_tools/load_tool (toolSearchProcessor),
-  // and role-scoping is enforced by its `filter` hook (isToolAllowedForRequest).
-  tools: {},
+  // Preload the highest-use tools (role-scoped) so common asks skip the search_tools/load_tool
+  // round-trips; the long tail stays behind the toolSearchProcessor's dynamic discovery.
+  tools: resolvePreloadedTools,
 });
