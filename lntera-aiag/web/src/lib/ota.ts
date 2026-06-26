@@ -82,10 +82,15 @@ async function checkForUpdate(CapacitorUpdater: Updater): Promise<void> {
       onClick: () => {
         void (async () => {
           try {
-            await CapacitorUpdater.set({ id: bundle.id });
+            // The bundle is already queued via next() above. Per capgo, reload() applies the QUEUED
+            // bundle immediately — do NOT call set() first (set() reloads itself and warns against any
+            // follow-up logic; set()+reload() after next() was the bug that made "Restart" no-op).
             await CapacitorUpdater.reload();
           } catch {
-            /* if applying now fails, it still applies on the next natural launch */
+            // Applying now failed — it still applies automatically on the next app launch.
+            toast.message('Restart didn’t work — the update will apply next time you open the app.', {
+              id: TOAST_ID,
+            });
           }
         })();
       },
