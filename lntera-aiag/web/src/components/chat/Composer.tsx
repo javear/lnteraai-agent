@@ -2,6 +2,7 @@ import { useEffect, useRef, type KeyboardEvent } from 'react';
 import { ArrowUp, Square, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useOnlineStatus } from '@/lib/pwa';
+import { useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 
 export function Composer({
@@ -22,6 +23,7 @@ export function Composer({
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const online = useOnlineStatus();
+  const t = useT();
   const disabled = streaming || !online;
 
   // Auto-grow up to a cap (smaller on mobile so the keyboard + list stay visible).
@@ -56,8 +58,8 @@ export function Composer({
               type="button"
               className="shrink-0 rounded-xl text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
               onClick={onConfig}
-              aria-label="Automatic analysis settings"
-              title="Automatic analysis"
+              aria-label={t('chat.composer.settings')}
+              title={t('chat.composer.settings')}
             >
               <SlidersHorizontal className="h-5 w-5" />
             </Button>
@@ -68,13 +70,13 @@ export function Composer({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder={online ? 'Message your business agent…' : "You're offline — reconnect to chat"}
+            placeholder={online ? t('chat.placeholder') : t('chat.placeholder.offline')}
             disabled={disabled}
             // 16px (text-base) keeps iOS Safari from auto-zooming on focus.
             className="flex-1 resize-none bg-transparent px-2.5 py-2 text-base leading-relaxed outline-none placeholder:text-muted-foreground disabled:opacity-60"
           />
           {streaming ? (
-            <Button size="icon" variant="secondary" className="rounded-xl [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11" onClick={onStop} aria-label="Stop">
+            <Button size="icon" variant="secondary" className="rounded-xl [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11" onClick={onStop} aria-label={t('chat.stop')}>
               <Square className="h-4 w-4" />
             </Button>
           ) : (
@@ -83,14 +85,14 @@ export function Composer({
               className="rounded-xl [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
               onClick={onSend}
               disabled={!value.trim() || disabled}
-              aria-label="Send"
+              aria-label={t('chat.send')}
             >
               <ArrowUp className="h-5 w-5" />
             </Button>
           )}
         </div>
         <p className="mt-1.5 hidden text-center text-xs text-muted-foreground sm:block">
-          {online ? 'Enter to send · Shift+Enter for a new line' : 'Reconnect to send messages'}
+          {online ? t('chat.hint.send') : t('chat.hint.offline')}
         </p>
       </div>
     </div>
