@@ -10,12 +10,14 @@ import { initOta } from './lib/ota';
 import { fetchPublicConfig, makeSupabase } from './lib/supabase';
 import { SessionProvider, useAuth } from './auth';
 import { ThemeProvider } from './theme';
+import { I18nProvider } from './i18n';
 import { Toaster } from '@/components/ui/sonner';
 import { PwaUpdater } from './components/PwaUpdater';
 import { Button, Centered } from './ui';
 import { AppLayout } from './components/AppLayout';
 import { ChatRouteSkeleton, PageRouteSkeleton } from './components/Skeletons';
 import { NativeDeepLinks } from './components/NativeDeepLinks';
+import { LanguageSync } from './components/LanguageSettings';
 import { Logo } from './ui';
 import './index.css';
 
@@ -119,6 +121,7 @@ function Boot() {
     <SessionProvider supabase={supabase}>
       <RecoveryRedirect />
       <NativeDeepLinks />
+      <LanguageSync />
       <Routes>
         <Route
           path="/login"
@@ -194,11 +197,13 @@ void initNativeShell();
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider>
-      <Router {...routerProps}>
-        <Boot />
-      </Router>
-      <Toaster />
-      {!IS_NATIVE ? <PwaUpdater /> : null}
+      <I18nProvider>
+        <Router {...routerProps}>
+          <Boot />
+        </Router>
+        <Toaster />
+        {!IS_NATIVE ? <PwaUpdater /> : null}
+      </I18nProvider>
     </ThemeProvider>
   </StrictMode>,
 );

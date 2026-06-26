@@ -2,6 +2,16 @@ import type { MastraClient } from '@mastra/client-js';
 import { AGENT_ID } from './mastra';
 import { browserTimezone } from './insights';
 
+/** The user's current UI language (same localStorage key as the i18n engine) — sent to the agent so it
+ *  replies in that language. Defaults to 'en' when unset/unavailable. */
+function currentLang(): string {
+  try {
+    return localStorage.getItem('lntera-lang') || 'en';
+  } catch {
+    return 'en';
+  }
+}
+
 export interface StreamHandlers {
   onText: (delta: string) => void;
   onToolStart?: (toolName: string) => void;
@@ -51,9 +61,14 @@ export async function streamChat(
       // overrides it with the tenant from the auth token in production.
       memory: { thread: threadId, resource },
       // channel:'web' → server processors skip Discord formatting (plain markdown back).
-      // timezone/nowIso let the agent reason in the user's LOCAL time (e.g. "tomorrow 4am") and the
-      // schedule-future-task tool resolve fire times in the right zone.
-      requestContext: { channel: 'web', timezone: browserTimezone(), nowIso: new Date().toISOString() } as never,
+      // timezone/nowIso let the agent reason in the user's LOCAL time (e.g. "tomorrow 4am"); language
+      // makes the agent reply in the user's chosen language (read from the same key the i18n engine uses).
+      requestContext: {
+        channel: 'web',
+        timezone: browserTimezone(),
+        nowIso: new Date().toISOString(),
+        language: currentLang(),
+      } as never,
     });
 
     // chunk is @mastra/core's ChunkType union; read loosely to avoid importing the heavy type.

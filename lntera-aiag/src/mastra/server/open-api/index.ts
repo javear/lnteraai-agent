@@ -13,6 +13,7 @@ import { insightScheduleRoutes } from './routes/insight-schedule';
 import { syncConfigRoutes } from './routes/sync-config';
 import { transactionRoutes } from './routes/transactions';
 import { financeReportRoutes } from './routes/finance-reports';
+import { languageRoutes } from './routes/language';
 
 /** Public Open API routes (namespace `/svc/v1`). Append new route modules here. */
 export const openApiRoutes = [
@@ -29,4 +30,5 @@ export const openApiRoutes = [
   ...syncConfigRoutes,
   ...transactionRoutes,
   ...financeReportRoutes,
+  ...languageRoutes,
 ];
