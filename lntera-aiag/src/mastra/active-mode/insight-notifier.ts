@@ -5,6 +5,7 @@
 import { RequestContext } from '@mastra/core/request-context';
 import { notificationAgent } from '../agents/notification-agent';
 import { stripReasoning } from '../integrations/shared/strip-reasoning';
+import { getTenantLanguage } from '../integrations/shared/language-prefs';
 import { TENANT_MASTER_ID_KEY } from '../integrations/shared/marketplace-auth';
 import { logErrorBrief } from '../logger/compact-error';
 import { AGENT_MODE_KEY, type AgentMode } from './notifier';
@@ -66,6 +67,7 @@ export async function notifyTenantOfInsights(
   requestContext.set('channel', 'web');
   requestContext.set(AGENT_MODE_KEY, 'active' satisfies AgentMode);
   requestContext.set(INSIGHT_CONTEXT_KEY, { keys: run.results.map((r) => r.key) });
+  requestContext.set('language', await getTenantLanguage(tenantId).catch(() => 'en'));
 
   // Narrate with bounded retry. Each generate() already rolls across every connected model/provider
   // (the Portkey model chain), so a thrown error means they were ALL unavailable at once. For a

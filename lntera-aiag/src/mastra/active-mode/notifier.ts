@@ -19,6 +19,7 @@ import { parseDiscordReplyFromUnknown } from '../processors/discord-reply-format
 import { sanitizeMarkdownTablesForDiscord } from '../processors/discord-markdown-sanitize';
 import type { DiscordReply } from '../integrations/discord/reply-schema';
 import { deliverTenantWebNotification } from './web-delivery';
+import { getTenantLanguage } from '../integrations/shared/language-prefs';
 
 /**
  * Active mode value. Default mode is `passive` (regular chat); webhook handlers set this to
@@ -92,6 +93,7 @@ export async function notifyTenantOfMarketplaceEvent(
     category: input.category,
     code: input.code,
   });
+  requestContext.set('language', await getTenantLanguage(input.tenantId).catch(() => 'en'));
 
   let answerText = '';
   try {
@@ -256,6 +258,7 @@ export async function notifyTenantOfConnectionEvent(
     shopName: input.shopName ?? null,
     errorMessage: input.errorMessage ?? null,
   });
+  requestContext.set('language', await getTenantLanguage(input.tenantId).catch(() => 'en'));
 
   let answerText = '';
   try {
