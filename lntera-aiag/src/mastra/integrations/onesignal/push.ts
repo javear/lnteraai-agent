@@ -31,7 +31,10 @@ export async function sendTenantPush(tenantId: string, input: TenantPushInput): 
         filters: [{ field: 'tag', key: 'tenant_id', relation: '=', value: tenantId }],
         headings: { en: truncate(stripMarkdown(input.heading), 64) },
         contents: { en: truncate(stripMarkdown(input.content), 240) },
-        ...(input.url ? { url: input.url } : {}),
+        // web_url (NOT url): web/desktop open the deep link in the app/tab. We deliberately DON'T set a
+        // url/app_url for native — that would launch an external browser. Native taps open the app and
+        // our in-app click handler (web/src/lib/push.ts) navigates using data.threadId.
+        ...(input.url ? { web_url: input.url } : {}),
         ...(input.data ? { data: input.data } : {}),
       }),
     });

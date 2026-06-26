@@ -31,6 +31,13 @@ export async function initPush(opts: {
       OneSignal.initialize(appId);
       OneSignal.login(userId);
       OneSignal.User.addTag('tenant_id', tenantId);
+      // Tapping a push opens the APP (no web_url is set for native) — navigate in-app to the target
+      // thread via the hash router (native uses HashRouter), instead of bouncing to the browser.
+      OneSignal.Notifications.addEventListener('click', (event) => {
+        const data = (event?.notification?.additionalData ?? {}) as { threadId?: unknown };
+        const threadId = typeof data.threadId === 'string' ? data.threadId : null;
+        if (threadId) window.location.hash = `#/c/${threadId}`;
+      });
       void OneSignal.Notifications.requestPermission(true);
       return;
     }
@@ -133,9 +140,15 @@ export async function promptPush(): Promise<void> {
 }
 
 /** Minimal shape of the native (cordova) OneSignal plugin we use. */
+interface OneSignalNativeClickEvent {
+  notification?: { additionalData?: Record<string, unknown> };
+}
 interface OneSignalNative {
   initialize: (appId: string) => void;
   login: (externalId: string) => void;
   User: { addTag: (key: string, value: string) => void };
-  Notifications: { requestPermission: (fallbackToSettings: boolean) => Promise<boolean> };
+  Notifications: {
+    requestPermission: (fallbackToSettings: boolean) => Promise<boolean>;
+    addEventListener: (event: 'click', listener: (event: OneSignalNativeClickEvent) => void) => void;
+  };
 }

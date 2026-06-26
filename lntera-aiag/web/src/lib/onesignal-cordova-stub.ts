@@ -7,5 +7,5 @@ export default {
   initialize: noop,
   login: noop,
   User: { addTag: noop },
-  Notifications: { requestPermission: async (): Promise<boolean> => false },
+  Notifications: { requestPermission: async (): Promise<boolean> => false, addEventListener: noop },
 };

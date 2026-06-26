@@ -344,7 +344,9 @@ export default function Chat() {
     let errored = false;
     const apply = (full: string) =>
       setMessages((m) =>
-        m.map((x) => (x.id === aiId ? { ...x, content: parseSuggestions(full).body, pending: false } : x)),
+        // Clear `tool` too: once the answer is streaming, the "Using …" pulse must stop (otherwise it
+        // looks stuck/loading even though text has arrived).
+        m.map((x) => (x.id === aiId ? { ...x, content: parseSuggestions(full).body, pending: false, tool: null } : x)),
       );
 
     await streamChat(
