@@ -11,26 +11,30 @@ import '../styles/landing.css';
 const CAPS: { title: string; desc: string; chips?: string[]; featured?: boolean }[] = [
   {
     title: 'Run orders like you have a backroom team',
-    desc: 'Say "ship today’s orders" — Lntera finds them across every shop, builds the packages, and pulls the labels. No tab-switching.',
-    chips: ['search-orders', 'create-package', 'get-shipping-labels'],
+    desc: 'Say "ship today’s orders" — Lntera finds them across every channel, builds the packages, and pulls the labels. No tab-switching.',
+    chips: ['orders', 'fulfillment', 'shipping labels'],
     featured: true,
   },
-  { title: 'Price & stock, by sentence', desc: '"Drop the linen shirts 10%." Done — across SKUs and shops at once.' },
-  { title: 'List once, sell everywhere', desc: 'Draft a product, refine it, push it live to Shopee or TikTok Shop.' },
-  { title: 'Every shop, one brain', desc: 'Connect as many Shopee and TikTok Shop stores as you run.' },
+  {
+    title: 'Books that keep themselves',
+    desc: 'Every sale and expense recorded automatically. Ask for your profit, trial balance, or a tax recap — export to Excel or PDF.',
+    chips: ['bookkeeping', 'P&L', 'tax', 'export'],
+  },
+  { title: 'Price & stock, by sentence', desc: '"Drop the linen shirts 10%." Done — across SKUs and channels at once.' },
+  { title: 'List once, sell everywhere', desc: 'Draft a product, refine it, and publish it across your channels.' },
+  { title: 'Acts now — or later', desc: '"Send me a tax recap at 10am tomorrow." It schedules the work and messages you.' },
   { title: 'Bring your own model', desc: 'Your free Groq or Gemini key. Add both and never hit a rate wall.' },
-  { title: 'It watches while you sleep', desc: 'Orders, shipments, returns → in-app, Discord, push. Reply to act.' },
 ];
 
 const STEPS: { title: string; body: string; chips?: string[] }[] = [
   { title: 'Bring a key', body: 'Connect your free Groq or Gemini key via Portkey — stored securely.' },
-  { title: 'Connect a shop', body: 'Link Shopee or TikTok Shop in a click. Add as many as you run.' },
+  { title: 'Connect your channels', body: 'Link your sales channels in a click. Add as many as you run.' },
   {
     title: 'Just ask',
-    body: 'Talk to your storefront in plain language:',
-    chips: ["Show today’s orders", 'Search my products', 'List my shops'],
+    body: 'Talk to your business in plain language — in English or Bahasa Indonesia:',
+    chips: ["Show today’s orders", "What’s my profit this month?", 'Send me a tax recap'],
   },
-  { title: 'Go Active', body: 'Flip on realtime alerts — in-app, on Discord, and as push.' },
+  { title: 'Go Active', body: 'Flip on realtime alerts + scheduled tasks — in-app, on Discord, and as push.' },
 ];
 
 const WHY: { title: string; desc: string }[] = [
@@ -39,23 +43,23 @@ const WHY: { title: string; desc: string }[] = [
     desc: 'You pay your LLM provider directly with your own free key. We never resell or mark up tokens.',
   },
   {
-    title: 'Never hits a wall',
-    desc: 'Connect Groq and Gemini together; the agent rolls over the moment one rate-limits.',
+    title: 'Commerce + finance, together',
+    desc: 'Orders, products and pricing in the same chat as your bookkeeping, P&L and tax — no extra app.',
   },
   {
     title: 'Realtime, everywhere',
-    desc: 'Webhook events become alerts in-app, in Discord and as push — the instant they happen.',
+    desc: 'Events become alerts in-app, in Discord and as push — the instant they happen. Reply to act.',
   },
   {
-    title: 'Yours on every device',
-    desc: 'Install it as an app on phone and desktop. Works offline with your last data cached.',
+    title: 'Yours, in your language',
+    desc: 'Install it on phone and desktop, online or off. Speaks English & Bahasa Indonesia.',
   },
 ];
 
 const FEED = [
-  { emoji: '🛒', title: 'New order on Shopee', meta: 'Main Store · 2 items' },
-  { emoji: '📦', title: 'Shipping update on TikTok Shop', meta: 'Outlet · 1 package ready' },
-  { emoji: '↩️', title: 'Return requested on Shopee', meta: 'Main Store · awaiting review' },
+  { emoji: '🛒', title: 'New order', meta: 'Main Store · 2 items' },
+  { emoji: '📦', title: 'Shipment ready', meta: 'Outlet · 1 package' },
+  { emoji: '🧾', title: 'Tax recap ready', meta: 'Scheduled · this month' },
 ];
 
 function toForm() {
@@ -75,15 +79,16 @@ export default function Landing() {
           <SpaceBackdrop glow="top" />
           <Container className="relative z-10 grid items-start gap-12 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:gap-16">
             <Reveal className="lg:pt-6">
-              <div className="lp-eyebrow">The business agent · Shopee &amp; TikTok Shop</div>
+              <div className="lp-eyebrow">Your AI business agent · omnichannel</div>
               <h1 className="lp-display mt-5 text-[2.6rem] leading-[1.02] sm:text-[3.4rem] lg:text-[4.2rem]">
-                Run your shops
+                Run your business
                 <br />
                 from <span className="text-brand">one calm chat.</span>
               </h1>
               <p className="mt-6 max-w-md text-[1.05rem] leading-relaxed text-[hsl(var(--fg-soft))]">
-                Ask in plain language — "ship today&apos;s orders", "drop the linen shirts 10%" — and Lntera
-                works your Shopee and TikTok Shop stores for you. Your own free LLM key. No card, no markup.
+                Ask in plain language — "ship today&apos;s orders", "what&apos;s my profit this month?" — and
+                Lntera runs your sales channels, your books, and your day-to-day. Your own free LLM key. No
+                card, no markup.
               </p>
               <div id="get-started" className="mt-8 max-w-sm scroll-mt-28">
                 <BrandAuth />
@@ -96,7 +101,7 @@ export default function Landing() {
                 <AgentCursor label="Lntera" />
               </div>
               <p className="lp-mono mt-4 text-[0.7rem] uppercase tracking-[0.14em] text-[hsl(var(--fg-soft))]">
-                18 marketplace tools · Groq + Gemini · Discord + push
+                commerce · finance · active agent · Groq + Gemini
               </p>
             </Reveal>
           </Container>
@@ -109,7 +114,7 @@ export default function Landing() {
               Works with
             </span>
             <div className="flex flex-wrap items-center gap-x-7 gap-y-2">
-              {['Shopee', 'TikTok Shop', 'Discord', 'Groq', 'Gemini', 'Portkey'].map((nm) => (
+              {['Your marketplaces', 'Discord', 'Groq', 'Gemini', 'Portkey'].map((nm) => (
                 <span key={nm} className="text-[14px] text-[hsl(var(--fg)/0.55)]">
                   {nm}
                 </span>
@@ -123,7 +128,7 @@ export default function Landing() {
           <Container className="grid gap-8 lg:grid-cols-[200px_1fr] lg:gap-16">
             <div className="lg:sticky lg:top-28 lg:self-start">
               <div className="lp-eyebrow">Capabilities</div>
-              <h2 className="lp-display mt-3 text-[1.7rem] leading-[1.05]">The whole storefront, in one chat.</h2>
+              <h2 className="lp-display mt-3 text-[1.7rem] leading-[1.05]">Your whole business, in one chat.</h2>
             </div>
             <Reveal className="grid grid-cols-1 gap-px overflow-hidden rounded-2xl border bg-[hsl(var(--line))] lg:grid-cols-3">
               {CAPS.map((c) => (
@@ -163,11 +168,11 @@ export default function Landing() {
         {/* ───────── Stat band ───────── */}
         <section className="border-y bg-[hsl(var(--bg-2)/0.4)] py-14 sm:py-20">
           <Container className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-9">
-            <div className="lp-display text-[4.5rem] leading-[0.82] text-brand sm:text-[6.5rem]">18</div>
+            <div className="lp-display text-[4.5rem] leading-[0.82] text-brand sm:text-[6.5rem]">1</div>
             <div className="sm:pb-3">
-              <div className="text-[1.15rem] font-semibold leading-tight">marketplace tools, one calm chat</div>
+              <div className="text-[1.15rem] font-semibold leading-tight">chat to run the whole business</div>
               <div className="lp-mono mt-1.5 text-[0.72rem] uppercase tracking-[0.14em] text-[hsl(var(--fg-soft))]">
-                orders · fulfillment · products · pricing · drafts
+                orders · fulfillment · products · finance · tax · active agent
               </div>
             </div>
           </Container>
@@ -242,8 +247,8 @@ export default function Landing() {
                 It keeps working when you close the laptop.
               </h2>
               <p className="mt-4 max-w-md text-[15px] leading-relaxed text-[hsl(var(--fg-soft))]">
-                Orders, shipments and returns surface the instant they happen — in the app, in Discord, and as a
-                push. Reply right there and the agent handles it.
+                Orders, shipments, returns and your scheduled reports surface the instant they happen — in the
+                app, in Discord, and as a push. Reply right there and the agent handles it.
               </p>
               <div className="mt-7 space-y-5">
                 <div className="border-l-2 border-brand pl-4">
@@ -293,7 +298,7 @@ export default function Landing() {
           <SpaceBackdrop glow="center" />
           <Container className="relative z-10 grid items-end gap-8 lg:grid-cols-[1fr_auto]">
             <h2 className="lp-display max-w-[16ch] text-[2.6rem] leading-[1.0] sm:text-[3.8rem]">
-              Put your storefront on autopilot.
+              Put your business on autopilot.
             </h2>
             <button onClick={toForm} className="lp-btn shrink-0 !px-6 !py-3.5 !text-[0.95rem]">
               Start free →

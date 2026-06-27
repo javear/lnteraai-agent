@@ -639,7 +639,7 @@ export default function Chat() {
           setStreaming(false);
         }}
         streaming={streaming}
-        onConfig={isNotificationsThread ? () => setAutomationOpen(true) : undefined}
+        onConfig={() => setAutomationOpen(true)}
       />
       <Modal
         open={automationOpen}
