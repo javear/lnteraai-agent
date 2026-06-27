@@ -9,6 +9,7 @@ import { useAuth } from '../auth';
 import { useOnlineStatus } from '../lib/pwa';
 import { Button } from '../ui';
 import { Switch } from '@/components/ui/switch';
+import { useT } from '../i18n';
 import {
   browserTimezone,
   formatNextRun,
@@ -90,6 +91,7 @@ function TimeField({ value, onChange }: { value: string; onChange: (v: string) =
 export function InsightSettings() {
   const { api } = useAuth();
   const online = useOnlineStatus();
+  const t = useT();
 
   const [loading, setLoading] = useState(true);
   const [available, setAvailable] = useState<InsightProviderInfo[]>([]);
@@ -122,7 +124,7 @@ export function InsightSettings() {
           setSelected(new Set(allKeys)); // default: all
         }
       } catch {
-        if (!cancelled) toast.error('Could not load automatic-analysis settings.');
+        if (!cancelled) toast.error(t('insight.loadError'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -150,7 +152,7 @@ export function InsightSettings() {
 
   async function onSave() {
     if (enabled && days.size === 0) {
-      toast.error('Pick at least one day.');
+      toast.error(t('insight.pickDay'));
       return;
     }
     setSaving(true);
@@ -165,16 +167,16 @@ export function InsightSettings() {
       });
       setNextRun(nr ?? null);
       if (!enabled) {
-        toast.success('Automatic analysis turned off.');
+        toast.success(t('insight.off'));
       } else if (nr?.at) {
         const label = formatNextRun(nr.at, timezone);
-        if (nr.firesToday) toast.success(`Saved — next analysis runs ${label}.`);
-        else toast.success(`Saved — next analysis runs ${label}.`, { description: "It won't run again today." });
+        if (nr.firesToday) toast.success(t('insight.savedNext', { when: label }));
+        else toast.success(t('insight.savedNext', { when: label }), { description: t('insight.notToday') });
       } else {
-        toast.success('Automatic analysis saved.');
+        toast.success(t('insight.saved'));
       }
     } catch {
-      toast.error('Could not save. Please try again.');
+      toast.error(t('insight.saveError'));
     } finally {
       setSaving(false);
     }
@@ -184,9 +186,9 @@ export function InsightSettings() {
     setRunningNow(true);
     try {
       const r = await runInsightsNow(api);
-      toast.success(r.message ?? 'Analyzing… results will appear here shortly.');
+      toast.success(r.message ?? t('insight.running'));
     } catch {
-      toast.error('Could not start the analysis.');
+      toast.error(t('insight.runError'));
     } finally {
       setRunningNow(false);
     }
@@ -196,10 +198,8 @@ export function InsightSettings() {
     <div className="flex flex-col gap-5">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className="text-sm font-medium text-foreground">Automatic analysis</div>
-          <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">
-            Analyze your shops on a schedule and post the highlights — with charts — here in the Active Agent.
-          </p>
+          <div className="text-sm font-medium text-foreground">{t('insight.title')}</div>
+          <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">{t('insight.desc')}</p>
         </div>
         <Switch
           checked={enabled}
@@ -216,7 +216,7 @@ export function InsightSettings() {
         <div className="flex flex-col gap-5 border-t pt-5">
           {/* Days */}
           <div>
-            <div className="mb-2 text-[13px] font-medium">Days</div>
+            <div className="mb-2 text-[13px] font-medium">{t('insight.days')}</div>
             <div className="flex gap-1.5">
               {DAY_LETTERS.map((letter, d) => {
                 const on = days.has(d);
@@ -243,7 +243,7 @@ export function InsightSettings() {
 
           {/* Time — exact hour:minute */}
           <div>
-            <div className="mb-2 text-[13px] font-medium">Time</div>
+            <div className="mb-2 text-[13px] font-medium">{t('insight.time')}</div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <TimeField
                 value={time}
@@ -252,20 +252,20 @@ export function InsightSettings() {
                   setTime(v);
                 }}
               />
-              <span className="text-[13px] text-muted-foreground">in {timezone} · runs once per day</span>
+              <span className="text-[13px] text-muted-foreground">{t('insight.tzNote', { tz: timezone })}</span>
             </div>
             {nextRun?.at ? (
               <p className="mt-2 text-[12px] text-muted-foreground">
-                Next analysis:{' '}
+                {t('insight.nextLabel')}{' '}
                 <span className="font-medium text-foreground">{formatNextRun(nextRun.at, timezone)}</span>
-                {nextRun.firesToday ? '' : ' · not today'}
+                {nextRun.firesToday ? '' : ` · ${t('insight.notTodayShort')}`}
               </p>
             ) : null}
           </div>
 
           {/* Insights */}
           <div>
-            <div className="mb-2 text-[13px] font-medium">Insights</div>
+            <div className="mb-2 text-[13px] font-medium">{t('insight.insightsLabel')}</div>
             <div className="grid gap-1.5 sm:grid-cols-2">
               {available.map((p) => (
                 <label
@@ -289,11 +289,11 @@ export function InsightSettings() {
       <div className="flex flex-wrap items-center gap-2 border-t pt-4">
         <Button onClick={onSave} disabled={loading || saving || !online}>
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          Save
+          {t('insight.save')}
         </Button>
         <Button variant="secondary" onClick={onRunNow} disabled={loading || runningNow || !online}>
           {runningNow ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          Analyze now
+          {t('insight.runNow')}
         </Button>
       </div>
     </div>

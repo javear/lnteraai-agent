@@ -106,6 +106,64 @@ export const en: Record<string, string> = {
   // Active Agent settings modal
   'settings.title': 'Active Agent settings',
 
+  // Finance settings
+  'fin.title': 'Accounting & finance',
+  'fin.desc':
+    'Turn your recorded transactions into a double-entry ledger (trial balance, P&L, tax recaps). Optional — leave it off if you just want the records. Transactions are always recorded either way.',
+  'fin.enable': 'Enable accounting ledger',
+  'fin.enableDesc': 'Sets up a default (editable) chart of accounts and posts your transactions to the books.',
+  'fin.on': 'Accounting on.',
+  'fin.onPosted': 'Accounting on — posted {n} existing transaction(s).',
+  'fin.off': 'Accounting off — transactions still recorded, ledger paused.',
+  'fin.error': 'Could not change the setting.',
+
+  // Autopilot (stock & price) settings
+  'auto.title': 'Stock & price autopilot',
+  'auto.desc':
+    'When a product’s stock or price changes on one store, apply it across your other mapped stores automatically. When off, I’ll ask you first each time.',
+  'auto.stock': 'Auto-sync stock',
+  'auto.stockDesc': 'A sale on one store reduces the others too (each store keeps its stock cap).',
+  'auto.price': 'Auto-sync price',
+  'auto.priceDesc': 'A price change pushes to every store with that store’s margin applied.',
+  'auto.saved': 'Sync settings saved.',
+  'auto.error': 'Could not save sync settings.',
+  'auto.on': 'Autopilot on',
+  'auto.notifyFirst': 'Notify-first',
+
+  // Tax profile settings
+  'tax.title': 'Tax profile',
+  'tax.desc': 'Used for tax recaps and filing prep. Drafts only — review with your tax person before filing.',
+  'tax.pkp': 'PPN-registered (PKP)',
+  'tax.pkpDesc': 'Split output VAT out of sales (prices treated as PPN-inclusive).',
+  'tax.ppnRate': 'PPN rate %',
+  'tax.pph': 'PPh withholding',
+  'tax.save': 'Save tax profile',
+  'tax.saved': 'Tax profile saved.',
+  'tax.error': 'Could not save tax profile.',
+
+  // Insight (automatic analysis) settings
+  'insight.title': 'Automatic analysis',
+  'insight.desc': 'Analyze your business on a schedule and post the highlights — with charts — here in the Active Agent.',
+  'insight.days': 'Days',
+  'insight.time': 'Time',
+  'insight.timezone': 'Timezone',
+  'insight.which': 'Which insights',
+  'insight.runNow': 'Analyze now',
+  'insight.save': 'Save',
+  'insight.pickDay': 'Pick at least one day.',
+  'insight.off': 'Automatic analysis turned off.',
+  'insight.savedNext': 'Saved — next analysis runs {when}.',
+  'insight.notToday': 'It won’t run again today.',
+  'insight.saved': 'Automatic analysis saved.',
+  'insight.saveError': 'Could not save. Please try again.',
+  'insight.loadError': 'Could not load automatic-analysis settings.',
+  'insight.running': 'Analyzing… results will appear here shortly.',
+  'insight.runError': 'Could not start the analysis.',
+  'insight.insightsLabel': 'Insights',
+  'insight.tzNote': 'in {tz} · runs once per day',
+  'insight.nextLabel': 'Next analysis:',
+  'insight.notTodayShort': 'not today',
+
   // Chat / composer
   'chat.newChat': 'New chat',
   'chat.placeholder': 'Message the agent…',
