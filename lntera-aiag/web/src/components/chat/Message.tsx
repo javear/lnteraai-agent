@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Sparkles } from 'lucide-react';
 import { Avatar } from '../../ui';
 import { parseSuggestions } from '../../lib/chat';
@@ -51,7 +52,7 @@ function formatMessageTime(iso?: string): string | null {
   return `${date}, ${time}`;
 }
 
-export function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubbleImpl({ message }: { message: ChatMessage }) {
   const t = useT();
   const timeLabel = formatMessageTime(message.createdAt);
   if (message.role === 'user') {
@@ -104,3 +105,7 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
     </div>
   );
 }
+
+// Memoized: during streaming only the changing message re-renders (not the whole list), and a
+// settled message never re-renders/re-parses its markdown when a new turn streams in.
+export const MessageBubble = memo(MessageBubbleImpl);
