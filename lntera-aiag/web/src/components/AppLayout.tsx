@@ -6,6 +6,7 @@ import { useAuth } from '../auth';
 import { fetchIntegrationStatus, type AppOutletContext, type IntegrationStatus } from '../lib/integrations';
 import { getInsightSchedule } from '../lib/insights';
 import { useOnlineStatus } from '../lib/pwa';
+import { IS_NATIVE } from '../lib/runtime';
 import { ChatSessionsProvider, useChats } from '../lib/chat-store';
 import { RealtimeNotificationsProvider, useNotifications, type TenantNotification } from '../lib/notifications';
 import { THEME_OPTIONS, ThemeToggle, useTheme } from '../theme';
@@ -307,9 +308,13 @@ export function AppLayout() {
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const online = useOnlineStatus();
   const activeThreadId = useMatch('/c/:threadId')?.params.threadId;
   const t = useT();
+  // Mirror for the Android back-button listener (its closure would otherwise capture stale state).
+  const drawerOpenRef = useRef(drawerOpen);
+  drawerOpenRef.current = drawerOpen;
 
   // Drawer gestures (mobile): swipe the open drawer left to close; swipe in from the left edge to open.
   const drawerTouch = useRef({ x: 0, y: 0, active: false });
@@ -338,6 +343,29 @@ export function AppLayout() {
     const dy = t.clientY - edgeTouch.current.y;
     if (dx > 40 && Math.abs(dx) > Math.abs(dy) * 1.4) setDrawerOpen(true);
   }
+
+  // Android hardware/gesture back: close the drawer first; else go back in SPA history; else minimize
+  // the app (background it) instead of the default of closing it outright from any screen.
+  useEffect(() => {
+    if (!IS_NATIVE) return;
+    let remove: (() => void) | undefined;
+    void import('@capacitor/app')
+      .then(({ App }) =>
+        App.addListener('backButton', ({ canGoBack }) => {
+          if (drawerOpenRef.current) {
+            setDrawerOpen(false);
+            return;
+          }
+          if (canGoBack) navigate(-1);
+          else void App.minimizeApp();
+        }),
+      )
+      .then((h) => {
+        remove = () => void h.remove();
+      })
+      .catch(() => {});
+    return () => remove?.();
+  }, [navigate]);
 
   const refreshStatus = useCallback(async (fresh = false) => {
     try {
@@ -399,7 +427,8 @@ export function AppLayout() {
           <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
             <SheetContent
               side="left"
-              className="gap-0 p-0"
+              hideClose
+              className="w-full max-w-full gap-0 border-r-0 p-0"
               onTouchStart={onDrawerTouchStart}
               onTouchEnd={onDrawerTouchEnd}
             >
