@@ -12,6 +12,7 @@ import { useNotifications, type TenantNotification } from '../lib/notifications'
 import { generateTitle, getMessages, type HistoryMessage } from '../lib/threads';
 import { appendCachedMessages, getCachedMessages, setCachedMessages } from '../lib/chat-cache';
 import { useOnlineStatus } from '../lib/pwa';
+import { IS_NATIVE } from '../lib/runtime';
 import { ProviderConnect, PROVIDER_CONNECT_CONFIGS } from '../components/ProviderConnect';
 import { Alert, Button, Logo, Modal } from '../ui';
 import { InsightSettings } from '../components/InsightSettings';
@@ -230,6 +231,40 @@ export default function Chat() {
     }
   }, [online, routeThreadId, loadHistory]);
 
+  // Mobile/PWA: backgrounding freezes JS and usually drops the in-flight stream connection. On return,
+  // if we still think we're "streaming", the stream is dead — stop applying and reload the thread to
+  // pull the server-finished answer (Mastra persists the assistant turn server-side), so the user isn't
+  // left with a stuck spinner / truncated reply. A short grace lets a still-alive stream finish first.
+  useEffect(() => {
+    const onForeground = () => {
+      if (!streamingRef.current) return;
+      setTimeout(() => {
+        if (!streamingRef.current) return; // stream completed on its own after unfreezing
+        stopRef.current = true;
+        setStreaming(false);
+        const tid = routeThreadIdRef.current;
+        if (tid && onlineRef.current) void loadHistory(tid, true);
+      }, 1500);
+    };
+    const onVis = () => {
+      if (document.visibilityState === 'visible') onForeground();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    let remove: (() => void) | undefined;
+    if (IS_NATIVE) {
+      void import('@capacitor/app')
+        .then(({ App }) => App.addListener('resume', onForeground))
+        .then((h) => {
+          remove = () => void h.remove();
+        })
+        .catch(() => {});
+    }
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      remove?.();
+    };
+  }, [loadHistory]);
+
   // Autoscroll to the newest message only when the user is already near the bottom. During a stream
   // the message mutates per token, so track instantly (smooth would restart its animation dozens of
   // times/sec → jitter); reserve smooth scrolling for discrete events (new turn, suggestions).
@@ -349,14 +384,40 @@ export default function Chat() {
     let usedModel: string | undefined;
     let errored = false;
     let langToolUsed = false; // the AI may switch language via the set-language tool → sync UI after
-    const apply = (full: string) =>
+    // Coalesce streaming re-renders: applying state + re-parsing markdown on EVERY token is O(n²) and
+    // heavy on mobile. Throttle to ~90ms (trailing) so the UI stays smooth at a fraction of the cost.
+    let lastRenderAt = 0;
+    let renderTimer: ReturnType<typeof setTimeout> | null = null;
+    const RENDER_THROTTLE_MS = 90;
+    const renderNow = () => {
+      lastRenderAt = Date.now();
       setMessages((m) =>
-        // Clear `tool` too: once the answer is streaming, the "Using …" pulse must stop (otherwise it
-        // looks stuck/loading even though text has arrived). stripReasoning keeps any inline <think> out.
+        // Clear `tool` once text streams (the "Using …" pulse must stop). stripReasoning keeps inline
+        // <think> out; while there's no content yet, show the live reasoning preview.
         m.map((x) =>
-          x.id === aiId ? { ...x, content: parseSuggestions(stripReasoning(full)).body, pending: false, tool: null } : x,
+          x.id === aiId
+            ? {
+                ...x,
+                content: parseSuggestions(stripReasoning(acc)).body,
+                pending: false,
+                tool: null,
+                ...(acc ? {} : { reasoning: reasoningAcc }),
+              }
+            : x,
         ),
       );
+    };
+    const scheduleRender = () => {
+      const since = Date.now() - lastRenderAt;
+      if (since >= RENDER_THROTTLE_MS) {
+        renderNow();
+      } else if (!renderTimer) {
+        renderTimer = setTimeout(() => {
+          renderTimer = null;
+          renderNow();
+        }, RENDER_THROTTLE_MS - since);
+      }
+    };
 
     await streamChat(
       client,
@@ -366,12 +427,12 @@ export default function Chat() {
       {
         onText: (delta) => {
           acc += delta;
-          apply(acc);
+          scheduleRender();
         },
         onReasoning: (delta) => {
           reasoningAcc += delta;
           // Live "thinking" preview only while no content yet — gone once the answer streams in.
-          if (!acc) setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, reasoning: reasoningAcc } : x)));
+          if (!acc) scheduleRender();
         },
         onToolStart: (tool) => {
           if (tool.toLowerCase().includes('language')) langToolUsed = true;
@@ -396,6 +457,8 @@ export default function Chat() {
       () => stopRef.current,
     );
 
+    // Cancel any pending throttled render so it can't fire after the final reconciliation below.
+    if (renderTimer) clearTimeout(renderTimer);
     // Drop any inline reasoning from the persisted/displayed content, and clear the live thinking.
     const { body, suggestions: sugg } = parseSuggestions(stripReasoning(acc));
     if (body.trim()) {
