@@ -8,6 +8,7 @@ import { useAuth } from '../auth';
 import { useOnlineStatus } from '../lib/pwa';
 import { Button, Input } from '../ui';
 import { Switch } from '@/components/ui/switch';
+import { useT } from '../i18n';
 import { getTaxProfile, putTaxProfile, type WithholdingRule } from '../lib/finance-config';
 
 const COMMON_WITHHOLDING: { type: string; label: string; defaultRate?: number }[] = [
@@ -20,6 +21,7 @@ const COMMON_WITHHOLDING: { type: string; label: string; defaultRate?: number }[
 export function TaxSettings() {
   const { api } = useAuth();
   const online = useOnlineStatus();
+  const tr = useT(); // `tr` — COMMON_WITHHOLDING.map((t) => …) below binds `t`
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [npwp, setNpwp] = useState('');
@@ -56,9 +58,9 @@ export function TaxSettings() {
         ...(wh[t.type]?.rate != null ? { rate: wh[t.type]!.rate } : t.defaultRate != null ? { rate: t.defaultRate } : {}),
       }));
       await putTaxProfile(api, { npwp: npwp.trim() || null, ppnEnabled, ppnRate, withholding });
-      toast.success('Tax profile saved.');
+      toast.success(tr('tax.saved'));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not save tax profile.');
+      toast.error(e instanceof Error ? e.message : tr('tax.error'));
     } finally {
       setSaving(false);
     }
@@ -67,10 +69,8 @@ export function TaxSettings() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <div className="text-sm font-medium text-foreground">Tax profile</div>
-        <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">
-          Used for tax recaps and filing prep. Drafts only — review with your tax person before filing.
-        </p>
+        <div className="text-sm font-medium text-foreground">{tr('tax.title')}</div>
+        <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">{tr('tax.desc')}</p>
       </div>
 
       <label className="flex flex-col gap-1">
@@ -80,14 +80,14 @@ export function TaxSettings() {
 
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className="text-[13px] font-medium text-foreground">PPN-registered (PKP)</div>
-          <p className="mt-0.5 text-[12px] text-muted-foreground">Split output VAT out of sales (prices treated as PPN-inclusive).</p>
+          <div className="text-[13px] font-medium text-foreground">{tr('tax.pkp')}</div>
+          <p className="mt-0.5 text-[12px] text-muted-foreground">{tr('tax.pkpDesc')}</p>
         </div>
-        <Switch checked={ppnEnabled} onCheckedChange={setPpnEnabled} disabled={loading} aria-label="PPN registered" />
+        <Switch checked={ppnEnabled} onCheckedChange={setPpnEnabled} disabled={loading} aria-label={tr('tax.pkp')} />
       </div>
       {ppnEnabled ? (
         <label className="flex items-center gap-2 pl-1">
-          <span className="text-[12px] text-muted-foreground">PPN rate %</span>
+          <span className="text-[12px] text-muted-foreground">{tr('tax.ppnRate')}</span>
           <input
             type="number"
             min={0}
@@ -100,7 +100,7 @@ export function TaxSettings() {
       ) : null}
 
       <div className="flex flex-col gap-2 border-t pt-3">
-        <span className="text-[12px] font-medium text-muted-foreground">PPh withholding</span>
+        <span className="text-[12px] font-medium text-muted-foreground">{tr('tax.pph')}</span>
         {COMMON_WITHHOLDING.map((t) => {
           const cur = wh[t.type] ?? { enabled: false, rate: t.defaultRate };
           return (
@@ -133,7 +133,7 @@ export function TaxSettings() {
       <div>
         <Button onClick={onSave} disabled={loading || saving || !online}>
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          Save tax profile
+          {tr('tax.save')}
         </Button>
       </div>
     </div>

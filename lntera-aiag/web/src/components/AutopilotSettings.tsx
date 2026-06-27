@@ -8,6 +8,7 @@ import { useAuth } from '../auth';
 import { useOnlineStatus } from '../lib/pwa';
 import { Button } from '../ui';
 import { Switch } from '@/components/ui/switch';
+import { useT } from '../i18n';
 import { getAutopilot, putAutopilot, type AutopilotPrefs } from '../lib/sync-config';
 
 function ToggleRow({
@@ -37,6 +38,7 @@ function ToggleRow({
 export function AutopilotSettings() {
   const { api } = useAuth();
   const online = useOnlineStatus();
+  const t = useT();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [prefs, setPrefs] = useState<AutopilotPrefs>({ autopilotStock: false, autopilotPrice: false, propagateMode: 'notify' });
@@ -66,9 +68,9 @@ export function AutopilotSettings() {
         propagateMode: anyOn ? 'autopilot' : 'notify',
       });
       setPrefs(saved);
-      toast.success('Sync settings saved.');
+      toast.success(t('auto.saved'));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not save sync settings.');
+      toast.error(e instanceof Error ? e.message : t('auto.error'));
     } finally {
       setSaving(false);
     }
@@ -77,23 +79,20 @@ export function AutopilotSettings() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <div className="text-sm font-medium text-foreground">Stock &amp; price autopilot</div>
-        <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">
-          When a product&apos;s stock or price changes on one store, apply it across your other mapped stores
-          automatically. When off, I&apos;ll ask you first each time.
-        </p>
+        <div className="text-sm font-medium text-foreground">{t('auto.title')}</div>
+        <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">{t('auto.desc')}</p>
       </div>
 
       <ToggleRow
-        label="Auto-sync stock"
-        desc="A sale on one store reduces the others too (each store keeps its stock cap)."
+        label={t('auto.stock')}
+        desc={t('auto.stockDesc')}
         checked={prefs.autopilotStock}
         disabled={loading}
         onChange={(v) => setPrefs((p) => ({ ...p, autopilotStock: v }))}
       />
       <ToggleRow
-        label="Auto-sync price"
-        desc="A price change pushes to every store with that store's margin applied."
+        label={t('auto.price')}
+        desc={t('auto.priceDesc')}
         checked={prefs.autopilotPrice}
         disabled={loading}
         onChange={(v) => setPrefs((p) => ({ ...p, autopilotPrice: v }))}
@@ -102,10 +101,10 @@ export function AutopilotSettings() {
       <div className="flex items-center gap-3 border-t pt-4">
         <Button onClick={onSave} disabled={loading || saving || !online}>
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          Save
+          {t('common.save')}
         </Button>
         <span className="text-[12px] text-muted-foreground">
-          {prefs.autopilotStock || prefs.autopilotPrice ? 'Autopilot on' : 'Notify-first'}
+          {prefs.autopilotStock || prefs.autopilotPrice ? t('auto.on') : t('auto.notifyFirst')}
         </span>
       </div>
     </div>

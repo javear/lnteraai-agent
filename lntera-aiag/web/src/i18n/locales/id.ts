@@ -105,6 +105,64 @@ export const id: Record<string, string> = {
   // Active Agent settings modal
   'settings.title': 'Pengaturan Active Agent',
 
+  // Finance settings
+  'fin.title': 'Akuntansi & keuangan',
+  'fin.desc':
+    'Ubah transaksi yang tercatat menjadi buku besar berpasangan (neraca saldo, laba rugi, rekap pajak). Opsional — biarkan nonaktif jika Anda hanya ingin catatannya. Transaksi tetap dicatat keduanya.',
+  'fin.enable': 'Aktifkan buku besar akuntansi',
+  'fin.enableDesc': 'Menyiapkan bagan akun default (bisa diubah) dan memposting transaksi Anda ke pembukuan.',
+  'fin.on': 'Akuntansi aktif.',
+  'fin.onPosted': 'Akuntansi aktif — memposting {n} transaksi yang ada.',
+  'fin.off': 'Akuntansi nonaktif — transaksi tetap dicatat, buku besar dijeda.',
+  'fin.error': 'Tidak bisa mengubah pengaturan.',
+
+  // Autopilot (stock & price) settings
+  'auto.title': 'Autopilot stok & harga',
+  'auto.desc':
+    'Saat stok atau harga produk berubah di satu toko, terapkan otomatis ke toko terpetakan lainnya. Saat nonaktif, saya akan bertanya dulu setiap kali.',
+  'auto.stock': 'Sinkron stok otomatis',
+  'auto.stockDesc': 'Penjualan di satu toko mengurangi yang lain juga (tiap toko menjaga batas stoknya).',
+  'auto.price': 'Sinkron harga otomatis',
+  'auto.priceDesc': 'Perubahan harga didorong ke setiap toko dengan margin toko tersebut.',
+  'auto.saved': 'Pengaturan sinkron disimpan.',
+  'auto.error': 'Tidak bisa menyimpan pengaturan sinkron.',
+  'auto.on': 'Autopilot aktif',
+  'auto.notifyFirst': 'Beri tahu dulu',
+
+  // Tax profile settings
+  'tax.title': 'Profil pajak',
+  'tax.desc': 'Dipakai untuk rekap pajak dan persiapan pelaporan. Hanya draf — periksa dengan staf pajak Anda sebelum lapor.',
+  'tax.pkp': 'Terdaftar PPN (PKP)',
+  'tax.pkpDesc': 'Pisahkan PPN keluaran dari penjualan (harga dianggap termasuk PPN).',
+  'tax.ppnRate': 'Tarif PPN %',
+  'tax.pph': 'Pemotongan PPh',
+  'tax.save': 'Simpan profil pajak',
+  'tax.saved': 'Profil pajak disimpan.',
+  'tax.error': 'Tidak bisa menyimpan profil pajak.',
+
+  // Insight (automatic analysis) settings
+  'insight.title': 'Analisis otomatis',
+  'insight.desc': 'Analisis bisnis Anda terjadwal dan kirim sorotannya — dengan grafik — di sini, Active Agent.',
+  'insight.days': 'Hari',
+  'insight.time': 'Waktu',
+  'insight.timezone': 'Zona waktu',
+  'insight.which': 'Insight mana',
+  'insight.runNow': 'Analisis sekarang',
+  'insight.save': 'Simpan',
+  'insight.pickDay': 'Pilih minimal satu hari.',
+  'insight.off': 'Analisis otomatis dimatikan.',
+  'insight.savedNext': 'Disimpan — analisis berikutnya berjalan {when}.',
+  'insight.notToday': 'Tidak akan berjalan lagi hari ini.',
+  'insight.saved': 'Analisis otomatis disimpan.',
+  'insight.saveError': 'Tidak bisa menyimpan. Silakan coba lagi.',
+  'insight.loadError': 'Tidak bisa memuat pengaturan analisis otomatis.',
+  'insight.running': 'Menganalisis… hasil akan muncul di sini sebentar lagi.',
+  'insight.runError': 'Tidak bisa memulai analisis.',
+  'insight.insightsLabel': 'Insight',
+  'insight.tzNote': 'di {tz} · berjalan sekali sehari',
+  'insight.nextLabel': 'Analisis berikutnya:',
+  'insight.notTodayShort': 'bukan hari ini',
+
   // Chat / composer
   'chat.newChat': 'Obrolan baru',
   'chat.placeholder': 'Kirim pesan ke agen…',
