@@ -10,6 +10,7 @@ import {
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
 import { apiUrl, IS_NATIVE } from './lib/runtime';
 import { logoutPush } from './lib/push';
+import { setTelemetryUser } from './lib/analytics';
 
 /**
  * Native OAuth return target. A CUSTOM SCHEME (not an https App Link) — Chrome Custom Tabs reliably hand
@@ -98,6 +99,7 @@ export function SessionProvider({
     void supabase.auth.getSession().then(async ({ data }) => {
       if (!active) return;
       setSession(data.session);
+      setTelemetryUser(data.session?.user?.id ?? null);
       setLoading(false);
       await ensureProvisioned(data.session);
     });
@@ -106,6 +108,7 @@ export function SessionProvider({
       // dropping the user into the app (RecoveryRedirect + useAuthForm honor this).
       if (event === 'PASSWORD_RECOVERY') setRecovery(true);
       setSession(s);
+      setTelemetryUser(s?.user?.id ?? null); // associate analytics/crashlytics with the user
       void ensureProvisioned(s);
     });
     return () => {

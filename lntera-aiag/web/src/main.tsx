@@ -1,12 +1,13 @@
 import { StrictMode, Suspense, lazy, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, HashRouter, Navigate, Route, Routes, useMatch, useNavigate } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Navigate, Route, Routes, useLocation, useMatch, useNavigate } from 'react-router-dom';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
 import { IS_NATIVE, NATIVE_PLATFORM } from './lib/runtime';
 import { initNativeShell } from './lib/native-shell';
 import { initOta } from './lib/ota';
+import { initTelemetry, trackScreen, recordError } from './lib/analytics';
 import { fetchPublicConfig, makeSupabase } from './lib/supabase';
 import { SessionProvider, useAuth } from './auth';
 import { ThemeProvider } from './theme';
@@ -72,6 +73,15 @@ function AppGate() {
 
 /** Force a password-recovery session to the reset form, wherever Supabase's link happened to land
  *  (Site URL fallback, /login, etc.) — so a recovery link never silently logs the user into the app. */
+/** Fire an analytics page_view / native screen_view on every route change. */
+function RouteAnalytics() {
+  const loc = useLocation();
+  useEffect(() => {
+    trackScreen(loc.pathname);
+  }, [loc.pathname]);
+  return null;
+}
+
 function RecoveryRedirect() {
   const { recovery } = useAuth();
   const navigate = useNavigate();
@@ -120,6 +130,7 @@ function Boot() {
   return (
     <SessionProvider supabase={supabase}>
       <RecoveryRedirect />
+      <RouteAnalytics />
       <NativeDeepLinks />
       <LanguageSync />
       <Routes>
@@ -211,3 +222,11 @@ createRoot(document.getElementById('root')!).render(
 // Native OTA (background): mark this bundle healthy (cancels capgo rollback) + download any newer web
 // bundle in the background and stage it for next launch. Fire-and-forget; no-op on web/Electron.
 initOta();
+
+// Telemetry (Firebase Analytics + Performance on web; native plugins + Crashlytics on the app). Gated:
+// no Firebase config / plugins ⇒ silent no-op. Capture uncaught errors as non-fatal records too.
+void initTelemetry();
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (e) => recordError(e.error ?? e.message));
+  window.addEventListener('unhandledrejection', (e) => recordError((e as PromiseRejectionEvent).reason));
+}
