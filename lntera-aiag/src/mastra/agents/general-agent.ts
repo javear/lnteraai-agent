@@ -54,6 +54,7 @@ import { getAgentInputTokenLimit, getAgentLastMessages, getWorkingMemoryConfig }
 import { isRegexFilterEnabled } from './agent-regex-filter-config';
 import { buildAvailablePortkeyLlmChain } from '../integrations/portkey/portkey-llm-chain';
 import {
+  PORTKEY_PROVIDER_MODELS_KEY,
   PORTKEY_PROVIDER_SLUG_KEY,
   PORTKEY_PROVIDER_SLUGS_KEY,
 } from '../integrations/portkey/model-config';
@@ -250,8 +251,15 @@ Web app (requestContext.channel === "web"):
     // Expose every active provider's Portkey slug so the rolling processor can build per-model
     // configs across providers; keep the single-slug key for any back-compat (groq) path.
     const slugMap: Partial<Record<LlmProviderCode, string>> = {};
-    for (const p of providers) slugMap[p.code] = p.providerSlug;
+    const modelsMap: Partial<Record<LlmProviderCode, string[]>> = {};
+    for (const p of providers) {
+      slugMap[p.code] = p.providerSlug;
+      // Carry advanced/BYOK providers' user-selected models so the rolling processor can rebuild a
+      // tier-aware chain (pin validation + advanced-only fallback) purely from requestContext.
+      if (p.selectedModels && p.selectedModels.length > 0) modelsMap[p.code] = [...p.selectedModels];
+    }
     requestContext?.set?.(PORTKEY_PROVIDER_SLUGS_KEY, slugMap);
+    requestContext?.set?.(PORTKEY_PROVIDER_MODELS_KEY, modelsMap);
     if (slugMap.groq) requestContext?.set?.(PORTKEY_PROVIDER_SLUG_KEY, slugMap.groq);
 
     const chainOrder = readGroqChainOrderFromRequestContext(requestContext);

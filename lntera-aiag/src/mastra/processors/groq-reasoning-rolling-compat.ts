@@ -9,10 +9,12 @@ import type {
 import { TENANT_MASTER_ID_KEY } from '../integrations/shared/marketplace-auth';
 import {
   extractGroqModelIdentity,
+  PORTKEY_PROVIDER_MODELS_KEY,
   PORTKEY_PROVIDER_SLUGS_KEY,
   resolveModelOverrideForRequestContext,
 } from '../integrations/portkey/model-config';
 import {
+  type ActiveLlmProvider,
   GROQ_FORCE_MODEL_KEY,
   GROQ_MODEL_CHAIN_LARGE_CONTEXT_KEY,
   getOrCreateLlmChainOrder,
@@ -96,16 +98,32 @@ function resolvePinnedModel(requestContext: ProcessInputStepArgs['requestContext
   return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
 }
 
-/** The tenant's active provider codes, from the slug map set by the agent (defaults to groq). */
-function resolveProviderCodes(
+/**
+ * Rebuild the tenant's active providers from requestContext (set by the agent's model()): the slug
+ * map gives code → Portkey slug, the models map gives advanced/BYOK providers their user-selected
+ * segments. Defaults to groq so the pre-existing single-provider path is unchanged.
+ */
+function resolveActiveProviders(
   requestContext: ProcessInputStepArgs['requestContext'],
-): LlmProviderCode[] {
-  const raw = requestContext?.get?.(PORTKEY_PROVIDER_SLUGS_KEY);
-  if (raw && typeof raw === 'object') {
-    const codes = Object.keys(raw as Record<string, unknown>).filter(isLlmProviderCode);
-    if (codes.length > 0) return codes;
+): ActiveLlmProvider[] {
+  const slugsRaw = requestContext?.get?.(PORTKEY_PROVIDER_SLUGS_KEY);
+  const modelsRaw = requestContext?.get?.(PORTKEY_PROVIDER_MODELS_KEY);
+  const models = (modelsRaw && typeof modelsRaw === 'object' ? modelsRaw : {}) as Record<string, unknown>;
+  if (slugsRaw && typeof slugsRaw === 'object') {
+    const slugs = slugsRaw as Record<string, unknown>;
+    const providers = Object.keys(slugs)
+      .filter(isLlmProviderCode)
+      .map((code) => {
+        const selected = models[code];
+        return {
+          code,
+          providerSlug: typeof slugs[code] === 'string' ? (slugs[code] as string) : '',
+          selectedModels: Array.isArray(selected) ? (selected as string[]) : undefined,
+        } satisfies ActiveLlmProvider;
+      });
+    if (providers.length > 0) return providers;
   }
-  return ['groq'];
+  return [{ code: 'groq' as LlmProviderCode, providerSlug: '' }];
 }
 
 function resolveActiveModelIdentity(model: unknown): string {
@@ -170,7 +188,7 @@ function resolveChainOrderForStep(
   const order = getOrCreateLlmChainOrder(args.state, {
     largeContext,
     pinned: resolvePinnedModel(args.requestContext),
-    providerCodes: resolveProviderCodes(args.requestContext),
+    providers: resolveActiveProviders(args.requestContext),
     tenantId,
     estimatedTokens: estimate,
   });
@@ -265,7 +283,7 @@ export const groqReasoningRollingCompatProcessor = {
         getOrCreateLlmChainOrder(state, {
           largeContext,
           pinned: resolvePinnedModel(requestContext),
-          providerCodes: resolveProviderCodes(requestContext),
+          providers: resolveActiveProviders(requestContext),
           tenantId,
           estimatedTokens: rateLimit.requestedTokens,
         });

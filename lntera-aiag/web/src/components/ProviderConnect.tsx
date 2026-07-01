@@ -18,6 +18,23 @@ export interface ProviderConnectConfig {
   consoleLabel: string;
   /** Short note about where the key comes from (step 1). */
   createHint: string;
+  /** Advanced/BYOK provider: the user must also type the model codes they're allowed to use. */
+  advanced?: boolean;
+  /** Example model codes shown as a hint for advanced providers. */
+  modelHint?: string;
+}
+
+/** Split a free-form model list (commas / whitespace / newlines) into clean, de-duped codes. */
+export function parseModelCodes(text: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of text.split(/[\s,]+/)) {
+    const code = raw.trim();
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    out.push(code);
+  }
+  return out;
 }
 
 /**
@@ -33,22 +50,26 @@ export function ProviderConnect({
 }: {
   open: boolean;
   onClose: () => void;
-  /** POSTs the key; should throw with a message on failure. On success the parent closes + refetches. */
-  onConnect: (apiKey: string) => Promise<void>;
+  /** POSTs the key (+ models for advanced providers); throw with a message on failure. */
+  onConnect: (apiKey: string, selectedModels?: string[]) => Promise<void>;
   config: ProviderConnectConfig;
 }) {
   const { name, keyPrefixes, keyHint, keyPlaceholder, consoleUrl, consoleLabel, createHint } = config;
   const [key, setKey] = useState('');
+  const [modelsText, setModelsText] = useState('');
   const [status, setStatus] = useState<Status>(null);
   const [saving, setSaving] = useState(false);
   const openedConsole = useRef(false);
   const looksLikeKey = (v: string) => keyPrefixes.some((p) => v.startsWith(p));
-  const valid = looksLikeKey(key.trim());
+  const models = parseModelCodes(modelsText);
+  const modelsOk = !config.advanced || models.length > 0;
+  const valid = looksLikeKey(key.trim()) && modelsOk;
 
   // Reset state each time the modal opens.
   useEffect(() => {
     if (open) {
       setKey('');
+      setModelsText('');
       setStatus(null);
       setSaving(false);
       openedConsole.current = false;
@@ -92,14 +113,18 @@ export function ProviderConnect({
   }
 
   async function submit() {
-    if (!valid) {
+    if (!looksLikeKey(key.trim())) {
       setStatus({ tone: 'error', text: `That doesn’t look like a ${name} key — it should start with ${keyHint}.` });
+      return;
+    }
+    if (!modelsOk) {
+      setStatus({ tone: 'error', text: `Enter at least one ${name} model code you want to allow.` });
       return;
     }
     setSaving(true);
     setStatus(null);
     try {
-      await onConnect(key.trim());
+      await onConnect(key.trim(), config.advanced ? models : undefined);
     } catch (err) {
       setStatus({ tone: 'error', text: err instanceof Error ? err.message : String(err) });
       setSaving(false);
@@ -124,7 +149,7 @@ export function ProviderConnect({
       }
     >
       <Steps>
-        <Step n={1} title={`Create a free ${name} API key`}>
+        <Step n={1} title={config.advanced ? `Create a ${name} API key` : `Create a free ${name} API key`}>
           {createHint}
           <div className="mt-2">
             <Button
@@ -160,14 +185,121 @@ export function ProviderConnect({
             Paste
           </Button>
         </div>
+
+        {config.advanced ? (
+          <div className="mt-3">
+            <label className="text-[13px] font-medium">Allowed model codes</label>
+            <p className="mt-0.5 text-[12px] text-muted-foreground">
+              One per line (or comma-separated). You'll pick from these in the chat box.
+              {config.modelHint ? <> e.g. <Code>{config.modelHint}</Code></> : null}
+            </p>
+            <textarea
+              value={modelsText}
+              placeholder={config.modelHint ?? 'model-code'}
+              autoComplete="off"
+              spellCheck={false}
+              rows={3}
+              onChange={(e) => setModelsText(e.target.value)}
+              className="mt-1.5 w-full resize-y rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+            {models.length > 0 ? (
+              <p className="mt-1 text-[12px] text-muted-foreground">{models.length} model{models.length === 1 ? '' : 's'}: {models.join(', ')}</p>
+            ) : null}
+          </div>
+        ) : null}
+
         {status ? <Alert tone={status.tone}>{status.text}</Alert> : null}
       </div>
     </Modal>
   );
 }
 
+/**
+ * Edit an advanced provider's allowed model list WITHOUT re-entering the key (PUT …/models).
+ * Prefilled with the current codes; saving replaces the set.
+ */
+export function EditModelsModal({
+  open,
+  onClose,
+  onSave,
+  name,
+  initial,
+  modelHint,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** PUTs the new codes; throw with a message on failure. */
+  onSave: (selectedModels: string[]) => Promise<void>;
+  name: string;
+  initial: string[];
+  modelHint?: string;
+}) {
+  const [text, setText] = useState('');
+  const [status, setStatus] = useState<Status>(null);
+  const [saving, setSaving] = useState(false);
+  const models = parseModelCodes(text);
+
+  useEffect(() => {
+    if (open) {
+      setText(initial.join('\n'));
+      setStatus(null);
+      setSaving(false);
+    }
+  }, [open, initial]);
+
+  async function submit() {
+    if (models.length === 0) {
+      setStatus({ tone: 'error', text: `Enter at least one ${name} model code.` });
+      return;
+    }
+    setSaving(true);
+    setStatus(null);
+    try {
+      await onSave(models);
+    } catch (err) {
+      setStatus({ tone: 'error', text: err instanceof Error ? err.message : String(err) });
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`${name} models`}
+      subtitle="Choose which model codes this provider is allowed to use in chat."
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={submit} disabled={models.length === 0 || saving}>
+            {saving ? 'Saving…' : 'Save models'}
+          </Button>
+        </>
+      }
+    >
+      <label className="text-[13px] font-medium">Allowed model codes</label>
+      <p className="mt-0.5 text-[12px] text-muted-foreground">
+        One per line (or comma-separated).
+        {modelHint ? <> e.g. <Code>{modelHint}</Code></> : null}
+      </p>
+      <textarea
+        value={text}
+        placeholder={modelHint ?? 'model-code'}
+        autoComplete="off"
+        spellCheck={false}
+        rows={4}
+        onChange={(e) => setText(e.target.value)}
+        className="mt-1.5 w-full resize-y rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+      />
+      {status ? <Alert tone={status.tone}>{status.text}</Alert> : null}
+    </Modal>
+  );
+}
+
 /** Provider presets for the connect dialog (mirror of the server registry). */
-export const PROVIDER_CONNECT_CONFIGS: Record<'groq' | 'gemini', ProviderConnectConfig> = {
+export const PROVIDER_CONNECT_CONFIGS: Record<string, ProviderConnectConfig> = {
   groq: {
     name: 'Groq',
     keyPrefixes: ['gsk_'],
@@ -185,5 +317,39 @@ export const PROVIDER_CONNECT_CONFIGS: Record<'groq' | 'gemini', ProviderConnect
     consoleUrl: 'https://aistudio.google.com/apikey',
     consoleLabel: 'Open Google AI Studio ↗',
     createHint: 'Sign in with your Google account in AI Studio, then click Create API key (free tier).',
+  },
+  // Advanced (BYOK): paid keys, user-supplied models, pin-only in chat.
+  openai: {
+    name: 'OpenAI',
+    keyPrefixes: ['sk-'],
+    keyHint: 'sk-…',
+    keyPlaceholder: 'sk-...',
+    consoleUrl: 'https://platform.openai.com/api-keys',
+    consoleLabel: 'Open OpenAI API keys ↗',
+    createHint: 'Sign in to the OpenAI platform, then create a new secret key.',
+    advanced: true,
+    modelHint: 'gpt-4o, gpt-4o-mini',
+  },
+  anthropic: {
+    name: 'Anthropic',
+    keyPrefixes: ['sk-ant-'],
+    keyHint: 'sk-ant-…',
+    keyPlaceholder: 'sk-ant-...',
+    consoleUrl: 'https://console.anthropic.com/settings/keys',
+    consoleLabel: 'Open Anthropic console ↗',
+    createHint: 'Sign in to the Anthropic console, then create an API key.',
+    advanced: true,
+    modelHint: 'claude-sonnet-4-5, claude-haiku-4-5',
+  },
+  openrouter: {
+    name: 'OpenRouter',
+    keyPrefixes: ['sk-or-'],
+    keyHint: 'sk-or-…',
+    keyPlaceholder: 'sk-or-...',
+    consoleUrl: 'https://openrouter.ai/keys',
+    consoleLabel: 'Open OpenRouter keys ↗',
+    createHint: 'Sign in to OpenRouter, then create an API key.',
+    advanced: true,
+    modelHint: 'anthropic/claude-3.5-sonnet, openai/gpt-4o',
   },
 };

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { useOnlineStatus } from '@/lib/pwa';
 import { useT } from '@/i18n';
 import { cn } from '@/lib/utils';
+import type { PinnableModel } from '@/lib/integrations';
 
 export function Composer({
   value,
@@ -12,6 +13,9 @@ export function Composer({
   onStop,
   streaming,
   onConfig,
+  models,
+  pinnedModel,
+  onPinModel,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -20,6 +24,11 @@ export function Composer({
   streaming: boolean;
   /** When provided, shows a subtle settings button inside the composer (Active Agent automation). */
   onConfig?: () => void;
+  /** Models the tenant can pin for this run. When present, a picker is shown ("Auto" + models). */
+  models?: PinnableModel[];
+  /** Currently pinned model code ('' = Auto / default round-robin). */
+  pinnedModel?: string;
+  onPinModel?: (modelCode: string) => void;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const online = useOnlineStatus();
@@ -45,6 +54,36 @@ export function Composer({
   return (
     <div className="border-t bg-background px-3 pt-3 pb-[max(0.85rem,env(safe-area-inset-bottom))] sm:px-4">
       <div className="mx-auto max-w-3xl">
+        {models && models.length > 0 && onPinModel ? (
+          <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+            <label htmlFor="chat-model" className="shrink-0">
+              {t('chat.model') !== 'chat.model' ? t('chat.model') : 'Model'}
+            </label>
+            <select
+              id="chat-model"
+              value={pinnedModel ?? ''}
+              onChange={(e) => onPinModel(e.target.value)}
+              disabled={streaming}
+              className="max-w-[70%] truncate rounded-md border bg-background px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+            >
+              <option value="">Auto (recommended)</option>
+              {Object.entries(
+                models.reduce<Record<string, PinnableModel[]>>((acc, m) => {
+                  (acc[m.providerName] ??= []).push(m);
+                  return acc;
+                }, {}),
+              ).map(([provider, group]) => (
+                <optgroup key={provider} label={provider}>
+                  {group.map((m) => (
+                    <option key={m.modelCode} value={m.modelCode}>
+                      {m.segment}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <div
           className={cn(
             'flex items-end gap-2 rounded-2xl border bg-background p-1.5 shadow-sm transition-shadow',

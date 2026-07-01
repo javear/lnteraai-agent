@@ -1,6 +1,6 @@
 import { getTenantIntegration } from '../shared/tenant-integrations';
 import {
-  groqTenantIntegrationConfigSchema,
+  llmProviderIntegrationConfigSchema,
   type GroqTenantIntegrationConfig,
   type LlmProviderIntegrationConfig,
   type Uuid,
@@ -27,7 +27,7 @@ function cacheKey(tenantId: string, code: LlmProviderCode): string {
 
 function parseConfig(raw: unknown): LlmProviderIntegrationConfig | null {
   if (!raw || typeof raw !== 'object') return null;
-  const parsed = groqTenantIntegrationConfigSchema.safeParse(raw);
+  const parsed = llmProviderIntegrationConfigSchema.safeParse(raw);
   return parsed.success ? parsed.data : null;
 }
 
@@ -70,10 +70,10 @@ export async function resolveActiveTenantProviders(
 ): Promise<ActiveLlmProvider[]> {
   if (!tenantId) return [];
   const resolved = await Promise.all(
-    LLM_PROVIDER_CODES.map(async (code) => {
+    LLM_PROVIDER_CODES.map(async (code): Promise<ActiveLlmProvider | null> => {
       const config = await resolveTenantProviderConfig(tenantId, code).catch(() => null);
       return isTenantProviderActive(config)
-        ? ({ code, providerSlug: config.portkeyProviderSlug } satisfies ActiveLlmProvider)
+        ? { code, providerSlug: config.portkeyProviderSlug, selectedModels: config.selectedModels }
         : null;
     }),
   );

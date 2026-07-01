@@ -6,7 +6,7 @@ import { useApp } from '../components/AppLayout';
 import { useMastra } from '../lib/mastra';
 import { parseSuggestions, streamChat } from '../lib/chat';
 import { stripReasoning } from '../lib/reasoning';
-import { apiErrorMessage, isAnyLlmActive } from '../lib/integrations';
+import { apiErrorMessage, fetchPinnableModels, isAnyLlmActive, type PinnableModel } from '../lib/integrations';
 import { useChats } from '../lib/chat-store';
 import { useNotifications, type TenantNotification } from '../lib/notifications';
 import { generateTitle, getMessages, type HistoryMessage } from '../lib/threads';
@@ -70,6 +70,8 @@ export default function Chat() {
   const [financeEnabled, setFinanceEnabled] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [pinnableModels, setPinnableModels] = useState<PinnableModel[]>([]);
+  const [pinnedModel, setPinnedModel] = useState(''); // '' = Auto (default free round-robin)
 
   const stopRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -106,6 +108,29 @@ export default function Chat() {
   const notifThreadIdRef = useRef(notifThreadId);
   notifThreadIdRef.current = notifThreadId;
   const llmOk = isAnyLlmActive(status);
+
+  // The models the tenant can pin in the composer. Reload whenever the connected providers change;
+  // drop a stale pin (e.g. its provider was disconnected) so we don't send an unusable model code.
+  useEffect(() => {
+    if (!llmOk) {
+      setPinnableModels([]);
+      setPinnedModel('');
+      return;
+    }
+    let cancelled = false;
+    fetchPinnableModels(api)
+      .then((list) => {
+        if (cancelled) return;
+        setPinnableModels(list);
+        setPinnedModel((cur) => (cur && list.some((m) => m.modelCode === cur) ? cur : ''));
+      })
+      .catch(() => {
+        if (!cancelled) setPinnableModels([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, status, llmOk]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior) => {
     const el = scrollRef.current;
@@ -455,6 +480,7 @@ export default function Chat() {
         },
       },
       () => stopRef.current,
+      pinnedModel || undefined,
     );
 
     // Cancel any pending throttled render so it can't fire after the final reconciliation below.
@@ -640,6 +666,9 @@ export default function Chat() {
         }}
         streaming={streaming}
         onConfig={() => setAutomationOpen(true)}
+        models={pinnableModels}
+        pinnedModel={pinnedModel}
+        onPinModel={setPinnedModel}
       />
       <Modal
         open={automationOpen}
