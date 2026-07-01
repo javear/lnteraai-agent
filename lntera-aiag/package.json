@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "test": "node scripts/verify-create-package-parsing.mjs",
+    "test:unit": "tsx --test \"src/**/*.test.ts\"",
     "dev": "node scripts/run-mastra-with-local-env.mjs dev",
     "dev:clean": "rm -rf .mastra/output && (lsof -ti:4111 | xargs kill -9 2>/dev/null || true) && npm run dev",
     "dev:web": "npm --prefix web run dev",
