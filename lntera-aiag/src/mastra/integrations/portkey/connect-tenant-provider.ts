@@ -1,11 +1,12 @@
 import { getTenantById, resolveTenantId } from '../shared/supabase';
 import { getTenantIntegration, upsertTenantIntegration } from '../shared/tenant-integrations';
 import type { LlmProviderIntegrationConfig } from '../shared/types';
-import { groqTenantIntegrationConfigSchema } from '../shared/types';
+import { llmProviderIntegrationConfigSchema } from '../shared/types';
 import { getLlmProvider, type LlmProviderCode } from '../../models/llm-providers';
-import { invalidateTenantProviderConfigCache } from './resolve-tenant-model';
+import { invalidateTenantProviderConfigCache, resolveTenantProviderConfig } from './resolve-tenant-model';
 import {
   deriveProviderSlugs,
+  normalizeSelectedModels,
   ProviderProvisionError,
   provisionTenantProvider,
   revokeTenantProviderPortkey,
@@ -17,6 +18,8 @@ export async function connectTenantProvider(input: {
   code: LlmProviderCode;
   apiKey: string;
   skipValidation?: boolean;
+  /** Provider-relative model segments the tenant may use. Required for advanced/BYOK providers. */
+  selectedModels?: string[];
 }): Promise<LlmProviderIntegrationConfig> {
   const def = getLlmProvider(input.code);
   if (!def) throw new Error(`Unknown LLM provider: ${input.code}`);
@@ -33,6 +36,7 @@ export async function connectTenantProvider(input: {
       code: input.code,
       apiKey: input.apiKey,
       skipValidation: input.skipValidation,
+      selectedModels: input.selectedModels,
     });
 
     await upsertTenantIntegration({
@@ -80,7 +84,7 @@ export async function disconnectTenantProvider(input: {
     throw new Error(`${def.displayName} integration not found for tenant.`);
   }
 
-  const parsed = groqTenantIntegrationConfigSchema.safeParse(row.config);
+  const parsed = llmProviderIntegrationConfigSchema.safeParse(row.config);
   const existing = parsed.success ? parsed.data : null;
   const revoked = existing
     ? await revokeTenantProviderPortkey({ config: existing })
@@ -98,4 +102,41 @@ export async function disconnectTenantProvider(input: {
 
   invalidateTenantProviderConfigCache(tenantUuid, input.code);
   return revoked;
+}
+
+/**
+ * Edit an advanced provider's allowed model list WITHOUT re-entering the key. The key lives in
+ * Portkey and the Portkey integration/provider are untouched — we only rewrite `selectedModels`
+ * on the stored config and bust the cache so the next agent run sees the new set.
+ */
+export async function updateTenantProviderModels(input: {
+  tenantId: string;
+  code: LlmProviderCode;
+  selectedModels: string[];
+}): Promise<LlmProviderIntegrationConfig> {
+  const def = getLlmProvider(input.code);
+  if (!def) throw new Error(`Unknown LLM provider: ${input.code}`);
+  if (def.tier !== 'advanced') {
+    throw new Error(`${def.displayName} does not support editing its model list.`);
+  }
+
+  const tenantUuid = await resolveTenantId(input.tenantId);
+  const existing = await resolveTenantProviderConfig(tenantUuid, input.code);
+  if (!existing || existing.status !== 'active') {
+    throw new Error(`${def.displayName} is not connected for this tenant.`);
+  }
+
+  const selectedModels = normalizeSelectedModels(input.selectedModels, input.code);
+  if (selectedModels.length === 0) {
+    throw new Error(`Select at least one ${def.displayName} model code.`);
+  }
+
+  const config: LlmProviderIntegrationConfig = { ...existing, selectedModels };
+  await upsertTenantIntegration({
+    tenant_id: tenantUuid,
+    integration_code: input.code,
+    config: { ...config },
+  });
+  invalidateTenantProviderConfigCache(tenantUuid, input.code);
+  return config;
 }

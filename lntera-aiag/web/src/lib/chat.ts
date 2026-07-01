@@ -31,13 +31,30 @@ export interface StreamHandlers {
 export function parseModelLabel(modelId: unknown): string | null {
   if (typeof modelId !== 'string' || !modelId.trim()) return null;
   let segment = modelId.trim();
-  // Strip a Portkey routing prefix: `openai/@{slug}/{segment}` → `{segment}`.
-  const m = /^[^/]+\/@[^/@]+\/(.+)$/i.exec(segment) ?? /^@[^/@]+\/(.+)$/i.exec(segment);
-  if (m?.[1]) segment = m[1];
-  const provider = /(^|\/)gemini[-/]/i.test(segment) || segment.toLowerCase().startsWith('gemini')
-    ? 'Gemini'
-    : 'Groq';
-  return `${provider} · ${segment}`;
+  let slug: string | null = null;
+  // Strip a Portkey routing prefix: `openai/@{slug}/{segment}` → `{segment}` (keep the slug: it
+  // encodes the provider for advanced/BYOK routes, e.g. `{tenant}-openrouter`).
+  const m = /^[^/]+\/@([^/@]+)\/(.+)$/i.exec(segment) ?? /^@([^/@]+)\/(.+)$/i.exec(segment);
+  if (m) {
+    slug = m[1];
+    segment = m[2];
+  }
+  return `${detectProvider(segment, slug)} · ${segment}`;
+}
+
+/** Best-effort friendly provider name from the Portkey slug suffix, then the model-name pattern. */
+function detectProvider(segment: string, slug: string | null): string {
+  const s = segment.toLowerCase();
+  if (slug) {
+    if (/-openrouter$/.test(slug)) return 'OpenRouter';
+    if (/-anthropic$/.test(slug)) return 'Anthropic';
+    if (/-openai$/.test(slug)) return 'OpenAI';
+    if (/-gemini$/.test(slug)) return 'Gemini';
+  }
+  if (/(^|\/)gemini[-/]/.test(s) || s.startsWith('gemini')) return 'Gemini';
+  if (s.includes('claude')) return 'Anthropic';
+  if (s.startsWith('gpt') || s.startsWith('o1') || s.startsWith('o3') || s.startsWith('o4')) return 'OpenAI';
+  return 'Groq';
 }
 
 /**
@@ -52,6 +69,8 @@ export async function streamChat(
   resource: string,
   handlers: StreamHandlers,
   shouldStop: () => boolean = () => false,
+  /** Optional model the user pinned in the chat box (a `${provider}/${segment}` code). */
+  pinnedModel?: string,
 ): Promise<void> {
   // Lightweight perf trace: time-to-first-token (first text) + total. Logged so we can compare before/
   // after the tool-preload change on web and native (check devtools / Android logcat).
@@ -70,6 +89,9 @@ export async function streamChat(
         timezone: browserTimezone(),
         nowIso: new Date().toISOString(),
         language: currentLang(),
+        // `groqModel` pins one model for this run (validated server-side against the tenant's active
+        // providers + allowed models). Omitted → the default free round-robin picks.
+        ...(pinnedModel ? { groqModel: pinnedModel } : {}),
       } as never,
     });
 

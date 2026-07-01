@@ -5,11 +5,11 @@ import { toast } from 'sonner';
 import { useAuth } from '../auth';
 import { useOnlineStatus } from '../lib/pwa';
 import { Badge, Button, Card } from '../ui';
-import { ProviderConnect, PROVIDER_CONNECT_CONFIGS } from '../components/ProviderConnect';
+import { ProviderConnect, EditModelsModal, PROVIDER_CONNECT_CONFIGS } from '../components/ProviderConnect';
 import { useApp } from '../components/AppLayout';
 import { IntegrationListSkeleton } from '../components/Skeletons';
 import { SuccessArt } from '../components/Lottie';
-import { apiErrorMessage, type IntegrationStatus } from '../lib/integrations';
+import { apiErrorMessage, type AdvancedLlmStatus, type IntegrationStatus } from '../lib/integrations';
 import { openAuthPopup } from '../lib/oauth-popup';
 import { useNotifications } from '../lib/notifications';
 import { IS_NATIVE } from '../lib/runtime';
@@ -19,7 +19,18 @@ import { BuildTag } from '../components/BuildTag';
 import { getStores, type StoreSyncRow } from '../lib/sync-config';
 
 function label(key: string): string {
-  return { discord: 'Discord', groq: 'Groq', gemini: 'Gemini', tiktok: 'TikTok Shop', shopee: 'Shopee' }[key] ?? key;
+  return (
+    {
+      discord: 'Discord',
+      groq: 'Groq',
+      gemini: 'Gemini',
+      openai: 'OpenAI',
+      anthropic: 'Anthropic',
+      openrouter: 'OpenRouter',
+      tiktok: 'TikTok Shop',
+      shopee: 'Shopee',
+    }[key] ?? key
+  );
 }
 
 /** A celebratory toast with the success Lottie (lazy — only loads when something connects). */
@@ -216,6 +227,51 @@ export default function Integrations() {
             onDone={() => refreshStatus(true)}
             onDisconnect={() => disconnect('gemini')}
           />
+
+          <div className="mt-2">
+            <h2 className="text-[15px] font-semibold">Advanced (bring your own key)</h2>
+            <p className="mt-0.5 text-[13px] text-muted-foreground">
+              Connect a paid provider with your own key and choose which models to allow. These aren't used by
+              the free auto-rotation — pick one in the chat box when you want it.
+            </p>
+          </div>
+          <LlmProviderCard
+            code="openai"
+            title="OpenAI (Portkey)"
+            desc="Bring your own OpenAI key and pick the models you want to use."
+            active={status?.openai?.status === 'active'}
+            busy={busy === 'openai'}
+            disabled={!online}
+            api={api}
+            advancedStatus={status?.openai}
+            onDone={() => refreshStatus(true)}
+            onDisconnect={() => disconnect('openai')}
+          />
+          <LlmProviderCard
+            code="anthropic"
+            title="Anthropic (Portkey)"
+            desc="Bring your own Anthropic key and pick the Claude models you want to use."
+            active={status?.anthropic?.status === 'active'}
+            busy={busy === 'anthropic'}
+            disabled={!online}
+            api={api}
+            advancedStatus={status?.anthropic}
+            onDone={() => refreshStatus(true)}
+            onDisconnect={() => disconnect('anthropic')}
+          />
+          <LlmProviderCard
+            code="openrouter"
+            title="OpenRouter (Portkey)"
+            desc="Bring your own OpenRouter key and pick the models you want to route to."
+            active={status?.openrouter?.status === 'active'}
+            busy={busy === 'openrouter'}
+            disabled={!online}
+            api={api}
+            advancedStatus={status?.openrouter}
+            onDone={() => refreshStatus(true)}
+            onDisconnect={() => disconnect('openrouter')}
+          />
+
           <MarketplaceCard
             name="TikTok Shop"
             platform="tiktok"
@@ -315,27 +371,31 @@ function LlmProviderCard({
   busy,
   disabled,
   api,
+  advancedStatus,
   onDone,
   onDisconnect,
 }: {
-  code: 'groq' | 'gemini';
+  code: string;
   title: string;
   desc: string;
   active: boolean;
   busy: boolean;
   disabled: boolean;
   api: (path: string, init?: RequestInit) => Promise<Response>;
+  /** For advanced/BYOK providers: their allowed model list (drives the "Edit models" button). */
+  advancedStatus?: AdvancedLlmStatus;
   onDone: () => Promise<void> | void;
   onDisconnect: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const cfg = PROVIDER_CONNECT_CONFIGS[code];
 
-  async function connect(apiKey: string) {
+  async function connect(apiKey: string, selectedModels?: string[]) {
     const res = await api(`/svc/v1/me/integrations/llm/${code}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ apiKey }),
+      body: JSON.stringify({ apiKey, ...(selectedModels ? { selectedModels } : {}) }),
     });
     if (!res.ok) {
       throw new Error(await apiErrorMessage(res, `Connect failed (${res.status}).`));
@@ -345,17 +405,41 @@ function LlmProviderCard({
     celebrate(cfg.name);
   }
 
+  async function saveModels(selectedModels: string[]) {
+    const res = await api(`/svc/v1/me/integrations/llm/${code}/models`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ selectedModels }),
+    });
+    if (!res.ok) {
+      throw new Error(await apiErrorMessage(res, `Update failed (${res.status}).`));
+    }
+    setEditOpen(false);
+    await onDone();
+    toast.success(`${cfg.name} models updated.`);
+  }
+
+  const models = advancedStatus?.selectedModels ?? [];
+  const cardDesc = active && cfg.advanced && models.length > 0 ? `${desc} Models: ${models.join(', ')}` : desc;
+
   return (
     <>
       <Row
         title={title}
-        desc={desc}
+        desc={cardDesc}
         badge={active ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Not connected</Badge>}
         actions={
           active ? (
-            <Button variant="danger" disabled={busy} onClick={onDisconnect}>
-              Disconnect
-            </Button>
+            <>
+              {cfg.advanced ? (
+                <Button variant="secondary" disabled={busy || disabled} onClick={() => setEditOpen(true)}>
+                  Edit models
+                </Button>
+              ) : null}
+              <Button variant="danger" disabled={busy} onClick={onDisconnect}>
+                Disconnect
+              </Button>
+            </>
           ) : (
             <Button disabled={disabled} onClick={() => setOpen(true)}>
               Connect
@@ -364,6 +448,16 @@ function LlmProviderCard({
         }
       />
       <ProviderConnect open={open} onClose={() => setOpen(false)} onConnect={connect} config={cfg} />
+      {cfg.advanced ? (
+        <EditModelsModal
+          open={editOpen}
+          onClose={() => setEditOpen(false)}
+          onSave={saveModels}
+          name={cfg.name}
+          initial={models}
+          modelHint={cfg.modelHint}
+        />
+      ) : null}
     </>
   );
 }

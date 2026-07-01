@@ -1,7 +1,6 @@
 import {
   getLlmProvider,
   type LlmProviderCode,
-  LLM_PROVIDERS,
   providerCodeForModel,
   splitModelCode,
   toModelCode,
@@ -31,59 +30,79 @@ export type LlmModelChainEntry = { model: string; maxRetries: number };
 export interface ActiveLlmProvider {
   code: LlmProviderCode;
   providerSlug: string;
+  /** Advanced/BYOK providers only: the tenant's user-selected model segments. */
+  selectedModels?: readonly string[];
+}
+
+/**
+ * The model segments a provider may use in the chain: free providers use their curated
+ * `toolModels`; advanced/BYOK providers use the tenant's `selectedModels` (they ship none).
+ */
+export function providerAllowedSegments(p: ActiveLlmProvider): readonly string[] {
+  const def = getLlmProvider(p.code);
+  if (!def) return [];
+  return def.tier === 'advanced' ? (p.selectedModels ?? []) : def.toolModels;
 }
 
 /** One provider's context-aware, qualified modelCode pool (large turns deprioritize small models). */
-export function buildProviderPool(code: LlmProviderCode, largeContext: boolean): string[] {
-  const def = getLlmProvider(code);
+export function buildProviderPool(p: ActiveLlmProvider, largeContext: boolean): string[] {
+  const def = getLlmProvider(p.code);
   if (!def) return [];
-  const segments = def.toolModels;
-  if (!largeContext) return segments.map((s) => toModelCode(code, s));
+  const segments = providerAllowedSegments(p);
+  if (!largeContext) return segments.map((s) => toModelCode(p.code, s));
 
   const preferredSet = new Set(def.largeContextPreferred);
   const smallSet = new Set(def.smallModels);
   const preferred = def.largeContextPreferred.filter((s) => segments.includes(s));
   const tail = segments.filter((s) => !preferredSet.has(s) && !smallSet.has(s));
-  return [...preferred, ...tail].map((s) => toModelCode(code, s));
+  return [...preferred, ...tail].map((s) => toModelCode(p.code, s));
 }
 
 /**
- * Combined pool across the tenant's active providers. Each provider's pool is independently
- * rotated (random start), then the providers are interleaved round-robin in a randomized order —
- * so when both Groq and Gemini are connected the head of the chain (the model actually used) is
- * effectively picked at random across providers on each new run, with the rest as fallbacks.
+ * Combined default (unpinned) pool across the tenant's active providers. Only **free** providers
+ * auto-rotate — advanced/BYOK (paid) providers are pin-only, so the round-robin never spends a
+ * paid key on its own. If NO free provider is connected, advanced providers are used as the pool
+ * so chat still works. Each provider's pool is independently rotated (random start), then providers
+ * are interleaved round-robin in a randomized order (head ≈ picked at random, rest as fallbacks).
  */
-export function buildCombinedLlmPool(providerCodes: LlmProviderCode[], largeContext: boolean): string[] {
-  const codes = providerCodes.filter((c) => getLlmProvider(c));
-  if (codes.length === 0) return [];
-  if (codes.length === 1) return rotateGroqModelList(buildProviderPool(codes[0], largeContext));
+export function buildCombinedLlmPool(providers: ActiveLlmProvider[], largeContext: boolean): string[] {
+  const active = providers.filter((p) => getLlmProvider(p.code));
+  if (active.length === 0) return [];
+  const free = active.filter((p) => getLlmProvider(p.code)!.tier === 'free');
+  const poolProviders = free.length > 0 ? free : active;
+  if (poolProviders.length === 1) return rotateGroqModelList(buildProviderPool(poolProviders[0], largeContext));
 
-  const order = rotateGroqModelList(codes) as LlmProviderCode[];
-  const pools = new Map<LlmProviderCode, string[]>(
-    order.map((c) => [c, rotateGroqModelList(buildProviderPool(c, largeContext))]),
-  );
+  // Randomize provider interleave order (rotate the codes, which are unique), then map back.
+  const byCode = new Map(poolProviders.map((p) => [p.code, p]));
+  const order = rotateGroqModelList(poolProviders.map((p) => p.code));
+  const pools = order.map((code) => rotateGroqModelList(buildProviderPool(byCode.get(code as LlmProviderCode)!, largeContext)));
 
   const result: string[] = [];
-  const maxLen = Math.max(...[...pools.values()].map((p) => p.length));
+  const maxLen = Math.max(...pools.map((p) => p.length));
   for (let i = 0; i < maxLen; i++) {
-    for (const c of order) {
-      const pool = pools.get(c)!;
+    for (const pool of pools) {
       if (i < pool.length) result.push(pool[i]);
     }
   }
   return result;
 }
 
-/** If the user pinned a model and it belongs to an active provider, run only that model. */
+/**
+ * If the user pinned a model and it belongs to an active provider AND is in that provider's allowed
+ * set (free → toolModels, advanced → tenant selectedModels), run only that model. Otherwise null
+ * (fall back to the default pool), so an unauthorized/unknown pin can't route a paid provider.
+ */
 export function resolvePinnedLlmChain(
   pinned: string | undefined,
-  providerCodes: LlmProviderCode[],
+  providers: ActiveLlmProvider[],
 ): string[] | null {
   if (!pinned) return null;
   const code = providerCodeForModel(pinned);
-  if (!code || !providerCodes.includes(code)) return null;
+  if (!code) return null;
+  const provider = providers.find((p) => p.code === code);
+  if (!provider) return null;
   const segment = splitModelCode(pinned)?.segment ?? pinned.trim();
-  if (!LLM_PROVIDERS[code].toolModels.includes(segment)) return null;
+  if (!providerAllowedSegments(provider).includes(segment)) return null;
   return [toModelCode(code, segment)];
 }
 
@@ -138,7 +157,7 @@ export function getOrCreateLlmChainOrder(
   args: {
     largeContext: boolean;
     pinned?: string;
-    providerCodes: LlmProviderCode[];
+    providers: ActiveLlmProvider[];
     tenantId?: string | null;
     estimatedTokens?: number;
   },
@@ -154,8 +173,8 @@ export function getOrCreateLlmChainOrder(
     return reorderBySizeCeiling(existing as string[], args.tenantId, args.estimatedTokens);
   }
 
-  const pinned = resolvePinnedLlmChain(args.pinned, args.providerCodes);
-  const order = pinned ?? buildCombinedLlmPool(args.providerCodes, args.largeContext);
+  const pinned = resolvePinnedLlmChain(args.pinned, args.providers);
+  const order = pinned ?? buildCombinedLlmPool(args.providers, args.largeContext);
   state[GROQ_CHAIN_STATE_KEY] = order;
   state[GROQ_MODEL_CHAIN_LARGE_CONTEXT_KEY] = args.largeContext;
   return reorderBySizeCeiling(order, args.tenantId, args.estimatedTokens);
@@ -173,12 +192,11 @@ export function buildAvailableLlmChain(args: {
   chainOrder?: readonly string[];
 }): { model: string; providerSlug: string; maxRetries: number }[] {
   const slugByCode = new Map(args.providers.map((p) => [p.code, p.providerSlug]));
-  const providerCodes = args.providers.map((p) => p.code);
 
   const order =
     args.chainOrder ??
-    resolvePinnedLlmChain(args.pinned, providerCodes) ??
-    buildCombinedLlmPool(providerCodes, args.largeContext ?? false);
+    resolvePinnedLlmChain(args.pinned, args.providers) ??
+    buildCombinedLlmPool(args.providers, args.largeContext ?? false);
 
   const filtered = order.filter((code) => !isGroqModelRateLimited(args.tenantId, code));
   const usable = filtered.length > 0 ? filtered : [...order];

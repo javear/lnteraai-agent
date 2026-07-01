@@ -17,6 +17,7 @@ import { connectTenantGroq, disconnectTenantGroq } from '../../../integrations/p
 import {
   connectTenantProvider,
   disconnectTenantProvider,
+  updateTenantProviderModels,
 } from '../../../integrations/portkey/connect-tenant-provider';
 import { resolveTenantProviderConfig } from '../../../integrations/portkey/resolve-tenant-model';
 import { isValidGroqApiKey } from '../../../integrations/portkey/slugs';
@@ -64,13 +65,23 @@ export const meIntegrationsStatusRoute = registerApiRoute(`${OPEN_API_PREFIX}/me
     if (auth instanceof Response) return auth;
     const { tenantId } = auth;
 
-    const [discordRow, groqConfig, geminiConfig, shopeeConns, tiktokConns] = await Promise.all([
-      getTenantIntegration(tenantId, 'discord').catch(() => null),
-      resolveTenantProviderConfig(tenantId, 'groq').catch(() => null),
-      resolveTenantProviderConfig(tenantId, 'gemini').catch(() => null),
-      listConnectionsByTenant(tenantId, ['shopee']).catch(() => []),
-      listConnectionsByTenant(tenantId, ['tiktok']).catch(() => []),
-    ]);
+    const [discordRow, groqConfig, geminiConfig, openaiConfig, anthropicConfig, openrouterConfig, shopeeConns, tiktokConns] =
+      await Promise.all([
+        getTenantIntegration(tenantId, 'discord').catch(() => null),
+        resolveTenantProviderConfig(tenantId, 'groq').catch(() => null),
+        resolveTenantProviderConfig(tenantId, 'gemini').catch(() => null),
+        resolveTenantProviderConfig(tenantId, 'openai').catch(() => null),
+        resolveTenantProviderConfig(tenantId, 'anthropic').catch(() => null),
+        resolveTenantProviderConfig(tenantId, 'openrouter').catch(() => null),
+        listConnectionsByTenant(tenantId, ['shopee']).catch(() => []),
+        listConnectionsByTenant(tenantId, ['tiktok']).catch(() => []),
+      ]);
+
+    const advancedStatus = (cfg: typeof openaiConfig) => ({
+      status: cfg?.status ?? 'not_connected',
+      connectedAt: cfg?.connectedAt ?? null,
+      selectedModels: cfg?.selectedModels ?? [],
+    });
 
     const discordCfg = (discordRow?.config ?? {}) as {
       guildId?: string;
@@ -92,6 +103,9 @@ export const meIntegrationsStatusRoute = registerApiRoute(`${OPEN_API_PREFIX}/me
         status: geminiConfig?.status ?? 'not_connected',
         connectedAt: geminiConfig?.connectedAt ?? null,
       },
+      openai: advancedStatus(openaiConfig),
+      anthropic: advancedStatus(anthropicConfig),
+      openrouter: advancedStatus(openrouterConfig),
       shopee: shopeeConns.map((c2) => ({ connectionId: c2.id, shopId: c2.external_shop_id, shopName: c2.shop_name })),
       tiktok: tiktokConns.map((c2) => ({
         connectionId: c2.id,
@@ -183,7 +197,15 @@ export const meGroqConnectRoute = registerApiRoute(`${OPEN_API_PREFIX}/me/integr
   },
 });
 
-const llmConnectBody = z.object({ apiKey: z.string().min(1) }).strict();
+const llmConnectBody = z
+  .object({
+    apiKey: z.string().min(1),
+    /** Advanced/BYOK providers: the model codes the tenant may use (required for those providers). */
+    selectedModels: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+
+const llmModelsBody = z.object({ selectedModels: z.array(z.string().min(1)).min(1) }).strict();
 
 /** POST /svc/v1/me/integrations/llm/:provider — connect a BYO LLM provider key (groq | gemini | …). */
 export const meLlmConnectRoute = registerApiRoute(`${OPEN_API_PREFIX}/me/integrations/llm/:provider`, {
@@ -221,9 +243,17 @@ export const meLlmConnectRoute = registerApiRoute(`${OPEN_API_PREFIX}/me/integra
     if (!def.validateKey(body.apiKey)) {
       return openApiJsonError(c, 400, 'invalid_key', `${def.displayName} API key must look like ${def.keyHint}.`);
     }
+    if (def.tier === 'advanced' && !(body.selectedModels && body.selectedModels.length > 0)) {
+      return openApiJsonError(c, 400, 'missing_models', `Select at least one ${def.displayName} model code.`);
+    }
 
     try {
-      const config = await connectTenantProvider({ tenantId: auth.tenantId, code: provider, apiKey: body.apiKey });
+      const config = await connectTenantProvider({
+        tenantId: auth.tenantId,
+        code: provider,
+        apiKey: body.apiKey,
+        selectedModels: body.selectedModels,
+      });
       return c.json({ integration_code: provider, config });
     } catch (err) {
       return openApiJsonError(
@@ -231,6 +261,61 @@ export const meLlmConnectRoute = registerApiRoute(`${OPEN_API_PREFIX}/me/integra
         400,
         'provision_failed',
         err instanceof Error ? err.message : `Failed to connect ${def.displayName}.`,
+      );
+    }
+  },
+});
+
+/** PUT /svc/v1/me/integrations/llm/:provider/models — edit an advanced provider's allowed models. */
+export const meLlmModelsRoute = registerApiRoute(`${OPEN_API_PREFIX}/me/integrations/llm/:provider/models`, {
+  method: 'PUT',
+  requiresAuth: false,
+  openapi: {
+    summary: "Update an advanced LLM provider's allowed model codes (no key re-entry)",
+    tags: [...OPENAPI_TAGS.integrations],
+    parameters: [authHeaderParam],
+    responses: { 200: { description: 'Updated' }, 400: { description: 'Invalid/unsupported' }, 401: { description: 'Unauthorized' } },
+  },
+  handler: async (c: MeContext) => {
+    const auth = await resolveTenantFromBearer(c);
+    if (auth instanceof Response) return auth;
+
+    const provider = c.req.param('provider') ?? '';
+    if (!isLlmProviderCode(provider)) {
+      return openApiJsonError(c, 400, 'unsupported_provider', `Unsupported LLM provider: ${provider}`);
+    }
+    const def = getLlmProvider(provider)!;
+    if (def.tier !== 'advanced') {
+      return openApiJsonError(c, 400, 'unsupported_provider', `${def.displayName} does not support editing its model list.`);
+    }
+
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return openApiJsonError(c, 400, 'invalid_request', 'Expected JSON body.');
+    }
+    let body;
+    try {
+      body = llmModelsBody.parse(raw);
+    } catch (err) {
+      const msg = err instanceof z.ZodError ? err.issues.map((i) => i.message).join('; ') : String(err);
+      return openApiJsonError(c, 400, 'invalid_body', msg);
+    }
+
+    try {
+      const config = await updateTenantProviderModels({
+        tenantId: auth.tenantId,
+        code: provider,
+        selectedModels: body.selectedModels,
+      });
+      return c.json({ integration_code: provider, config });
+    } catch (err) {
+      return openApiJsonError(
+        c,
+        400,
+        'update_failed',
+        err instanceof Error ? err.message : `Failed to update ${def.displayName} models.`,
       );
     }
   },
@@ -325,6 +410,7 @@ export const meIntegrationsRoutes = [
   meConnectUrlRoute,
   meGroqConnectRoute,
   meLlmConnectRoute,
+  meLlmModelsRoute,
   meDisconnectStoreRoute,
   meDisconnectRoute,
 ];

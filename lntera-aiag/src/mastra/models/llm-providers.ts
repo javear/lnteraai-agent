@@ -14,23 +14,37 @@ import { GROQ_TOOL_MODELS } from './groq-tool-models';
  *                     `groq/llama-3.3-70b-versatile`). Provider-qualified so two providers never
  *                     collide in the rate-limit cache or the chain.
  */
-export const LLM_PROVIDER_CODES = ['groq', 'gemini'] as const;
+export const LLM_PROVIDER_CODES = ['groq', 'gemini', 'openai', 'anthropic', 'openrouter'] as const;
 export type LlmProviderCode = (typeof LLM_PROVIDER_CODES)[number];
+
+/**
+ * `free`     — guided "generate a free key" console flow; a curated {@link LlmProviderDef.toolModels}
+ *              list; auto-rotated in the default chain.
+ * `advanced` — BYOK (bring-your-own-key). No curated models: the tenant supplies the model codes
+ *              they're allowed to use (stored per-tenant), and they're used pin-only (not
+ *              auto-rotated with free providers), so paid keys aren't spent by the round-robin.
+ */
+export type LlmProviderTier = 'free' | 'advanced';
 
 export interface LlmProviderDef {
   code: LlmProviderCode;
+  /** Free (guided key) vs advanced/BYOK (user-supplied models, pin-only). */
+  tier: LlmProviderTier;
   /** Human label used in the UI and the chat "Provider · model" tag. */
   displayName: string;
   /** Portkey `ai_provider_id` for the integration (key store). */
   portkeyAiProviderId: string;
-  /** Portkey model segments (after `@{slug}/`). Tool-capable chat models only. */
+  /** Portkey model segments (after `@{slug}/`). Tool-capable chat models only. Empty for BYOK. */
   toolModels: readonly string[];
   /** Segments preferred first when the turn is large (tools + history). */
   largeContextPreferred: readonly string[];
   /** Segments treated as small-context (deprioritized on large turns). */
   smallModels: readonly string[];
-  /** Segment used for the connect-time validation chat completion. */
-  validationModel: string;
+  /**
+   * Segment used for the connect-time validation chat completion. Omitted for BYOK providers —
+   * they validate against the tenant's first selected model instead.
+   */
+  validationModel?: string;
   /** Cheap shape check of a pasted API key (full validation happens via Portkey). */
   validateKey: (key: string) => boolean;
   /** Placeholder/hint shown in the connect dialog (e.g. `gsk_…`). */
@@ -46,6 +60,7 @@ const GROQ_SEGMENTS = GROQ_TOOL_MODELS.map((m) => m.replace(/^groq\//, ''));
 export const LLM_PROVIDERS: Record<LlmProviderCode, LlmProviderDef> = {
   groq: {
     code: 'groq',
+    tier: 'free',
     displayName: 'Groq',
     portkeyAiProviderId: 'groq',
     toolModels: GROQ_SEGMENTS,
@@ -68,6 +83,7 @@ export const LLM_PROVIDERS: Record<LlmProviderCode, LlmProviderDef> = {
   },
   gemini: {
     code: 'gemini',
+    tier: 'free',
     displayName: 'Gemini',
     portkeyAiProviderId: 'google',
     // Current GA, free-tier, tool-capable Gemini chat models (June 2026). The 2.0 family was shut
@@ -85,7 +101,64 @@ export const LLM_PROVIDERS: Record<LlmProviderCode, LlmProviderDef> = {
     consoleUrl: 'https://aistudio.google.com/apikey',
     consoleLabel: 'Google AI Studio',
   },
+  // ── Advanced (BYOK) providers ────────────────────────────────────────────────────────────
+  // No curated model list: the tenant supplies the model codes they may use (stored in the
+  // integration config as `selectedModels`). Pin-only in the chain — the user picks the model
+  // in the chat box, so paid keys aren't spent by the free round-robin.
+  openai: {
+    code: 'openai',
+    tier: 'advanced',
+    displayName: 'OpenAI',
+    portkeyAiProviderId: 'openai',
+    toolModels: [],
+    largeContextPreferred: [],
+    smallModels: [],
+    validateKey: (key) => {
+      const v = key.trim();
+      return v.startsWith('sk-') && v.length >= 20;
+    },
+    keyHint: 'sk-…',
+    consoleUrl: 'https://platform.openai.com/api-keys',
+    consoleLabel: 'OpenAI API Keys',
+  },
+  anthropic: {
+    code: 'anthropic',
+    tier: 'advanced',
+    displayName: 'Anthropic',
+    portkeyAiProviderId: 'anthropic',
+    toolModels: [],
+    largeContextPreferred: [],
+    smallModels: [],
+    validateKey: (key) => {
+      const v = key.trim();
+      return v.startsWith('sk-ant-') && v.length >= 20;
+    },
+    keyHint: 'sk-ant-…',
+    consoleUrl: 'https://console.anthropic.com/settings/keys',
+    consoleLabel: 'Anthropic Console',
+  },
+  openrouter: {
+    code: 'openrouter',
+    tier: 'advanced',
+    displayName: 'OpenRouter',
+    portkeyAiProviderId: 'openrouter',
+    toolModels: [],
+    largeContextPreferred: [],
+    smallModels: [],
+    validateKey: (key) => {
+      const v = key.trim();
+      return v.startsWith('sk-or-') && v.length >= 20;
+    },
+    keyHint: 'sk-or-…',
+    consoleUrl: 'https://openrouter.ai/keys',
+    consoleLabel: 'OpenRouter Keys',
+  },
 };
+
+/** True for BYOK providers (user-supplied models, pin-only in the chain). */
+export function isAdvancedLlmProvider(code: string): boolean {
+  return getLlmProvider(code)?.tier === 'advanced';
+}
 
 export function isLlmProviderCode(value: string): value is LlmProviderCode {
   return (LLM_PROVIDER_CODES as readonly string[]).includes(value);

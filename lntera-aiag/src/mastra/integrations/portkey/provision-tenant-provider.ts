@@ -34,6 +34,28 @@ export class ProviderProvisionError extends Error {
   }
 }
 
+/**
+ * Clean a user-typed model list into Portkey segments: trim, drop blanks, dedupe (case-sensitive).
+ * A leading `${code}/` is stripped so both `gpt-4o` and `openai/gpt-4o` normalize to the segment
+ * — but internal slashes (OpenRouter's `anthropic/claude-3.5-sonnet`) are preserved.
+ */
+export function normalizeSelectedModels(models: string[] | undefined, code?: string): string[] {
+  if (!models) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of models) {
+    let seg = String(raw).trim();
+    if (!seg) continue;
+    if (code && seg.toLowerCase().startsWith(`${code.toLowerCase()}/`)) {
+      seg = seg.slice(code.length + 1);
+    }
+    if (!seg || seen.has(seg)) continue;
+    seen.add(seg);
+    out.push(seg);
+  }
+  return out;
+}
+
 function isDuplicate(err: unknown): boolean {
   // Portkey returns 409 OR 400 when a slug already exists.
   return err instanceof PortkeyAdminError && (err.status === 409 || err.status === 400);
@@ -61,6 +83,8 @@ export async function provisionTenantProvider(input: {
   code: LlmProviderCode;
   apiKey: string;
   skipValidation?: boolean;
+  /** Provider-relative model segments the tenant may use. Required for advanced/BYOK providers. */
+  selectedModels?: string[];
 }): Promise<ProvisionTenantProviderResult> {
   const def = getLlmProvider(input.code);
   if (!def) throw new Error(`Unknown LLM provider: ${input.code}`);
@@ -69,6 +93,14 @@ export async function provisionTenantProvider(input: {
   if (!def.validateKey(apiKey)) {
     throw new Error(`Invalid ${def.displayName} API key format. Expected a key like ${def.keyHint}.`);
   }
+
+  // BYOK providers ship no curated models — the tenant must supply the ones they may use, and we
+  // validate the key against the first of them (free providers use their fixed validationModel).
+  const selectedModels = normalizeSelectedModels(input.selectedModels, input.code);
+  if (def.tier === 'advanced' && selectedModels.length === 0) {
+    throw new Error(`Select at least one ${def.displayName} model code to connect.`);
+  }
+  const validationModel = def.validationModel ?? selectedModels[0];
 
   const { portkeyProviderSlug, portkeyIntegrationSlug } = deriveProviderSlugs(input.tenant, input.code);
   const integrationName = derivePortkeyName(input.tenant, def.displayName);
@@ -123,10 +155,10 @@ export async function provisionTenantProvider(input: {
     // 3) Validate the key end-to-end through Portkey inference. A quota/rate-limit (429) still
     //    means the key authenticated, so we connect anyway and just defer full validation.
     let rateLimited = false;
-    if (!input.skipValidation) {
+    if (!input.skipValidation && validationModel) {
       const result = await validateProviderViaPortkey({
         providerSlug: portkeyProviderSlug,
-        model: def.validationModel,
+        model: validationModel,
         inferenceApiKey: getPortkeyInferenceApiKey(),
         providerLabel: def.displayName,
       });
@@ -143,6 +175,7 @@ export async function provisionTenantProvider(input: {
       connectedAt: now,
       lastValidatedAt: input.skipValidation || rateLimited ? undefined : now,
       errorMessage: undefined,
+      selectedModels: def.tier === 'advanced' ? selectedModels : undefined,
     };
     return { config };
   } catch (err) {

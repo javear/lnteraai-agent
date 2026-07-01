@@ -4,7 +4,7 @@ export const PLATFORMS = ['shopee', 'tiktok'] as const;
 export type Platform = (typeof PLATFORMS)[number];
 export type Uuid = string;
 
-export const INTEGRATION_CODES = ['discord', 'groq', 'gemini'] as const;
+export const INTEGRATION_CODES = ['discord', 'groq', 'gemini', 'openai', 'anthropic', 'openrouter'] as const;
 export type IntegrationCode = (typeof INTEGRATION_CODES)[number];
 
 export function isIntegrationCode(value: string): value is IntegrationCode {
@@ -200,11 +200,18 @@ export const groqTenantIntegrationConfigSchema = z
 export type GroqTenantIntegrationConfig = z.infer<typeof groqTenantIntegrationConfigSchema>;
 
 /**
- * Provider-agnostic alias: every BYO LLM provider (Groq, Gemini, …) stores the same shape in
- * `tenant_integrations.config` — only Portkey slugs/ids + status, never the API key.
+ * Provider-agnostic config: every BYO LLM provider (Groq, Gemini, OpenAI, …) stores the same
+ * Portkey slugs/ids + status in `tenant_integrations.config` — never the API key. Advanced/BYOK
+ * providers additionally store `selectedModels`: the provider-relative model segments the tenant
+ * is allowed to use (e.g. `gpt-4o`, `anthropic/claude-3.5-sonnet`). Free providers omit it.
  */
-export const llmProviderIntegrationConfigSchema = groqTenantIntegrationConfigSchema;
-export type LlmProviderIntegrationConfig = GroqTenantIntegrationConfig;
+export const llmProviderIntegrationConfigSchema = groqTenantIntegrationConfigSchema
+  .extend({
+    selectedModels: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+
+export type LlmProviderIntegrationConfig = z.infer<typeof llmProviderIntegrationConfigSchema>;
 
 export const groqOnboardSubmitSchema = z
   .object({

@@ -9,6 +9,12 @@ import {
 export const PORTKEY_PROVIDER_SLUG_KEY = 'portkeyProviderSlug';
 /** Map of `{ [providerCode]: portkeyProviderSlug }` for the tenant's active providers. */
 export const PORTKEY_PROVIDER_SLUGS_KEY = 'portkeyProviderSlugs';
+/**
+ * Map of `{ [providerCode]: string[] }` — the tenant's allowed model segments for advanced/BYOK
+ * providers. Lets the rolling processor rebuild a tier-aware chain (which must know each advanced
+ * provider's user-selected models) purely from requestContext.
+ */
+export const PORTKEY_PROVIDER_MODELS_KEY = 'portkeyProviderModels';
 
 export type PortkeyMastraModelConfig = {
   id: `${string}/${string}`;

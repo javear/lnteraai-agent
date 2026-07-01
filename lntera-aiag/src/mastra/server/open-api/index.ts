@@ -6,6 +6,7 @@ import {
   groqIntegrationRoute,
 } from './routes/groq-integration';
 import { meIntegrationsRoutes } from './routes/me-integrations';
+import { meModelsRoutes } from './routes/me-models';
 import { publicConfigRoute } from './routes/public-config';
 import { chatHistoryRoutes } from './routes/chat-history';
 import { productSyncActionRoutes } from './routes/product-sync-actions';
@@ -24,6 +25,7 @@ export const openApiRoutes = [
   groqIntegrationDeleteRoute,
   publicConfigRoute,
   ...meIntegrationsRoutes,
+  ...meModelsRoutes,
   ...chatHistoryRoutes,
   ...productSyncActionRoutes,
   ...insightScheduleRoutes,
