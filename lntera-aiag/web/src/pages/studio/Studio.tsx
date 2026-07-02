@@ -224,6 +224,7 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
   const [streaming, setStreaming] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [proj, setProj] = useState<StudioProject>(project);
+  const [gitWarning, setGitWarning] = useState<string | null>(null);
   const stopRef = useRef(false);
 
   // Boot the sandbox, wire the bridge, and bring the repo into the pod (clone if empty).
@@ -238,11 +239,18 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
 
     (async () => {
       await provider.boot();
-      const { cloneUrl } = await initProject(api, project.id);
-      const hasGit = (await provider.exec('test', ['-d', '.git'])).exitCode === 0;
-      if (!hasGit) await provider.gitClone(cloneUrl);
-      await provider.exec('git', ['config', 'user.email', 'studio@lntera.ai']);
-      await provider.exec('git', ['config', 'user.name', 'Lntera Studio']);
+      // Git is best-effort: it needs the pod to reach our git-proxy host, which BrowserPod blocks
+      // unless that domain is allow-listed for the API key. If it fails, the sandbox is still fully
+      // usable (chat/write/build/preview) — only cross-browser persistence is unavailable.
+      try {
+        const { cloneUrl } = await initProject(api, project.id);
+        const hasGit = (await provider.exec('test', ['-d', '.git'])).exitCode === 0;
+        if (!hasGit) await provider.gitClone(cloneUrl);
+        await provider.exec('git', ['config', 'user.email', 'studio@lntera.ai']);
+        await provider.exec('git', ['config', 'user.name', 'Lntera Studio']);
+      } catch (e) {
+        setGitWarning(e instanceof Error ? e.message : String(e));
+      }
       setStatus('ready');
     })().catch((e) => {
       setBootError(e instanceof Error ? e.message : String(e));
@@ -362,6 +370,14 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
       {bootError ? (
         <div className="px-4 pt-3">
           <Alert tone="error">{bootError}</Alert>
+        </div>
+      ) : null}
+      {gitWarning ? (
+        <div className="px-4 pt-3">
+          <Alert tone="neutral">
+            Working without Git sync (changes won't persist across browsers yet). The sandbox can't reach
+            the git host — allow-list it for your BrowserPod API key to enable saving. Details: {gitWarning}
+          </Alert>
         </div>
       ) : null}
 
