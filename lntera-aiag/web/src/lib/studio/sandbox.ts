@@ -94,7 +94,13 @@ export class BrowserPodProvider implements SandboxProvider {
       cols: 120,
       rows: 40,
       onOutput: (buffer: ArrayBuffer) => {
-        const text = decoder.decode(buffer);
+        // When the page is cross-origin isolated, BrowserPod hands us a SharedArrayBuffer-backed
+        // view, which TextDecoder.decode() rejects ("must not be shared"). Copy into a plain
+        // (non-shared) Uint8Array first.
+        const view = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+        const copy = new Uint8Array(view.byteLength);
+        copy.set(view);
+        const text = decoder.decode(copy);
         for (const cb of this.outputSubs) cb(text);
         const a = this.active;
         if (!a) return;
