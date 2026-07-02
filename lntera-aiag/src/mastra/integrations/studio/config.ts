@@ -1,13 +1,15 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { getMastraPublicBaseUrl } from '../portkey/config';
 
-/** Gitea Cloud connection (server env). Returns null when not configured. */
+/**
+ * Gitea connection (server env). Returns null when not configured. `owner` is optional — repos are
+ * created under the token's own user (`/user/repos`), so only base URL + token are required.
+ */
 export function getGiteaConfig(): { baseUrl: string; token: string; owner: string } | null {
   const baseUrl = process.env.GITEA_BASE_URL?.trim().replace(/\/+$/, '');
   const token = process.env.GITEA_TOKEN?.trim();
-  const owner = process.env.GITEA_OWNER?.trim();
-  if (!baseUrl || !token || !owner) return null;
-  return { baseUrl, token, owner };
+  if (!baseUrl || !token) return null;
+  return { baseUrl, token, owner: process.env.GITEA_OWNER?.trim() ?? '' };
 }
 
 /** EdgeOne Pages deploy token (server env). */

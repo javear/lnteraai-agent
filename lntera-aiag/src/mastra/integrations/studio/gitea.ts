@@ -7,37 +7,45 @@ export interface GiteaRepo {
 }
 
 function authHeaders(token: string): Record<string, string> {
-  return { Authorization: `token ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' };
+  return {
+    Authorization: `token ${token}`,
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    'User-Agent': 'lntera-studio',
+  };
 }
 
 /**
- * Create (or reuse) a private repo under the configured org for a Studio project. Idempotent: a 409
- * "already exists" falls back to fetching the existing repo. Requires Gitea env config.
+ * Create (or reuse) a private repo under the TOKEN'S OWN USER for a Studio project. We use
+ * `/user/repos` (needs only `write:repository`) rather than an org endpoint, so no org / org-scope is
+ * required — tenant isolation is enforced by the app + the signed git-proxy token, not by the Gitea
+ * account. Idempotent: a 409 "already exists" falls back to finding the existing repo.
  */
 export async function createGiteaRepo(name: string): Promise<GiteaRepo> {
   const cfg = getGiteaConfig();
-  if (!cfg) throw new Error('Gitea is not configured (set GITEA_BASE_URL, GITEA_TOKEN, GITEA_OWNER).');
+  if (!cfg) throw new Error('Gitea is not configured (set GITEA_BASE_URL and GITEA_TOKEN).');
 
-  const res = await fetch(`${cfg.baseUrl}/api/v1/orgs/${encodeURIComponent(cfg.owner)}/repos`, {
+  const res = await fetch(`${cfg.baseUrl}/api/v1/user/repos`, {
     method: 'POST',
     headers: authHeaders(cfg.token),
     body: JSON.stringify({ name, private: true, auto_init: true, default_branch: 'main' }),
   });
 
   if (res.ok) return toRepo(await res.json());
-  if (res.status === 409) return getGiteaRepo(name);
+  if (res.status === 409) return findUserRepo(name);
   throw new Error(`Gitea repo create failed (${res.status}): ${await safeText(res)}`);
 }
 
-export async function getGiteaRepo(name: string): Promise<GiteaRepo> {
+/** Find one of the token user's repos by name (used as the idempotent reuse path). */
+async function findUserRepo(name: string): Promise<GiteaRepo> {
   const cfg = getGiteaConfig();
   if (!cfg) throw new Error('Gitea is not configured.');
-  const res = await fetch(
-    `${cfg.baseUrl}/api/v1/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(name)}`,
-    { headers: authHeaders(cfg.token) },
-  );
-  if (!res.ok) throw new Error(`Gitea repo fetch failed (${res.status}): ${await safeText(res)}`);
-  return toRepo(await res.json());
+  const res = await fetch(`${cfg.baseUrl}/api/v1/user/repos?limit=50`, { headers: authHeaders(cfg.token) });
+  if (!res.ok) throw new Error(`Gitea repo list failed (${res.status}): ${await safeText(res)}`);
+  const list = (await res.json()) as unknown[];
+  const match = list.find((r) => (r as { name?: string }).name === name);
+  if (!match) throw new Error(`Gitea repo "${name}" exists but could not be located.`);
+  return toRepo(match);
 }
 
 function toRepo(json: unknown): GiteaRepo {
