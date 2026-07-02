@@ -6,7 +6,6 @@
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
   "headers": [
     {
-      "comment": "Cross-origin isolation ONLY for the Studio document so BrowserPod's SharedArrayBuffer works, without applying COEP to the rest of the app (which could break third-party embeds).",
       "source": "/studio(.*)",
       "headers": [
         { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
