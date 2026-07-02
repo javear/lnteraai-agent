@@ -26,6 +26,9 @@ export function studioChannelTopic(tenantId: string): string {
 export const STUDIO_COMMAND_EVENT = 'studio_cmd';
 export const STUDIO_RESULT_EVENT = 'studio_result';
 
+/** requestContext key carrying the active Studio session (browser tab) id, set by the web client. */
+export const STUDIO_SESSION_ID_KEY = 'studioSessionId';
+
 /** A file/dir entry from `listTree`. */
 export interface StudioTreeEntry {
   path: string;
