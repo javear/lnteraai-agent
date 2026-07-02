@@ -53,6 +53,8 @@ function resolveWebRoot(): string {
 type HtmlCtx = {
   html: (s: string) => Response | Promise<Response>;
   text: (s: string, status?: number) => Response | Promise<Response>;
+  req: { path: string };
+  header: (name: string, value: string) => void;
 };
 
 /** Frontend hosted standalone (e.g. Vercel) when WEB_APP_ORIGIN is set — don't serve /app here. */
@@ -77,6 +79,15 @@ function buildMonolithRoutes() {
     }
   };
 
+  // Cross-origin isolation ONLY on the Studio document (so BrowserPod's SharedArrayBuffer works)
+  // — the rest of the SPA is served without COEP so third-party embeds (OneSignal/analytics) are
+  // unaffected. Studio.tsx reloads itself if it's reached via client-nav without isolation.
+  const applyStudioIsolation = (c: HtmlCtx): void => {
+    if (!/^\/app\/studio(\/|$)/.test(c.req.path)) return;
+    c.header('Cross-Origin-Opener-Policy', 'same-origin');
+    c.header('Cross-Origin-Embedder-Policy', 'credentialless');
+  };
+
   const spaStatic = serveStatic({
     root: WEB_ROOT,
     index: 'index.html',
@@ -89,7 +100,10 @@ function buildMonolithRoutes() {
       method: 'GET',
       requiresAuth: false,
       middleware: [spaStatic],
-      handler: async (c) => serveIndexHtml(c),
+      handler: async (c) => {
+        applyStudioIsolation(c);
+        return serveIndexHtml(c);
+      },
     }),
   ];
 }
