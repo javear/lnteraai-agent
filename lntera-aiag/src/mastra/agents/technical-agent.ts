@@ -12,10 +12,7 @@ import {
   PORTKEY_PROVIDER_SLUGS_KEY,
 } from '../integrations/portkey/model-config';
 import { resolveActiveTenantProviders } from '../integrations/portkey/resolve-tenant-model';
-import {
-  GROQ_MODEL_CHAIN_LARGE_CONTEXT_KEY,
-  readGroqChainOrderFromRequestContext,
-} from '../models/llm-model-chain';
+import { readGroqChainOrderFromRequestContext } from '../models/llm-model-chain';
 import type { LlmProviderCode } from '../models/llm-providers';
 
 /** Placeholder when no LLM provider is connected — the onboard gate aborts before any LLM call. */
@@ -82,14 +79,17 @@ Reply in clean GitHub-flavored markdown. Be concise; mirror the user's language.
     if (slugMap.groq) requestContext?.set?.(PORTKEY_PROVIDER_SLUG_KEY, slugMap.groq);
 
     const chainOrder = readGroqChainOrderFromRequestContext(requestContext);
-    const largeContext = requestContext?.get?.(GROQ_MODEL_CHAIN_LARGE_CONTEXT_KEY) === true;
+    // Coding + tool-calling always wants the strongest models: force large-context ordering so the
+    // big models (llama-3.3-70b / gpt-oss-120b, or a pinned advanced BYOK model) come first and the
+    // tiny llama-3.1-8b-instant — which narrates instead of reliably emitting tool calls — sinks to
+    // last resort. (The business agent leaves this to the turn size; the technical agent shouldn't.)
     const channel = requestContext?.get?.('channel');
 
     return buildAvailablePortkeyLlmChain({
       providers,
       tenantId: tenant,
       pinned: pinnedStr,
-      largeContext,
+      largeContext: true,
       chainOrder: chainOrder ?? undefined,
       metadata: {
         tenant_id: tenant,
