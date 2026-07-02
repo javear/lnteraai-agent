@@ -44,8 +44,18 @@ export default defineConfig(({ mode }) => {
   // Root-hosted targets (Vercel, native) serve from '/'; the Mastra monolith serves under '/app/'.
   const base = native || vercel ? '/' : '/app/';
 
+  // Cross-origin isolation so BrowserPod (Studio) can use SharedArrayBuffer. `credentialless` keeps
+  // most third-party embeds (analytics/OneSignal) working. NOTE: production hosting (the Mastra
+  // monolith `/app` and Vercel) must serve these same headers or Studio won't boot there.
+  const crossOriginIsolationHeaders = {
+    'Cross-Origin-Opener-Policy': 'same-origin',
+    'Cross-Origin-Embedder-Policy': 'credentialless',
+  };
+
   return {
     base,
+    server: { headers: crossOriginIsolationHeaders },
+    preview: { headers: crossOriginIsolationHeaders },
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -187,6 +197,9 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: native || vercel ? 'dist' : '../src/mastra/public/app',
       emptyOutDir: true,
+      // es2022 so the lazily-loaded Studio chunk (BrowserPod uses top-level await to load its WASM)
+      // transpiles. All our targets are modern Chromium/WebKit, so this is safe.
+      target: 'es2022',
       rollupOptions: {
         output: {
           manualChunks(id) {
