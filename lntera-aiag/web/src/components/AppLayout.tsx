@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type TouchEvent } from 'react';
 import { NavLink, Outlet, useLocation, useMatch, useNavigate, useOutletContext } from 'react-router-dom';
-import { Bell, ChevronsUpDown, LogOut, Menu, Plug, Sparkles, SquarePen, Trash2, WifiOff } from 'lucide-react';
+import { Bell, ChevronsUpDown, LogOut, Menu, Plug, Sparkles, SquarePen, Trash2, WifiOff, Wrench } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../auth';
 import { fetchIntegrationStatus, type AppOutletContext, type IntegrationStatus } from '../lib/integrations';
@@ -209,6 +209,12 @@ function SidebarContent({
               <Plug />
               {t('nav.integrations')}
             </NavLink>
+            {import.meta.env.MODE !== 'native' ? (
+              <NavLink to="/studio" onClick={onNavigate} className={navItemClass}>
+                <Wrench />
+                Studio
+              </NavLink>
+            ) : null}
           </div>
 
           <div className="mt-6">

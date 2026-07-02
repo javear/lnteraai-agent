@@ -31,6 +31,8 @@ const Integrations = lazy(() => import('./pages/Integrations'));
 // Marketing landing — web only. Gated on the BUILD mode (not the runtime IS_NATIVE) so Rollup
 // dead-code-eliminates the dynamic import: the chunk never ships in the native (Capacitor) bundle.
 const Landing = import.meta.env.MODE === 'native' ? null : lazy(() => import('./pages/Landing'));
+// Studio (technical-agent builder) — web/desktop only; the native bundle omits the chunk.
+const Studio = import.meta.env.MODE === 'native' ? null : lazy(() => import('./pages/studio/Studio'));
 
 // Chat is the default authed landing; warm its chunk while the network is idle during the auth
 // round-trip so the most common entry doesn't wait on a serial fetch behind the boot splash.
@@ -183,6 +185,16 @@ function Boot() {
               </Suspense>
             }
           />
+          {Studio ? (
+            <Route
+              path="/studio"
+              element={
+                <Suspense fallback={<PageRouteSkeleton />}>
+                  <Studio />
+                </Suspense>
+              }
+            />
+          ) : null}
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

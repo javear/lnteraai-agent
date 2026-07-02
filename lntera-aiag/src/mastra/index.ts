@@ -7,6 +7,7 @@ import { weatherAgent } from './agents/weather-agent';
 import { generalAgent } from './agents/general-agent';
 import { titleAgent } from './agents/title-agent';
 import { notificationAgent } from './agents/notification-agent';
+import { technicalAgent } from './agents/technical-agent';
 import { toolCallAppropriatenessScorer, completenessScorer, translationScorer } from './scorers/weather-scorer';
 import { oauthRoutes } from './server/oauth-routes';
 import { groqOnboardRoutes } from './server/groq-onboard-routes';
@@ -104,7 +105,7 @@ function createMastraStorage(): PostgresStore {
 
 export const mastra = new Mastra({
   workflows: { weatherWorkflow },
-  agents: { weatherAgent, generalAgent, titleAgent, notificationAgent },
+  agents: { weatherAgent, generalAgent, titleAgent, notificationAgent, technicalAgent },
   tools: {
     [searchProductsTool.id]: searchProductsTool,
     [syncMarketplaceProductsTool.id]: syncMarketplaceProductsTool,

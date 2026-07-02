@@ -36,6 +36,7 @@
     "@mastra/evals": "^1.2.2",
     "@mastra/libsql": "^1.10.0",
     "@mastra/loggers": "^1.1.1",
+    "@mastra/mcp": "^1.12.1",
     "@mastra/memory": "^1.17.5",
     "@mastra/observability": "^1.11.1",
     "@mastra/pg": "^1.12.1",

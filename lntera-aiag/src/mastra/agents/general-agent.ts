@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import type { ToolsInput } from '@mastra/core/agent';
 import {
   TokenLimiterProcessor,
   ToolSearchProcessor,
@@ -64,6 +65,7 @@ import {
   readGroqChainOrderFromRequestContext,
 } from '../models/llm-model-chain';
 import type { LlmProviderCode } from '../models/llm-providers';
+import { getTenantMcpTools } from '../integrations/mcp/tenant-mcp';
 
 /** Placeholder when no LLM provider is connected — gate processor aborts before any LLM call. */
 const LLM_INACTIVE_MODEL_PLACEHOLDER = [{ model: 'openai/gpt-5-mini' as const, maxRetries: 0 }];
@@ -134,11 +136,14 @@ async function resolvePreloadedTools(args: { requestContext?: { get?: (k: string
     tenantId: typeof tenantId === 'string' ? tenantId : null,
     authUserId: typeof authUserId === 'string' ? authUserId : null,
   });
-  const out: Record<string, (typeof PRELOADED_TOOLS)[number]> = {};
+  const out: Record<string, unknown> = {};
   for (const t of PRELOADED_TOOLS) {
     if (allowed === '*' || allowed.has(t.id)) out[t.id] = t;
   }
-  return out;
+  // Merge the tenant's connected Studio MCP tools (their own extension) — best-effort, never blocks.
+  const mcpTools = await getTenantMcpTools(typeof tenantId === 'string' ? tenantId : null);
+  Object.assign(out, mcpTools);
+  return out as ToolsInput;
 }
 
 /**
