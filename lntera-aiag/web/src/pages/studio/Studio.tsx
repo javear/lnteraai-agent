@@ -27,6 +27,22 @@ export default function Studio() {
   const [narrow, setNarrow] = useState(() => window.innerWidth < 1024);
   const { api } = useAuth();
 
+  // BrowserPod needs cross-origin isolation (SharedArrayBuffer). The server sends COOP/COEP only on the
+  // /studio document, so if we arrived via client-side nav from a non-isolated page, hard-reload once to
+  // fetch the isolated document. 'failed' means the headers aren't being served (deployment gap).
+  const [coi] = useState<'ok' | 'reloading' | 'failed'>(() => {
+    if (typeof window === 'undefined' || window.crossOriginIsolated) return 'ok';
+    return sessionStorage.getItem('studio-coi-reload') ? 'failed' : 'reloading';
+  });
+  useEffect(() => {
+    if (coi === 'ok') {
+      sessionStorage.removeItem('studio-coi-reload');
+    } else if (coi === 'reloading') {
+      sessionStorage.setItem('studio-coi-reload', '1');
+      window.location.reload();
+    }
+  }, [coi]);
+
   useEffect(() => {
     const onResize = () => setNarrow(window.innerWidth < 1024);
     window.addEventListener('resize', onResize);
@@ -51,6 +67,22 @@ export default function Studio() {
         <p className="mt-2 text-sm text-muted-foreground">
           The builder runs your project inside this browser and needs a larger screen. Open Studio on a
           desktop browser to continue.
+        </p>
+      </div>
+    );
+  }
+
+  if (coi === 'reloading') {
+    return <div className="px-6 py-16 text-center text-sm text-muted-foreground">Preparing Studio…</div>;
+  }
+  if (coi === 'failed') {
+    return (
+      <div className="mx-auto max-w-md px-6 py-16 text-center">
+        <h1 className="text-xl font-semibold">Studio can't start here</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          The in-browser sandbox needs cross-origin isolation, which requires the <code>/studio</code> page
+          to be served with COOP/COEP headers. If you're seeing this in production, those headers aren't
+          being sent yet.
         </p>
       </div>
     );
