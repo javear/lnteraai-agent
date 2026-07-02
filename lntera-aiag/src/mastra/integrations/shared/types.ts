@@ -220,3 +220,37 @@ export const groqOnboardSubmitSchema = z
     token: z.string().min(1).optional(),
   })
   .strict();
+
+// ── Technical agent ("Studio") projects ──────────────────────────────────────────────────
+
+/** A Vault reference stored in a `*_secret_ref` column; the plaintext lives in Supabase Vault. */
+export const vaultSecretRefValueSchema = z
+  .object({ type: z.enum(['id', 'name']), value: z.string().min(1) })
+  .strict();
+export type VaultSecretRefValue = z.infer<typeof vaultSecretRefValueSchema>;
+
+export const PROJECT_KINDS = ['mcp', 'webapp'] as const;
+export type ProjectKind = (typeof PROJECT_KINDS)[number];
+export function isProjectKind(value: string): value is ProjectKind {
+  return (PROJECT_KINDS as readonly string[]).includes(value);
+}
+
+export const PROJECT_STATUSES = ['draft', 'deployed', 'connected', 'error'] as const;
+export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
+
+/** A row of `tenant_projects` — correlation + deploy state for one tenant coding project. */
+export interface TenantProject {
+  id: string;
+  tenant_id: Uuid;
+  name: string;
+  kind: ProjectKind;
+  gitea_repo: string | null;
+  deploy_url: string | null;
+  mcp_url: string | null;
+  gitea_secret_ref: VaultSecretRefValue | null;
+  mcp_secret_ref: VaultSecretRefValue | null;
+  status: ProjectStatus;
+  config: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
