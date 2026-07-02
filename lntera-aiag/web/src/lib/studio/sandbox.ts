@@ -216,11 +216,22 @@ export class BrowserPodProvider implements SandboxProvider {
           resolve(r);
         },
       };
-      void pod.run('bash', ['-lc', script], { terminal: this.worker!, echo: false }).catch((err) => {
+      const failStart = (err: unknown) => {
         clearTimeout(timer);
         this.active = null;
         reject(err instanceof Error ? err : new Error(String(err)));
-      });
+      };
+      // BrowserPod's run() returns a Process synchronously (despite the Promise<Process> typing), so
+      // we can't .catch() it — completion is detected via the sentinel in onOutput. Guard for both a
+      // sync return and a possible thenable, and catch a synchronous start failure.
+      try {
+        const started = pod.run('bash', ['-lc', script], { terminal: this.worker!, echo: false }) as unknown;
+        if (started && typeof (started as { catch?: unknown }).catch === 'function') {
+          (started as Promise<unknown>).catch(failStart);
+        }
+      } catch (err) {
+        failStart(err);
+      }
     });
   }
 
