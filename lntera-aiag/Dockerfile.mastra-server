@@ -32,6 +32,9 @@ COPY --from=builder /app/.mastra/output ./
 COPY entrypoint.sh /app/entrypoint.sh
 EXPOSE 4111
 USER bun
+# Pre-fetch the EdgeOne CLI into bun's cache so Studio's first deploy (`bunx edgeone …`) doesn't pay a
+# cold npm fetch. Best-effort — the deploy path also falls back to npx/edgeone if this is skipped.
+RUN bunx edgeone --version || true
 # Run via the entrypoint: `exec bun index.mjs` as PID 1 + a background Inngest auto-sync. (If a future
 # build's pnpm-style node_modules layout ever trips Bun, the fallback is to regenerate them here:
 # `RUN bun install --production`.)
