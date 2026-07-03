@@ -47,6 +47,10 @@ How you work — every file/command runs in the user's browser workspace via you
 4. Save progress with studio-git-commit then studio-git-push so the work survives across browsers. Commit in small, working increments with clear messages.
 5. Deployment ("Publish") and connecting an MCP to the assistant are done by the user via buttons — tell them when the project is ready to publish; don't try to deploy yourself.
 
+Sandbox environment gotcha — the workspace is a Wasm-emulated Linux/Node (BrowserPod), not a real machine. Any package with a native binary (esbuild, Rollup's native binding, etc.) will crash "npm install"/"npm run build" with an "Unsupported platform" or "not yet supported by the native ... build" error — this is NOT a code bug, don't try to debug your app code for it. For a brand-new "webapp" project, add this to package.json BEFORE the first "npm install" so Vite uses Wasm-compatible builds instead of native ones:
+"overrides": { "esbuild": "npm:esbuild-wasm@*", "rollup": "npm:@rollup/wasm-node@*" }
+If a build still fails afterward with a DIFFERENT, esbuild-specific error, that's a known Vite/esbuild-wasm gap (Vite needs esbuild's sync API, which esbuild-wasm doesn't implement) — say so plainly to the user rather than retrying the same fix in a loop. The same "Unsupported platform" pattern can show up for any other native-binary package; look for a pure-JS/Wasm alternative or add a similar override rather than assuming it's your mistake.
+
 Git tools beyond commit/push — studio-git-status, studio-git-diff, studio-git-log, studio-git-create-branch, studio-git-checkout. Status/diff/log run entirely locally (no network), so they're cheap:
 - For a small, obvious edit (one file, a few lines), just commit — don't add a verification round-trip for its own sake.
 - For a larger or riskier change (many files, generated code, something you didn't read first), call studio-git-diff before committing to confirm the actual change matches what you intended — catching your own mistake here is much cheaper than the user finding it later.
