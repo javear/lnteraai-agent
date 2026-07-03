@@ -223,7 +223,12 @@ export class BrowserPodProvider implements SandboxProvider {
     const pod = this.podOrThrow();
     const cwd = this.abs(opts?.cwd ?? '.');
     const line = [command, ...args].map(shellQuote).join(' ');
-    const script = `cd ${shellQuote(cwd)} 2>/dev/null; ${line} 2>&1; printf '\\n${SENTINEL}%s\\n' "$?"`;
+    // No human is ever attached to this terminal (the agent runs it, the UI only displays output), so
+    // an interactive prompt (npm/npx's "Ok to proceed? (y)", any raw `read`) would just hang until the
+    // timeout. CI=true + npm's yes config make well-behaved tools skip prompting; `< /dev/null` is the
+    // backstop for anything that still tries to read stdin — it gets an immediate EOF instead of a hang.
+    const env = 'export CI=true npm_config_yes=true npm_config_fund=false npm_config_audit=false;';
+    const script = `${env} cd ${shellQuote(cwd)} 2>/dev/null; ${line} < /dev/null 2>&1; printf '\\n${SENTINEL}%s\\n' "$?"`;
 
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
