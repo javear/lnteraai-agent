@@ -144,14 +144,15 @@ export class BrowserPodProvider implements SandboxProvider {
     const abs = this.abs(path);
     const dir = abs.slice(0, abs.lastIndexOf('/')) || '/';
     await pod.createDirectory(dir, { recursive: true });
-    const file = (await pod.createFile(abs, 'w')) as TextFile;
+    // BrowserPod file modes are "utf-8" (text → TextFile) / "binary" (→ BinaryFile), NOT posix r/w.
+    const file = (await pod.createFile(abs, 'utf-8')) as TextFile;
     await file.write(content);
     await file.close();
   }
 
   async readFile(path: string): Promise<string> {
     const pod = this.podOrThrow();
-    const file = (await pod.openFile(this.abs(path), 'r')) as TextFile;
+    const file = (await pod.openFile(this.abs(path), 'utf-8')) as TextFile;
     try {
       const size = await file.getSize();
       return await file.read(size);
@@ -265,7 +266,7 @@ export class BrowserPodProvider implements SandboxProvider {
       if (e.type !== 'file') continue;
       // e.path is relative to WORKDIR; strip the built-dir prefix so the zip root is the dir itself.
       const rel = prefix && e.path.startsWith(`${prefix}/`) ? e.path.slice(prefix.length + 1) : e.path;
-      const bin = await pod.openFile(this.abs(e.path), 'rb');
+      const bin = await pod.openFile(this.abs(e.path), 'binary');
       try {
         const size = await bin.getSize();
         const buf = await (bin as unknown as { read: (n: number) => Promise<ArrayBuffer> }).read(size);
