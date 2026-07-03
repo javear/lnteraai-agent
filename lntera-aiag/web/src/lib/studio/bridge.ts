@@ -67,9 +67,12 @@ export function runStudioBridge(args: {
       .on('broadcast', { event: STUDIO_COMMAND_EVENT }, (msg: { payload?: unknown }) => {
         const env = msg.payload as StudioCommandEnvelope | undefined;
         if (!env || env.sessionId !== sessionId) return; // not for this tab
+        console.info(`[studio] bridge received cmd ${env.op.op} (${env.cmdId.slice(0, 8)})`);
         void handleCommand(env);
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.info(`[studio] bridge channel ${topic}: ${status}`);
+      });
   })();
 
   async function handleCommand(env: StudioCommandEnvelope): Promise<void> {
@@ -86,7 +89,8 @@ export function runStudioBridge(args: {
       };
     }
     if (cancelled || !channel) return;
-    await channel.send({ type: 'broadcast', event: STUDIO_RESULT_EVENT, payload: reply });
+    const sent = await channel.send({ type: 'broadcast', event: STUDIO_RESULT_EVENT, payload: reply });
+    console.info(`[studio] bridge replied ${env.op.op} (${env.cmdId.slice(0, 8)}) ok=${reply.ok} send=${String(sent)}`);
   }
 
   return () => {

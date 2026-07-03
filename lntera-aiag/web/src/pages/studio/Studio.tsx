@@ -12,6 +12,8 @@ import {
   type StudioProject,
   type StudioProjectKind,
 } from '../../lib/studio/api';
+import { fetchPinnableModels, type PinnableModel } from '../../lib/integrations';
+import { ModelPicker } from '../../components/chat/ModelPicker';
 import { newStudioSessionId } from '../../lib/studio/session';
 import { runStudioBridge } from '../../lib/studio/bridge';
 import { BrowserPodProvider, type SandboxProvider } from '../../lib/studio/sandbox';
@@ -225,7 +227,27 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
   const [publishing, setPublishing] = useState(false);
   const [proj, setProj] = useState<StudioProject>(project);
   const [gitWarning, setGitWarning] = useState<string | null>(null);
+  const [models, setModels] = useState<PinnableModel[]>([]);
+  const [pinnedModel, setPinnedModel] = useState(''); // '' = Auto (capable-model chain)
   const stopRef = useRef(false);
+
+  // Models the user can pin for the technical agent (their advanced BYOK Claude/GPT are ideal for
+  // coding). Drop a stale pin if its provider is no longer connected.
+  useEffect(() => {
+    let cancelled = false;
+    fetchPinnableModels(api)
+      .then((list) => {
+        if (cancelled) return;
+        setModels(list);
+        setPinnedModel((cur) => (cur && list.some((m) => m.modelCode === cur) ? cur : ''));
+      })
+      .catch(() => {
+        if (!cancelled) setModels([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
 
   // Boot the sandbox, wire the bridge, and bring the repo into the pod (clone if empty).
   useEffect(() => {
@@ -287,7 +309,7 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
     await streamStudioChat(
       client,
       text,
-      { threadId: project.id, resource, sessionId, kind: project.kind },
+      { threadId: project.id, resource, sessionId, kind: project.kind, pinnedModel: pinnedModel || undefined },
       {
         onText: (d) => {
           acc += d;
@@ -406,6 +428,20 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
             )}
           </div>
           <div className="border-t p-3">
+            {models.length > 0 ? (
+              <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+                <span>Model</span>
+                <ModelPicker
+                  models={models}
+                  pinnedModel={pinnedModel}
+                  onPinModel={setPinnedModel}
+                  disabled={streaming}
+                  autoLabel="Auto (recommended)"
+                  headingLabel="Model"
+                />
+                <span className="text-[11px]">Pin a stronger model (e.g. Claude/GPT) for better coding.</span>
+              </div>
+            ) : null}
             <div className="flex items-end gap-2">
               <textarea
                 rows={1}
