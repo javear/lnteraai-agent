@@ -22,8 +22,11 @@ export class StudioBridgeTimeoutError extends StudioBridgeError {
 }
 
 /** Max concurrent open Studio command streams per tenant — a cheap abuse/resource-exhaustion guard
- *  (this process holds one open HTTP response per stream; see RAILWAY.md — single instance). */
-const MAX_STREAMS_PER_TENANT = 5;
+ *  (this process holds one open HTTP response per stream; see RAILWAY.md — single instance). A dead
+ *  stream now self-evicts within one heartbeat interval (see the /studio/commands/stream route), so
+ *  this only needs to cover genuinely-concurrent legitimate tabs, not "however many reloads happened
+ *  before cleanup caught up." */
+const MAX_STREAMS_PER_TENANT = 8;
 
 interface StudioConnection {
   tenantId: string;
