@@ -25,6 +25,22 @@ const requestContextSchema = z.object({
   [STUDIO_SESSION_ID_KEY]: z.string().min(1).describe('Active Studio browser session id.'),
 });
 
+/**
+ * Cap how much of a command's output the AGENT sees (the browser UI still shows the full thing —
+ * see StudioActivity.tsx, which reads the sandbox's own live output stream, not this). A single
+ * verbose `npm install`/build dump can otherwise burn a big chunk of the technical agent's turn
+ * budget by itself, in the tool result of just ONE call. Keeps head + tail — installs are noisy up
+ * front, but a build failure's actual error is almost always at the end.
+ */
+const MAX_EXEC_OUTPUT_CHARS = 6000;
+function truncateForAgent(text: string): string {
+  if (text.length <= MAX_EXEC_OUTPUT_CHARS) return text;
+  const headLen = 1500;
+  const tailLen = MAX_EXEC_OUTPUT_CHARS - headLen;
+  const omitted = text.length - headLen - tailLen;
+  return `${text.slice(0, headLen)}\n\n[... ${omitted} characters omitted ...]\n\n${text.slice(-tailLen)}`;
+}
+
 export const studioWriteFileTool = createTool({
   id: 'studio-write-file',
   strict: false,
@@ -127,12 +143,13 @@ export const studioRunCommandTool = createTool({
   execute: async (input, context) => {
     const tenantId = requireTenantContext(context);
     const sessionId = requireStudioSession(context);
-    return getStudioBridge().call(tenantId, sessionId, {
+    const result = await getStudioBridge().call(tenantId, sessionId, {
       op: 'execCommand',
       command: input.command,
       args: input.args,
       cwd: input.cwd,
     });
+    return { ...result, stdout: truncateForAgent(result.stdout), stderr: truncateForAgent(result.stderr) };
   },
 });
 

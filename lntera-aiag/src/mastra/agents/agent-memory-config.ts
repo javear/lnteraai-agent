@@ -54,6 +54,33 @@ export function getAgentInputTokenLimit(): number {
   return Number.isFinite(n) && n > 0 ? n : 7000;
 }
 
+/**
+ * The technical agent (Studio) gets its OWN, much larger budget than the chat defaults above.
+ * A single coding turn carries far more than a chat reply: full file contents as tool args, plus
+ * verbose npm/build output as tool results. At the generalAgent's 7k/8-message defaults, a normal
+ * multi-step build (write several files, npm install, build, fix, commit) blows the input budget
+ * mid-turn; `trimMode: 'contiguous'` then drops the EARLIER steps of that same turn, so the model's
+ * next step sees a decapitated transcript and loses track that it's mid-task — it reads as the agent
+ * "randomly" stopping partway through. The model chain also already forces `largeContext: true` for
+ * this agent (see technical-agent.ts), so it's already paying for a big-context model; capping input
+ * at the chat default wastes that headroom instead of using it.
+ */
+export function getTechnicalAgentInputTokenLimit(): number {
+  const raw = process.env.TECHNICAL_AGENT_INPUT_TOKEN_LIMIT?.trim();
+  if (!raw) return 32_000;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : 32_000;
+}
+
+/** More retained thread history so an iterative debugging session ("do it" / "you stopped again" /
+ *  "check the terminal") doesn't lose the original task or earlier fixes after a handful of turns. */
+export function getTechnicalAgentLastMessages(): number {
+  const raw = process.env.TECHNICAL_AGENT_LAST_MESSAGES?.trim();
+  if (!raw) return 24;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : 24;
+}
+
 export function getDiscordAmbientRecallLimit(): number {
   const raw = process.env.DISCORD_AMBIENT_RECALL_LIMIT?.trim();
   if (!raw) return 2;
