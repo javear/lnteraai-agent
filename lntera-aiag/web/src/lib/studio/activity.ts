@@ -102,16 +102,22 @@ export function activityFromToolCall(info: ToolCallInfo): StudioActivity | null 
 
 /** Apply a tool result to its matching timeline item (finalize a running command / git action). */
 export function applyToolResult(activity: StudioActivity, info: ToolResultInfo): StudioActivity {
-  const result = (info.result ?? {}) as Record<string, unknown>;
+  // A failed call (the `tool-error` chunk) hands back a plain error STRING, not the tool's normal
+  // `{exitCode, stdout}`/`{commit}` object — surface that string as the output/reason rather than
+  // silently dropping it.
+  const errorMessage = typeof info.result === 'string' ? info.result : undefined;
+  const result = (typeof info.result === 'object' && info.result ? info.result : {}) as Record<string, unknown>;
   if (activity.kind === 'command') {
     const exitCode = typeof result.exitCode === 'number' ? result.exitCode : info.isError ? 1 : 0;
-    // Prefer the result's stdout (authoritative + sentinel-stripped); fall back to whatever we streamed
-    // live if the result carried none.
-    const output = str(result.stdout) ?? activity.output;
+    // Prefer the result's stdout (authoritative + sentinel-stripped); fall back to the live-streamed
+    // output, then to the error message itself if there's nothing else to show.
+    const output = str(result.stdout) ?? (activity.output || errorMessage) ?? '';
     return { ...activity, running: false, exitCode, output };
   }
   if (activity.kind === 'git') {
-    if (info.isError) return { ...activity, running: false, label: activity.label.replace(/…$/, ' failed') };
+    if (info.isError) {
+      return { ...activity, running: false, label: activity.label.replace(/…$/, ' failed'), detail: errorMessage };
+    }
     const commit = str(result.commit);
     if (activity.label.startsWith('Committing')) {
       return { ...activity, running: false, label: 'Committed', detail: commit ? commit.slice(0, 7) : undefined };

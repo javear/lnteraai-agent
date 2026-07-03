@@ -1,6 +1,6 @@
 import type { MastraClient } from '@mastra/client-js';
 import { browserTimezone } from '../insights';
-import { friendlyStreamError, parseModelLabel, readToolArgs, type StreamHandlers } from '../chat';
+import { friendlyStreamError, parseModelLabel, readToolArgs, readToolErrorMessage, type StreamHandlers } from '../chat';
 import type { StudioProjectKind } from './api';
 
 /** Matches the server agent id (src/mastra/agents/technical-agent.ts). */
@@ -71,6 +71,14 @@ export async function streamStudioChat(
               toolName: typeof payload.toolName === 'string' ? payload.toolName : undefined,
               result: payload.result ?? payload.output,
               isError: payload.isError === true,
+            });
+            break;
+          case 'tool-error':
+            handlers.onToolResult?.({
+              toolCallId: typeof payload.toolCallId === 'string' ? payload.toolCallId : undefined,
+              toolName: typeof payload.toolName === 'string' ? payload.toolName : undefined,
+              result: readToolErrorMessage(payload),
+              isError: true,
             });
             break;
           case 'tripwire':
