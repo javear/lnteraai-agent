@@ -13,6 +13,8 @@ import { createIntegrationVaultSecret } from '../../../integrations/shared/vault
 import { getGiteaConfig, signGitProxyToken, verifyGitProxyToken } from '../../../integrations/studio/config';
 import { createGiteaRepo } from '../../../integrations/studio/gitea';
 import { deployToEdgeOne } from '../../../integrations/studio/edgeone';
+import { getStudioBridge } from '../../../integrations/studio/browser-bridge';
+import type { StudioResultEnvelope } from '../../../integrations/studio/protocol';
 import { OPEN_API_PREFIX } from '../constants';
 import { openApiJsonError, resolveTenantFromBearer, type OpenApiHandlerContext } from '../middleware/bearer-tenant';
 
@@ -34,6 +36,11 @@ type GitProxyContext = OpenApiHandlerContext & {
     method: string;
     raw: Request;
   };
+};
+
+/** The command-stream route needs a query param reader and the raw Request (for its abort signal). */
+type StudioStreamContext = OpenApiHandlerContext & {
+  req: { query: (name: string) => string | undefined; raw: Request };
 };
 
 const authHeaderParam = {
@@ -272,6 +279,128 @@ export const studioConnectProjectRoute = registerApiRoute(`${OPEN_API_PREFIX}/st
 });
 
 /**
+ * GET /svc/v1/studio/commands/stream — a long-lived Server-Sent-Events connection, one per Studio
+ * browser session. The technical agent's Workspace tools (studio-write-file, studio-run-command, ...)
+ * write directly into this stream via {@link getStudioBridge} — an in-process call, not a third-party
+ * relay — which is what makes tool round-trips fast. Auth is the same bearer token as every other
+ * Studio route; `sessionId` just selects WHICH of this tenant's open tabs receives the commands.
+ */
+export const studioCommandStreamRoute = registerApiRoute(`${OPEN_API_PREFIX}/studio/commands/stream`, {
+  method: 'GET',
+  requiresAuth: false,
+  openapi: {
+    summary: 'Open the Studio command stream (SSE) for one browser session',
+    tags: ['Studio'],
+    parameters: [authHeaderParam],
+    responses: {
+      200: { description: 'text/event-stream' },
+      400: { description: 'Missing sessionId' },
+      401: { description: 'Unauthorized' },
+    },
+  },
+  handler: async (c: StudioStreamContext) => {
+    const auth = await resolveTenantFromBearer(c);
+    if (auth instanceof Response) return auth;
+    const sessionId = c.req.query('sessionId');
+    if (!sessionId) return openApiJsonError(c, 400, 'invalid_request', 'sessionId is required.');
+
+    const encoder = new TextEncoder();
+    let unregister: (() => void) | null = null;
+    let heartbeat: ReturnType<typeof setInterval> | null = null;
+    const cleanup = () => {
+      if (heartbeat) clearInterval(heartbeat);
+      unregister?.();
+      unregister = null;
+    };
+
+    let stream: ReadableStream<Uint8Array>;
+    try {
+      stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const write = (chunk: string) => {
+            try {
+              controller.enqueue(encoder.encode(chunk));
+            } catch {
+              // controller already closed — the abort listener below still runs cleanup.
+            }
+          };
+          unregister = getStudioBridge().registerStream(auth.tenantId, sessionId, write);
+          write(': connected\n\n');
+          // Keeps the connection alive through idle-timeout proxies; also doubles as a liveness signal.
+          heartbeat = setInterval(() => write(': ping\n\n'), 20_000);
+        },
+        cancel: cleanup,
+      });
+    } catch (err) {
+      // Thrown synchronously by registerStream (e.g. the per-tenant stream cap) before any bytes sent.
+      return openApiJsonError(c, 429, 'too_many_streams', err instanceof Error ? err.message : String(err));
+    }
+
+    // Belt-and-suspenders: some runtimes don't reliably call ReadableStream#cancel on client
+    // disconnect, but the request's AbortSignal always fires.
+    c.req.raw.signal.addEventListener('abort', cleanup, { once: true });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      },
+    });
+  },
+});
+
+const studioCommandResultBody = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true), sessionId: z.string().min(1), result: z.unknown() }),
+  z.object({ ok: z.literal(false), sessionId: z.string().min(1), error: z.string() }),
+]);
+
+/**
+ * POST /svc/v1/studio/commands/:cmdId/result — the browser's reply to one dispatched command.
+ * `cmdId` comes from the URL (not trusted client JSON); the bridge itself re-checks that the posting
+ * tenant and the pending call's session actually match before resolving anything.
+ */
+export const studioCommandResultRoute = registerApiRoute(`${OPEN_API_PREFIX}/studio/commands/:cmdId/result`, {
+  method: 'POST',
+  requiresAuth: false,
+  openapi: {
+    summary: "Post a Studio command's result back to the agent's pending call",
+    tags: ['Studio'],
+    parameters: [authHeaderParam],
+    responses: {
+      200: { description: '{ ok }' },
+      400: { description: 'Invalid body' },
+      401: { description: 'Unauthorized' },
+    },
+  },
+  handler: async (c: StudioContext) => {
+    const auth = await resolveTenantFromBearer(c);
+    if (auth instanceof Response) return auth;
+    const cmdId = c.req.param('cmdId') ?? '';
+
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return openApiJsonError(c, 400, 'invalid_request', 'Expected JSON body.');
+    }
+    const parsed = studioCommandResultBody.safeParse(raw);
+    if (!parsed.success) {
+      return openApiJsonError(c, 400, 'invalid_body', parsed.error.issues.map((i) => i.message).join('; '));
+    }
+
+    const envelope = (
+      parsed.data.ok
+        ? { cmdId, sessionId: parsed.data.sessionId, ok: true, result: parsed.data.result }
+        : { cmdId, sessionId: parsed.data.sessionId, ok: false, error: parsed.data.error }
+    ) as StudioResultEnvelope;
+    getStudioBridge().resolveResult(auth.tenantId, envelope);
+    return c.json({ ok: true });
+  },
+});
+
+/**
  * Git smart-HTTP proxy. The browser pod clones/pushes to `…/studio/git/:token/git/…`; we verify the
  * repo-scoped token and forward to Gitea Cloud with the server's credentials injected — so the
  * tenant's git works without ever seeing our Gitea token. Registered for GET (info/refs) and POST
@@ -336,6 +465,8 @@ export const studioRoutes = [
   studioInitProjectRoute,
   studioDeployProjectRoute,
   studioConnectProjectRoute,
+  studioCommandStreamRoute,
+  studioCommandResultRoute,
   studioGitProxyGetRoute,
   studioGitProxyPostRoute,
   studioDeleteProjectRoute,

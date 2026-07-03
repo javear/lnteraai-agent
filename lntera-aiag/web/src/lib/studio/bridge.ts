@@ -1,14 +1,7 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
 import type { SandboxProvider } from './sandbox';
-import {
-  STUDIO_COMMAND_EVENT,
-  STUDIO_RESULT_EVENT,
-  studioChannelTopic,
-  type StudioCommandEnvelope,
-  type StudioOp,
-  type StudioResult,
-  type StudioResultEnvelope,
-} from './protocol';
+import type { StudioCommandEnvelope, StudioOp, StudioResult } from './protocol';
+
+type Api = (path: string, init?: RequestInit) => Promise<Response>;
 
 /** Run one op against the sandbox and return its typed result payload. */
 async function dispatch(op: StudioOp, provider: SandboxProvider): Promise<StudioResult> {
@@ -36,65 +29,118 @@ async function dispatch(op: StudioOp, provider: SandboxProvider): Promise<Studio
     case 'gitPush':
       await provider.gitPush();
       return {};
+    case 'gitStatus':
+      return { files: await provider.gitStatus() };
+    case 'gitDiff':
+      return { diff: await provider.gitDiff(op.path) };
+    case 'gitLog':
+      return { commits: await provider.gitLog(op.depth) };
+    case 'gitListBranches':
+      return provider.gitListBranches();
+    case 'gitCreateBranch':
+      await provider.gitCreateBranch(op.name, { checkout: op.checkout });
+      return {};
+    case 'gitCheckout':
+      await provider.gitCheckout(op.ref);
+      return {};
     case 'buildZip':
       return provider.buildZip(op.dir);
   }
 }
 
+const RECONNECT_DELAY_MS = 1500;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
- * Bridge listener (browser side of arch A): subscribe to the tenant's private Realtime channel,
- * execute the technical agent's commands in the local sandbox, and broadcast the result back. Only
- * commands for THIS session id are handled, so multiple tabs of one tenant don't collide.
+ * Bridge listener (browser side): hold one authenticated command stream open for this session,
+ * execute the technical agent's commands in the local sandbox, and POST each result straight back to
+ * our own backend. Both legs are a single hop to our own server — no third party in the path.
+ *
+ * Deliberately NOT `EventSource`: it can't send an `Authorization` header, and putting the real
+ * access token in the URL instead would leak it into server/proxy access logs. `api()` (the same
+ * authenticated-fetch helper every other Studio call uses) is reused here instead, with the
+ * event-stream body parsed by hand.
  */
-export function runStudioBridge(args: {
-  supabase: SupabaseClient;
-  authToken: string;
-  tenantId: string;
-  sessionId: string;
-  provider: SandboxProvider;
-}): () => void {
-  const { supabase, authToken, tenantId, sessionId, provider } = args;
+export function runStudioBridge(args: { api: Api; sessionId: string; provider: SandboxProvider }): () => void {
+  const { api, sessionId, provider } = args;
   let cancelled = false;
-  let channel: ReturnType<SupabaseClient['channel']> | null = null;
+  let abort: AbortController | null = null;
 
-  void (async () => {
-    await supabase.realtime.setAuth(authToken);
-    if (cancelled) return;
-    const topic = studioChannelTopic(tenantId);
-    channel = supabase.channel(topic, { config: { private: true } });
-
-    channel
-      .on('broadcast', { event: STUDIO_COMMAND_EVENT }, (msg: { payload?: unknown }) => {
-        const env = msg.payload as StudioCommandEnvelope | undefined;
-        if (!env || env.sessionId !== sessionId) return; // not for this tab
-        console.info(`[studio] bridge received cmd ${env.op.op} (${env.cmdId.slice(0, 8)})`);
-        void handleCommand(env);
-      })
-      .subscribe((status) => {
-        console.info(`[studio] bridge channel ${topic}: ${status}`);
-      });
-  })();
-
-  async function handleCommand(env: StudioCommandEnvelope): Promise<void> {
-    let reply: StudioResultEnvelope;
-    try {
-      const result = await dispatch(env.op, provider);
-      reply = { cmdId: env.cmdId, sessionId, ok: true, result };
-    } catch (err) {
-      reply = {
-        cmdId: env.cmdId,
-        sessionId,
-        ok: false,
-        error: err instanceof Error ? err.message : String(err),
-      };
+  void (async function loop() {
+    while (!cancelled) {
+      abort = new AbortController();
+      try {
+        await pump(api, sessionId, provider, abort.signal);
+      } catch (err) {
+        if (!cancelled) console.info('[studio] command stream dropped, reconnecting', err);
+      }
+      if (cancelled) return;
+      await sleep(RECONNECT_DELAY_MS);
     }
-    if (cancelled || !channel) return;
-    const sent = await channel.send({ type: 'broadcast', event: STUDIO_RESULT_EVENT, payload: reply });
-    console.info(`[studio] bridge replied ${env.op.op} (${env.cmdId.slice(0, 8)}) ok=${reply.ok} send=${String(sent)}`);
-  }
+  })();
 
   return () => {
     cancelled = true;
-    if (channel) void supabase.removeChannel(channel);
+    abort?.abort();
   };
+}
+
+/**
+ * Open the stream and dispatch commands as they arrive. Resolves when the connection ends (server
+ * close, network drop, or `signal` aborting) so the caller's loop can reconnect with the same
+ * sessionId — an in-flight command that was written into the now-dead stream fails on the server
+ * side (see browser-bridge.ts's disconnect handling) rather than being silently lost forever.
+ */
+async function pump(api: Api, sessionId: string, provider: SandboxProvider, signal: AbortSignal): Promise<void> {
+  const res = await api(`/svc/v1/studio/commands/stream?sessionId=${encodeURIComponent(sessionId)}`, {
+    headers: { Accept: 'text/event-stream' },
+    signal,
+  });
+  if (!res.ok || !res.body) throw new Error(`Studio command stream failed (${res.status})`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) return;
+    buf += decoder.decode(value, { stream: true });
+    let sep: number;
+    while ((sep = buf.indexOf('\n\n')) !== -1) {
+      const frame = buf.slice(0, sep);
+      buf = buf.slice(sep + 2);
+      const dataLine = frame.split('\n').find((l) => l.startsWith('data: '));
+      if (!dataLine) continue; // comment/heartbeat frame (e.g. `: ping`) — nothing to do
+      let envelope: StudioCommandEnvelope;
+      try {
+        envelope = JSON.parse(dataLine.slice(6)) as StudioCommandEnvelope;
+      } catch {
+        continue; // malformed frame — ignore rather than kill the whole stream
+      }
+      if (envelope.sessionId !== sessionId) continue; // defensive; the server only ever targets us
+      void handleCommand(api, provider, envelope);
+    }
+  }
+}
+
+async function handleCommand(api: Api, provider: SandboxProvider, env: StudioCommandEnvelope): Promise<void> {
+  let body: { ok: true; sessionId: string; result: StudioResult } | { ok: false; sessionId: string; error: string };
+  try {
+    const result = await dispatch(env.op, provider);
+    body = { ok: true, sessionId: env.sessionId, result };
+  } catch (err) {
+    body = { ok: false, sessionId: env.sessionId, error: err instanceof Error ? err.message : String(err) };
+  }
+  try {
+    await api(`/svc/v1/studio/commands/${env.cmdId}/result`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    console.info(`[studio] failed to post result for ${env.op.op} (${env.cmdId.slice(0, 8)})`, err);
+  }
 }
