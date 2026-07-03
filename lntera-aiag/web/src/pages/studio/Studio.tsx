@@ -13,14 +13,24 @@ import {
   type StudioProjectKind,
 } from '../../lib/studio/api';
 import { fetchPinnableModels, type PinnableModel } from '../../lib/integrations';
-import { ModelPicker } from '../../components/chat/ModelPicker';
+import { Composer } from '../../components/chat/Composer';
+import { MessageBubble, type ChatMessage } from '../../components/chat/Message';
+import { parseSuggestions } from '../../lib/chat';
+import { stripReasoning } from '../../lib/reasoning';
 import { newStudioSessionId } from '../../lib/studio/session';
 import { runStudioBridge } from '../../lib/studio/bridge';
 import { BrowserPodProvider, type SandboxProvider } from '../../lib/studio/sandbox';
 import { streamStudioChat } from '../../lib/studio/chat';
 import { TerminalView } from './Terminal';
 
-type StudioMessage = { id: string; role: 'user' | 'assistant'; content: string; pending?: boolean };
+/** Map a Studio tool id to a plain-language noun that reads well after "Using …" in the thinking line. */
+function friendlyTool(toolId: string): string {
+  const id = toolId.toLowerCase();
+  if (id.includes('git')) return 'Git';
+  if (id.includes('run') || id.includes('command') || id.includes('exec')) return 'the terminal';
+  if (id.includes('read') || id.includes('list') || id.includes('tree')) return 'the project files';
+  return 'the editor';
+}
 
 export default function Studio() {
   const { session } = useAuth();
@@ -220,8 +230,8 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
   const [status, setStatus] = useState<'booting' | 'ready' | 'error'>('booting');
   const [bootError, setBootError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [tab, setTab] = useState<'preview' | 'terminal'>('terminal');
-  const [messages, setMessages] = useState<StudioMessage[]>([]);
+  const [tab, setTab] = useState<'preview' | 'terminal'>('preview');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -230,6 +240,13 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
   const [models, setModels] = useState<PinnableModel[]>([]);
   const [pinnedModel, setPinnedModel] = useState(''); // '' = Auto (capable-model chain)
   const stopRef = useRef(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Keep the latest message in view as the conversation grows / streams.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages]);
 
   // Models the user can pin for the technical agent (their advanced BYOK Claude/GPT are ideal for
   // coding). Drop a stale pin if its provider is no longer connected.
@@ -294,39 +311,75 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
     [],
   );
 
-  async function send() {
-    const text = input.trim();
-    if (!text || streaming || status !== 'ready') return;
+  async function send(text: string) {
+    const content = text.trim();
+    if (!content || streaming || status !== 'ready') return;
     setInput('');
+    const startedAt = new Date().toISOString();
     const userId = newMsgId();
     const aiId = newMsgId();
     setMessages((m) => [
       ...m,
-      { id: userId, role: 'user', content: text },
-      { id: aiId, role: 'assistant', content: '', pending: true },
+      { id: userId, role: 'user', content, createdAt: startedAt },
+      { id: aiId, role: 'assistant', content: '', pending: true, tool: null, createdAt: startedAt },
     ]);
     setStreaming(true);
     stopRef.current = false;
+
+    // Coalesce streaming re-renders (~90ms) so applying state + re-parsing markdown isn't O(n²) per
+    // token — same technique as the business chat, which keeps it smooth. Only the changing message
+    // re-renders because MessageBubble is memoized.
     let acc = '';
+    let reasoningAcc = '';
+    let lastRenderAt = 0;
+    let renderTimer: ReturnType<typeof setTimeout> | null = null;
+    const THROTTLE = 90;
+    const renderNow = () => {
+      lastRenderAt = Date.now();
+      setMessages((m) =>
+        m.map((x) =>
+          x.id === aiId
+            ? { ...x, content: acc, pending: false, tool: null, ...(acc ? {} : { reasoning: reasoningAcc }) }
+            : x,
+        ),
+      );
+    };
+    const scheduleRender = () => {
+      const since = Date.now() - lastRenderAt;
+      if (since >= THROTTLE) renderNow();
+      else if (!renderTimer) renderTimer = setTimeout(() => { renderTimer = null; renderNow(); }, THROTTLE - since);
+    };
+
     await streamStudioChat(
       client,
-      text,
+      content,
       { threadId: project.id, resource, sessionId, kind: project.kind, pinnedModel: pinnedModel || undefined },
       {
         onText: (d) => {
           acc += d;
-          setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, content: acc, pending: false } : x)));
+          scheduleRender();
         },
+        onReasoning: (d) => {
+          reasoningAcc += d;
+          if (!acc) scheduleRender();
+        },
+        // Before any text, show a plain-language "Working on …" line (via the memoized bubble's
+        // thinking indicator); once text streams, the tool line is replaced by the answer.
         onToolStart: (tool) =>
-          setMessages((m) =>
-            m.map((x) => (x.id === aiId && !acc ? { ...x, content: `⚙️ ${tool}…`, pending: true } : x)),
-          ),
+          setMessages((m) => m.map((x) => (x.id === aiId && !acc ? { ...x, tool: friendlyTool(tool) } : x))),
+        onModel: (label) => setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, model: label } : x))),
         onError: (msg) =>
-          setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, content: msg, pending: false } : x))),
+          setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, content: msg, pending: false, tool: null } : x))),
         onTripwire: (_c, reason) =>
-          setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, content: reason, pending: false } : x))),
+          setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, content: reason, pending: false, tool: null } : x))),
       },
       () => stopRef.current,
+    );
+
+    if (renderTimer) clearTimeout(renderTimer);
+    const body = parseSuggestions(stripReasoning(acc)).body;
+    setMessages((m) =>
+      m.map((x) => (x.id === aiId ? { ...x, content: body, pending: false, tool: null, reasoning: undefined } : x)),
     );
     setStreaming(false);
   }
@@ -407,82 +460,65 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
 
       <div className="flex min-h-0 flex-1">
         {/* Chat */}
-        <div className="flex w-[42%] min-w-[360px] flex-col border-r">
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+        <div className="flex w-[42%] min-w-[380px] flex-col border-r">
+          <div ref={scrollRef} className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-5">
             {messages.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Tell the agent what to build. It writes files, runs commands, and commits — you'll see the
-                terminal and preview update on the right.
-              </p>
+              <div className="mx-auto mt-6 max-w-sm text-center">
+                <div className="text-[15px] font-medium">What should we build?</div>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                  Describe it in plain words — “a landing page for my bakery”, “add a contact form”. I'll
+                  write the code; your app shows up in the preview on the right.
+                </p>
+              </div>
             ) : (
-              messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={
-                    m.role === 'user'
-                      ? 'ml-auto max-w-[85%] rounded-2xl bg-primary px-3 py-2 text-sm text-primary-foreground'
-                      : 'max-w-[95%] whitespace-pre-wrap rounded-2xl bg-muted px-3 py-2 text-sm'
-                  }
-                >
-                  {m.content || (m.pending ? '…' : '')}
-                </div>
-              ))
+              messages.map((m) => <MessageBubble key={m.id} message={m} />)
             )}
           </div>
-          <div className="border-t p-3">
-            {models.length > 0 ? (
-              <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
-                <span>Model</span>
-                <ModelPicker
-                  models={models}
-                  pinnedModel={pinnedModel}
-                  onPinModel={setPinnedModel}
-                  disabled={streaming}
-                  autoLabel="Auto (recommended)"
-                  headingLabel="Model"
-                />
-                <span className="text-[11px]">Pin a stronger model (e.g. Claude/GPT) for better coding.</span>
-              </div>
-            ) : null}
-            <div className="flex items-end gap-2">
-              <textarea
-                rows={1}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    void send();
-                  }
-                }}
-                placeholder={status === 'ready' ? 'Describe a change…' : 'Waiting for the sandbox…'}
-                disabled={status !== 'ready' || streaming}
-                className="max-h-40 flex-1 resize-none rounded-xl border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
-              />
-              <Button disabled={!input.trim() || streaming || status !== 'ready'} onClick={() => void send()}>
-                Send
-              </Button>
-            </div>
+          <div className="px-2 pb-2">
+            <Composer
+              value={input}
+              onChange={setInput}
+              onSend={() => void send(input)}
+              onStop={() => {
+                stopRef.current = true;
+                setStreaming(false);
+              }}
+              streaming={streaming}
+              models={models}
+              pinnedModel={pinnedModel}
+              onPinModel={setPinnedModel}
+            />
           </div>
         </div>
 
-        {/* Preview / Terminal */}
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex gap-1 border-b px-3 py-2">
-            <Button variant={tab === 'preview' ? 'primary' : 'ghost'} onClick={() => setTab('preview')}>
-              Preview
-            </Button>
-            <Button variant={tab === 'terminal' ? 'primary' : 'ghost'} onClick={() => setTab('terminal')}>
-              Terminal
-            </Button>
+        {/* Preview / Logs */}
+        <div className="flex min-w-0 flex-1 flex-col bg-muted/20">
+          <div className="flex items-center gap-1 border-b bg-background px-3 py-2">
+            {(['preview', 'terminal'] as const).map((tk) => (
+              <button
+                key={tk}
+                onClick={() => setTab(tk)}
+                className={`rounded-lg px-3 py-1 text-sm font-medium transition-colors ${
+                  tab === tk ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {tk === 'preview' ? 'Preview' : 'Logs'}
+              </button>
+            ))}
+            {status === 'booting' ? (
+              <span className="ml-2 text-xs text-muted-foreground">Starting your workspace…</span>
+            ) : null}
           </div>
           <div className="min-h-0 flex-1 p-3">
             {tab === 'preview' ? (
               previewUrl ? (
-                <iframe title="Preview" src={previewUrl} className="h-full w-full rounded-lg border bg-white" />
+                <iframe title="Preview" src={previewUrl} className="h-full w-full rounded-lg border bg-white shadow-sm" />
               ) : (
-                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                  No preview yet — ask the agent to start the dev server.
+                <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center">
+                  <span className="text-[15px] font-medium">Your app will appear here</span>
+                  <span className="max-w-xs text-sm text-muted-foreground">
+                    Once the agent builds and runs it, the live preview shows up automatically.
+                  </span>
                 </div>
               )
             ) : (
