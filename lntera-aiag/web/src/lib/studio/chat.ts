@@ -1,6 +1,6 @@
 import type { MastraClient } from '@mastra/client-js';
 import { browserTimezone } from '../insights';
-import { friendlyStreamError, parseModelLabel, type StreamHandlers } from '../chat';
+import { friendlyStreamError, parseModelLabel, readToolArgs, type StreamHandlers } from '../chat';
 import type { StudioProjectKind } from './api';
 
 /** Matches the server agent id (src/mastra/agents/technical-agent.ts). */
@@ -59,7 +59,19 @@ export async function streamStudioChat(
             if (typeof payload.text === 'string') handlers.onText(payload.text);
             break;
           case 'tool-call':
-            handlers.onToolStart?.(typeof payload.toolName === 'string' ? payload.toolName : 'tool');
+            handlers.onToolStart?.({
+              toolCallId: typeof payload.toolCallId === 'string' ? payload.toolCallId : undefined,
+              toolName: typeof payload.toolName === 'string' ? payload.toolName : 'tool',
+              args: readToolArgs(payload),
+            });
+            break;
+          case 'tool-result':
+            handlers.onToolResult?.({
+              toolCallId: typeof payload.toolCallId === 'string' ? payload.toolCallId : undefined,
+              toolName: typeof payload.toolName === 'string' ? payload.toolName : undefined,
+              result: payload.result ?? payload.output,
+              isError: payload.isError === true,
+            });
             break;
           case 'tripwire':
             handlers.onTripwire?.(payload.metadata?.code, payload.reason ?? 'Request blocked.');

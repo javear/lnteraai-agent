@@ -459,9 +459,9 @@ export default function Chat() {
           // Live "thinking" preview only while no content yet — gone once the answer streams in.
           if (!acc) scheduleRender();
         },
-        onToolStart: (tool) => {
-          if (tool.toLowerCase().includes('language')) langToolUsed = true;
-          setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, tool } : x)));
+        onToolStart: ({ toolName }) => {
+          if (toolName.toLowerCase().includes('language')) langToolUsed = true;
+          setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, tool: toolName } : x)));
         },
         onModel: (label) => {
           usedModel = label;
