@@ -10,12 +10,7 @@ import {
 } from '../../../integrations/shared/tenant-projects';
 import { PROJECT_KINDS } from '../../../integrations/shared/types';
 import { createIntegrationVaultSecret } from '../../../integrations/shared/vault';
-import {
-  getGiteaConfig,
-  getStudioPublicBaseUrl,
-  signGitProxyToken,
-  verifyGitProxyToken,
-} from '../../../integrations/studio/config';
+import { getGiteaConfig, signGitProxyToken, verifyGitProxyToken } from '../../../integrations/studio/config';
 import { createGiteaRepo } from '../../../integrations/studio/gitea';
 import { deployToEdgeOne } from '../../../integrations/studio/edgeone';
 import { OPEN_API_PREFIX } from '../constants';
@@ -170,7 +165,7 @@ export const studioInitProjectRoute = registerApiRoute(`${OPEN_API_PREFIX}/studi
     summary: 'Provision a project git repo (Gitea) and return a proxied clone URL',
     tags: ['Studio'],
     parameters: [authHeaderParam],
-    responses: { 200: { description: '{ project, cloneUrl }' }, 400: { description: 'Not configured' }, 401: { description: 'Unauthorized' }, 404: { description: 'Not found' } },
+    responses: { 200: { description: '{ project, gitPath }' }, 400: { description: 'Not configured' }, 401: { description: 'Unauthorized' }, 404: { description: 'Not found' } },
   },
   handler: async (c: StudioContext) => {
     const auth = await resolveTenantFromBearer(c);
@@ -185,8 +180,12 @@ export const studioInitProjectRoute = registerApiRoute(`${OPEN_API_PREFIX}/studi
       const repo = await createGiteaRepo(repoNameFor(project.id));
       const updated = await updateTenantProject(auth.tenantId, project.id, { gitea_repo: repo.cloneUrl });
       const token = signGitProxyToken({ projectId: project.id, repo: repo.fullName, exp: Date.now() + GIT_PROXY_TTL_MS });
-      const cloneUrl = `${getStudioPublicBaseUrl()}${OPEN_API_PREFIX}/studio/git/${token}/git`;
-      return c.json({ project: updated, cloneUrl });
+      // Return a PATH only. The browser prefixes its own origin (the whitelisted frontend, e.g.
+      // lntera.ai) so the pod's git reaches an allow-listed domain; the frontend (Vercel) rewrites
+      // /svc/v1/studio/git/* to this backend, which injects the Gitea token. BrowserPod blocks pod
+      // egress to non-whitelisted domains, so the pod can't hit the backend host directly.
+      const gitPath = `${OPEN_API_PREFIX}/studio/git/${token}/git`;
+      return c.json({ project: updated, gitPath });
     } catch (err) {
       return openApiJsonError(c, 400, 'init_failed', err instanceof Error ? err.message : 'Init failed.');
     }
@@ -312,6 +311,8 @@ async function gitProxyHandler(c: GitProxyContext): Promise<Response> {
     const v = upstream.headers.get(h);
     if (v) respHeaders.set(h, v);
   }
+  // Permissive CORS: the pod's git may run this as a cross-origin fetch (its origin ≠ lntera.ai).
+  respHeaders.set('Access-Control-Allow-Origin', '*');
   return new Response(upstream.body, { status: upstream.status, headers: respHeaders });
 }
 

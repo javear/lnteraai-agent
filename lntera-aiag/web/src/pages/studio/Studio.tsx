@@ -261,11 +261,13 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
 
     (async () => {
       await provider.boot();
-      // Git is best-effort: it needs the pod to reach our git-proxy host, which BrowserPod blocks
-      // unless that domain is allow-listed for the API key. If it fails, the sandbox is still fully
-      // usable (chat/write/build/preview) — only cross-browser persistence is unavailable.
+      // Git is best-effort. The pod can only egress to BrowserPod-allow-listed domains (the frontend,
+      // e.g. lntera.ai), not the backend host — so we build the clone URL from our own origin and let
+      // the frontend proxy /svc/v1/studio/git/* to the backend git-proxy. If it still fails, the
+      // sandbox stays fully usable (chat/write/build/preview); only cross-browser persistence is off.
       try {
-        const { cloneUrl } = await initProject(api, project.id);
+        const { gitPath } = await initProject(api, project.id);
+        const cloneUrl = `${window.location.origin}${gitPath}`;
         const hasGit = (await provider.exec('test', ['-d', '.git'])).exitCode === 0;
         if (!hasGit) await provider.gitClone(cloneUrl);
         await provider.exec('git', ['config', 'user.email', 'studio@lntera.ai']);
