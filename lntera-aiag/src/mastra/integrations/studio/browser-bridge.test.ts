@@ -88,10 +88,15 @@ describe('StudioBridge.call', () => {
     await Promise.all([p1, p2]);
   });
 
-  it('caps concurrent streams per tenant', () => {
+  it('caps concurrent streams per tenant, and frees a slot once a stream unregisters', () => {
     const bridge = new StudioBridge(1000);
-    const sessions = Array.from({ length: 5 }, (_, i) => new FakeSession(bridge, 'tenant1', `s${i}`));
+    const sessions = Array.from({ length: 8 }, (_, i) => new FakeSession(bridge, 'tenant1', `s${i}`));
     assert.throws(() => bridge.registerStream('tenant1', 's-overflow', () => undefined), StudioBridgeError);
-    for (const s of sessions) s.disconnect();
+    // Freeing one slot (e.g. the stream's heartbeat write failed, or it cleanly closed — either way
+    // the route calls unregister()) immediately allows a new registration again.
+    sessions[0].disconnect();
+    const revived = new FakeSession(bridge, 'tenant1', 's-revived');
+    revived.disconnect();
+    for (const s of sessions.slice(1)) s.disconnect();
   });
 });

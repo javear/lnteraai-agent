@@ -317,17 +317,27 @@ export const studioCommandStreamRoute = registerApiRoute(`${OPEN_API_PREFIX}/stu
     try {
       stream = new ReadableStream<Uint8Array>({
         start(controller) {
-          const write = (chunk: string) => {
+          // Returns whether the write actually succeeded — a failed enqueue means the connection is
+          // dead. Relying on `cancel()`/the abort signal ALONE to detect that isn't safe: in practice
+          // those don't fire reliably for every disconnect path, which is exactly how a Studio tenant
+          // can silently pile up dead entries until `registerStream`'s per-tenant cap permanently
+          // 429s every future attempt (nothing ever frees the stale slots). A failed write is the
+          // one signal that can't lie — self-heals within one heartbeat interval regardless of why
+          // the higher-level disconnect notifications didn't fire.
+          const write = (chunk: string): boolean => {
             try {
               controller.enqueue(encoder.encode(chunk));
+              return true;
             } catch {
-              // controller already closed — the abort listener below still runs cleanup.
+              return false;
             }
           };
           unregister = getStudioBridge().registerStream(auth.tenantId, sessionId, write);
           write(': connected\n\n');
-          // Keeps the connection alive through idle-timeout proxies; also doubles as a liveness signal.
-          heartbeat = setInterval(() => write(': ping\n\n'), 20_000);
+          // Keeps the connection alive through idle-timeout proxies; also doubles as a liveness check.
+          heartbeat = setInterval(() => {
+            if (!write(': ping\n\n')) cleanup();
+          }, 20_000);
         },
         cancel: cleanup,
       });

@@ -48,11 +48,17 @@ async function dispatch(op: StudioOp, provider: SandboxProvider): Promise<Studio
   }
 }
 
-const RECONNECT_DELAY_MS = 1500;
+const BASE_RECONNECT_DELAY_MS = 1500;
+const MAX_RECONNECT_DELAY_MS = 30_000;
+/** A 429 (too many open streams for this tenant) will keep failing for as long as the server's stale
+ *  slots take to self-heal (~one heartbeat interval) — retrying at the base delay just hammers it. */
+const RATE_LIMITED_RECONNECT_DELAY_MS = 25_000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+class RateLimitedError extends Error {}
 
 /**
  * Bridge listener (browser side): hold one authenticated command stream open for this session,
@@ -70,15 +76,22 @@ export function runStudioBridge(args: { api: Api; sessionId: string; provider: S
   let abort: AbortController | null = null;
 
   void (async function loop() {
+    // Exponential backoff on consecutive failures (capped) — a real network blip should reconnect
+    // fast, but a persistently broken connection (or a 429) must NOT retry in a tight loop against
+    // the server. A single clean connection (pump() only returns once the stream actually ends)
+    // resets this back to the base delay.
+    let delay = BASE_RECONNECT_DELAY_MS;
     while (!cancelled) {
       abort = new AbortController();
       try {
         await pump(api, sessionId, provider, abort.signal);
+        delay = BASE_RECONNECT_DELAY_MS;
       } catch (err) {
         if (!cancelled) console.info('[studio] command stream dropped, reconnecting', err);
+        delay = err instanceof RateLimitedError ? RATE_LIMITED_RECONNECT_DELAY_MS : Math.min(delay * 2, MAX_RECONNECT_DELAY_MS);
       }
       if (cancelled) return;
-      await sleep(RECONNECT_DELAY_MS);
+      await sleep(delay);
     }
   })();
 
@@ -99,6 +112,7 @@ async function pump(api: Api, sessionId: string, provider: SandboxProvider, sign
     headers: { Accept: 'text/event-stream' },
     signal,
   });
+  if (res.status === 429) throw new RateLimitedError(`Studio command stream rate-limited (429)`);
   if (!res.ok || !res.body) throw new Error(`Studio command stream failed (${res.status})`);
 
   const reader = res.body.getReader();
