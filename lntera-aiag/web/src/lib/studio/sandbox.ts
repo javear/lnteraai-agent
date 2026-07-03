@@ -1,5 +1,7 @@
 import { BrowserPod, type Terminal, type TextFile } from '@leaningtech/browserpod';
 import { zipSync } from 'fflate';
+import { GitRepo, type GitLogEntry, type GitStatusEntry } from './git';
+import { hydratePodFromGit, syncPodToGit } from './git-sync';
 import type { StudioTreeEntry } from './protocol';
 
 /**
@@ -21,9 +23,24 @@ export interface SandboxProvider {
     opts?: { cwd?: string; onOutput?: (chunk: string, stream: 'stdout' | 'stderr') => void },
   ): Promise<{ exitCode: number; stdout: string; stderr: string }>;
 
+  /** Network op (clone/fetch), idempotent — a no-op re-clone if this browser already has the repo. */
   gitClone(url: string, ref?: string): Promise<void>;
+  /** Local-only: syncs the pod's current files into the git tree, then stages + commits everything. */
   gitCommit(message: string): Promise<{ commit: string }>;
+  /** Network op: push the current branch. */
   gitPush(): Promise<void>;
+  /** Local-only: changed files since the last commit (added/modified/deleted). */
+  gitStatus(): Promise<GitStatusEntry[]>;
+  /** Local-only: unified diff of uncommitted changes, optionally scoped to one file. */
+  gitDiff(path?: string): Promise<string>;
+  /** Local-only: recent commit history. */
+  gitLog(depth?: number): Promise<GitLogEntry[]>;
+  /** Local-only: list branches + the current one. */
+  gitListBranches(): Promise<{ branches: string[]; current: string }>;
+  /** Local-only: create a branch (optionally switching to it). */
+  gitCreateBranch(name: string, opts?: { checkout?: boolean }): Promise<void>;
+  /** Local-only: switch branches/refs; throws if uncommitted changes would be clobbered. */
+  gitCheckout(ref: string): Promise<void>;
 
   /** Zip a built directory (base64) so the server deploy proxy can forward it to EdgeOne. */
   buildZip(dir: string): Promise<{ zipBase64: string }>;
@@ -63,6 +80,8 @@ export class BrowserPodProvider implements SandboxProvider {
   private preview: string | null = null;
   private readonly outputSubs = new Set<(chunk: string) => void>();
   private readonly previewSubs = new Set<(url: string) => void>();
+  // Git runs entirely outside the pod (plain page JS against IndexedDB) — see git.ts for why.
+  private readonly git: GitRepo;
 
   // Serialize exec (single worker terminal) + track the in-flight capture.
   private execChain: Promise<unknown> = Promise.resolve();
@@ -72,7 +91,9 @@ export class BrowserPodProvider implements SandboxProvider {
     resolve: (r: { exitCode: number; stdout: string; stderr: string }) => void;
   } | null = null;
 
-  constructor(private readonly opts: { apiKey?: string; nodeVersion?: string; storageKey?: string } = {}) {}
+  constructor(private readonly opts: { apiKey?: string; nodeVersion?: string; storageKey?: string } = {}) {
+    this.git = new GitRepo(opts.storageKey ?? 'default');
+  }
 
   async boot(): Promise<void> {
     if (this.pod) return;
@@ -237,24 +258,45 @@ export class BrowserPodProvider implements SandboxProvider {
   }
 
   async gitClone(url: string, ref?: string): Promise<void> {
-    const args = ['clone', url, WORKDIR];
-    if (ref) args.push('--branch', ref);
-    const r = await this.exec('git', args, { cwd: '/' });
-    if (r.exitCode !== 0) throw new Error(`git clone failed: ${r.stdout}`);
+    if (!(await this.git.isCloned())) await this.git.clone(url, ref);
+    await hydratePodFromGit(this, this.git);
   }
 
   async gitCommit(message: string): Promise<{ commit: string }> {
-    const add = await this.exec('git', ['add', '-A']);
-    if (add.exitCode !== 0) throw new Error(`git add failed: ${add.stdout}`);
-    const commit = await this.exec('git', ['commit', '-m', message, '--allow-empty']);
-    if (commit.exitCode !== 0) throw new Error(`git commit failed: ${commit.stdout}`);
-    const rev = await this.exec('git', ['rev-parse', 'HEAD']);
-    return { commit: rev.stdout.trim() };
+    await syncPodToGit(this, this.git);
+    return this.git.commit(message);
   }
 
   async gitPush(): Promise<void> {
-    const r = await this.exec('git', ['push', 'origin', 'HEAD']);
-    if (r.exitCode !== 0) throw new Error(`git push failed: ${r.stdout}`);
+    await this.git.push();
+  }
+
+  async gitStatus(): Promise<GitStatusEntry[]> {
+    await syncPodToGit(this, this.git);
+    return this.git.status();
+  }
+
+  async gitDiff(path?: string): Promise<string> {
+    await syncPodToGit(this, this.git);
+    return this.git.diff(path);
+  }
+
+  async gitLog(depth?: number): Promise<GitLogEntry[]> {
+    return this.git.log(depth);
+  }
+
+  async gitListBranches(): Promise<{ branches: string[]; current: string }> {
+    return this.git.listBranches();
+  }
+
+  async gitCreateBranch(name: string, opts?: { checkout?: boolean }): Promise<void> {
+    await this.git.createBranch(name, opts);
+  }
+
+  async gitCheckout(ref: string): Promise<void> {
+    await syncPodToGit(this, this.git); // surfaces uncommitted pod edits before isomorphic-git's conflict check
+    await this.git.checkout(ref);
+    await hydratePodFromGit(this, this.git);
   }
 
   async buildZip(dir: string): Promise<{ zipBase64: string }> {

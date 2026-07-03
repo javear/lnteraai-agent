@@ -3,28 +3,16 @@
  *
  * The server-side technical agent's Workspace tools do not touch a local filesystem — every file /
  * command / git / build op is sent to the user's browser (where the code actually lives in a
- * BrowserPod) as a {@link StudioCommandEnvelope} over a Supabase Realtime channel, and the browser
- * replies with a {@link StudioResultEnvelope}. This file is the single source of truth for that
- * contract.
+ * BrowserPod) as a {@link StudioCommandEnvelope}, and the browser replies with a
+ * {@link StudioResultEnvelope}. The transport is a direct, same-backend connection: the browser holds
+ * one authenticated Server-Sent-Events stream open per session (`GET .../studio/commands/stream`) and
+ * the server writes commands straight into it; the browser replies over a plain
+ * `POST .../studio/commands/:cmdId/result`. No third party sits in the path — see browser-bridge.ts.
+ * This file is the single source of truth for the envelope contract.
  *
  * NOTE: the web client keeps a byte-for-byte mirror of these types at `web/src/lib/studio/protocol.ts`
  * (the web build cannot import from `src/mastra`). Keep the two in sync.
  */
-
-/**
- * Realtime topic. We REUSE the tenant's existing private channel (`tenant:{id}`) rather than a
- * studio-specific sub-topic, because the Realtime RLS policy (migration 0009) authorizes exactly
- * `tenant:{id}` for that tenant's members — a `tenant:{id}:studio:{sid}` topic would be rejected.
- * Studio traffic is namespaced by event name; multiple tabs of one tenant are disambiguated by the
- * `sessionId` carried in every envelope.
- */
-export function studioChannelTopic(tenantId: string): string {
-  return `tenant:${tenantId}`;
-}
-
-/** Broadcast event names on the tenant channel (namespaced so they don't clash with notifications). */
-export const STUDIO_COMMAND_EVENT = 'studio_cmd';
-export const STUDIO_RESULT_EVENT = 'studio_result';
 
 /** requestContext key carrying the active Studio session (browser tab) id, set by the web client. */
 export const STUDIO_SESSION_ID_KEY = 'studioSessionId';
@@ -33,6 +21,20 @@ export const STUDIO_SESSION_ID_KEY = 'studioSessionId';
 export interface StudioTreeEntry {
   path: string;
   type: 'file' | 'dir';
+}
+
+/** One changed file from `gitStatus` (unmodified files are omitted, not just deprioritized). */
+export interface StudioGitStatusEntry {
+  path: string;
+  status: 'added' | 'modified' | 'deleted';
+}
+
+/** One commit from `gitLog`. */
+export interface StudioGitLogEntry {
+  oid: string;
+  message: string;
+  author: string;
+  timestamp: number;
 }
 
 /** All operations the server may ask the browser to perform, discriminated by `op`. */
@@ -46,6 +48,14 @@ export type StudioOp =
   | { op: 'gitClone'; url: string; ref?: string }
   | { op: 'gitCommit'; message: string }
   | { op: 'gitPush' }
+  /** Changed files since the last commit — cheap and local, no network. */
+  | { op: 'gitStatus' }
+  /** Unified diff of uncommitted changes, optionally scoped to one file. */
+  | { op: 'gitDiff'; path?: string }
+  | { op: 'gitLog'; depth?: number }
+  | { op: 'gitListBranches' }
+  | { op: 'gitCreateBranch'; name: string; checkout?: boolean }
+  | { op: 'gitCheckout'; ref: string }
   /** Read a built directory back as a base64 zip so the server can forward it to the deploy proxy. */
   | { op: 'buildZip'; dir: string };
 
@@ -62,6 +72,12 @@ export interface StudioResultByOp {
   gitClone: Record<string, never>;
   gitCommit: { commit: string };
   gitPush: Record<string, never>;
+  gitStatus: { files: StudioGitStatusEntry[] };
+  gitDiff: { diff: string };
+  gitLog: { commits: StudioGitLogEntry[] };
+  gitListBranches: { branches: string[]; current: string };
+  gitCreateBranch: Record<string, never>;
+  gitCheckout: Record<string, never>;
   buildZip: { zipBase64: string };
 }
 

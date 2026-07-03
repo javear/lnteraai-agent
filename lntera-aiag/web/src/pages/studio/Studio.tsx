@@ -216,14 +216,11 @@ const newMsgId = () => `sm${++msgSeq}-${Date.now()}`;
 function Workspace({ project, onBack }: { project: StudioProject; onBack: () => void }) {
   const { session, api } = useAuth();
   const client = useMastra();
-  const supabase = useAuth().supabase;
 
   const resource =
     (session?.user.app_metadata as { tenant_id?: string } | undefined)?.tenant_id ??
     session?.user.id ??
     'web:anon';
-  const tenantId = (session?.user.app_metadata as { tenant_id?: string } | undefined)?.tenant_id ?? '';
-  const authToken = session?.access_token ?? '';
   const sessionId = useMemo(() => newStudioSessionId(), []);
 
   const providerRef = useRef<SandboxProvider | null>(null);
@@ -270,25 +267,27 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
   useEffect(() => {
     const provider = new BrowserPodProvider({ storageKey: project.id });
     providerRef.current = provider;
-    const stopBridge = runStudioBridge({ supabase, authToken, tenantId, sessionId, provider });
+    const stopBridge = runStudioBridge({ api, sessionId, provider });
     const offPreview = provider.onPreview((url) => {
       setPreviewUrl(url);
       setTab('preview');
     });
 
     (async () => {
-      await provider.boot();
-      // Git is best-effort. The pod can only egress to BrowserPod-allow-listed domains (the frontend,
-      // e.g. lntera.ai), not the backend host — so we build the clone URL from our own origin and let
-      // the frontend proxy /svc/v1/studio/git/* to the backend git-proxy. If it still fails, the
-      // sandbox stays fully usable (chat/write/build/preview); only cross-browser persistence is off.
+      // Boot the pod (a WASM VM — the slow part) and provision the Gitea repo/token concurrently;
+      // neither depends on the other. Git itself runs as plain page JS against IndexedDB (see
+      // lib/studio/git.ts), NOT inside the pod, so it only ever needs a same-origin fetch to our own
+      // backend's git-proxy — never the pod's own (restricted) network stack. Git is still
+      // best-effort: if it fails, the sandbox stays fully usable (chat/write/build/preview); only
+      // cross-browser persistence is off.
+      const [, initResult] = await Promise.all([
+        provider.boot(),
+        initProject(api, project.id).catch((e: unknown) => (e instanceof Error ? e : new Error(String(e)))),
+      ]);
       try {
-        const { gitPath } = await initProject(api, project.id);
-        const cloneUrl = `${window.location.origin}${gitPath}`;
-        const hasGit = (await provider.exec('test', ['-d', '.git'])).exitCode === 0;
-        if (!hasGit) await provider.gitClone(cloneUrl);
-        await provider.exec('git', ['config', 'user.email', 'studio@lntera.ai']);
-        await provider.exec('git', ['config', 'user.name', 'Lntera Studio']);
+        if (initResult instanceof Error) throw initResult;
+        const cloneUrl = `${window.location.origin}${initResult.gitPath}`;
+        await provider.gitClone(cloneUrl);
       } catch (e) {
         setGitWarning(e instanceof Error ? e.message : String(e));
       }
@@ -452,8 +451,7 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
       {gitWarning ? (
         <div className="px-4 pt-3">
           <Alert tone="neutral">
-            Working without Git sync (changes won't persist across browsers yet). The sandbox can't reach
-            the git host — allow-list it for your BrowserPod API key to enable saving. Details: {gitWarning}
+            Working without Git sync (changes won't persist across browsers yet). Details: {gitWarning}
           </Alert>
         </div>
       ) : null}

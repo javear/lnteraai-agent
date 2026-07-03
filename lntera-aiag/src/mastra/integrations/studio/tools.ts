@@ -165,6 +165,109 @@ export const studioGitPushTool = createTool({
   },
 });
 
+export const studioGitStatusTool = createTool({
+  id: 'studio-git-status',
+  strict: false,
+  description:
+    'List files changed since the last commit (added/modified/deleted). Local only — no network — so it\'s cheap to call before committing to double-check your own work.',
+  requestContextSchema,
+  inputSchema: z.object({}),
+  outputSchema: z.object({
+    files: z.array(z.object({ path: z.string(), status: z.enum(['added', 'modified', 'deleted']) })),
+  }),
+  execute: async (_input, context) => {
+    const tenantId = requireTenantContext(context);
+    const sessionId = requireStudioSession(context);
+    return getStudioBridge().call(tenantId, sessionId, { op: 'gitStatus' });
+  },
+});
+
+export const studioGitDiffTool = createTool({
+  id: 'studio-git-diff',
+  strict: false,
+  description:
+    'Get a unified diff of uncommitted changes, optionally scoped to one file. Local only — no network. Use it to verify your edits actually match what you intended before committing, or to answer "what did you change".',
+  requestContextSchema,
+  inputSchema: z.object({ path: z.string().optional().describe('Limit the diff to one file.') }),
+  outputSchema: z.object({ diff: z.string() }),
+  execute: async (input, context) => {
+    const tenantId = requireTenantContext(context);
+    const sessionId = requireStudioSession(context);
+    return getStudioBridge().call(tenantId, sessionId, { op: 'gitDiff', path: input.path });
+  },
+});
+
+export const studioGitLogTool = createTool({
+  id: 'studio-git-log',
+  strict: false,
+  description: 'View recent commit history (default last 20). Local only — no network.',
+  requestContextSchema,
+  inputSchema: z.object({ depth: z.number().int().positive().max(100).optional() }),
+  outputSchema: z.object({
+    commits: z.array(
+      z.object({ oid: z.string(), message: z.string(), author: z.string(), timestamp: z.number() }),
+    ),
+  }),
+  execute: async (input, context) => {
+    const tenantId = requireTenantContext(context);
+    const sessionId = requireStudioSession(context);
+    return getStudioBridge().call(tenantId, sessionId, { op: 'gitLog', depth: input.depth });
+  },
+});
+
+export const studioGitListBranchesTool = createTool({
+  id: 'studio-git-list-branches',
+  strict: false,
+  description: 'List branches and which one is currently checked out. Local only — no network.',
+  requestContextSchema,
+  inputSchema: z.object({}),
+  outputSchema: z.object({ branches: z.array(z.string()), current: z.string() }),
+  execute: async (_input, context) => {
+    const tenantId = requireTenantContext(context);
+    const sessionId = requireStudioSession(context);
+    return getStudioBridge().call(tenantId, sessionId, { op: 'gitListBranches' });
+  },
+});
+
+export const studioGitCreateBranchTool = createTool({
+  id: 'studio-git-create-branch',
+  strict: false,
+  description:
+    'Create a new branch from the current commit, optionally switching to it. Use this ONLY when the user explicitly wants to try something experimental without touching their main work — most changes should just go straight to the current branch.',
+  requestContextSchema,
+  inputSchema: z.object({
+    name: z.string().min(1).describe('New branch name, e.g. "try-dark-mode".'),
+    checkout: z.boolean().optional().describe('Switch to the new branch immediately (default true).'),
+  }),
+  outputSchema: z.object({ ok: z.literal(true) }),
+  execute: async (input, context) => {
+    const tenantId = requireTenantContext(context);
+    const sessionId = requireStudioSession(context);
+    await getStudioBridge().call(tenantId, sessionId, {
+      op: 'gitCreateBranch',
+      name: input.name,
+      checkout: input.checkout ?? true,
+    });
+    return { ok: true as const };
+  },
+});
+
+export const studioGitCheckoutTool = createTool({
+  id: 'studio-git-checkout',
+  strict: false,
+  description:
+    'Switch to an existing branch or commit. Fails if there are uncommitted changes it would overwrite — commit or the user must decide first.',
+  requestContextSchema,
+  inputSchema: z.object({ ref: z.string().min(1).describe('Branch name or commit SHA.') }),
+  outputSchema: z.object({ ok: z.literal(true) }),
+  execute: async (input, context) => {
+    const tenantId = requireTenantContext(context);
+    const sessionId = requireStudioSession(context);
+    await getStudioBridge().call(tenantId, sessionId, { op: 'gitCheckout', ref: input.ref });
+    return { ok: true as const };
+  },
+});
+
 /** All Studio tools, for the technical agent's toolset. */
 export const studioTools = {
   studioWriteFileTool,
@@ -175,4 +278,10 @@ export const studioTools = {
   studioRunCommandTool,
   studioGitCommitTool,
   studioGitPushTool,
+  studioGitStatusTool,
+  studioGitDiffTool,
+  studioGitLogTool,
+  studioGitListBranchesTool,
+  studioGitCreateBranchTool,
+  studioGitCheckoutTool,
 };

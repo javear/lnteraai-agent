@@ -1,95 +1,97 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { StudioBridge, StudioBridgeError, StudioBridgeTimeoutError, type StudioBridgeTransport } from './browser-bridge';
+import { StudioBridge, StudioBridgeError, StudioBridgeTimeoutError } from './browser-bridge';
 import type { StudioCommandEnvelope, StudioResultEnvelope } from './protocol';
 
-/** Yield a macrotask so the bridge's async subscribe+publish finishes before we assert/reply. */
-const tick = () => new Promise((r) => setTimeout(r, 0));
+/** In-memory stand-in for one browser tab's SSE connection. */
+class FakeSession {
+  received: StudioCommandEnvelope[] = [];
+  private readonly unregister: () => void;
 
-/** In-memory transport: records published commands and lets tests push replies. */
-class FakeTransport implements StudioBridgeTransport {
-  sent: StudioCommandEnvelope[] = [];
-  handler: ((r: StudioResultEnvelope) => void) | null = null;
-  subscribeCalls = 0;
-  failPublish = false;
+  constructor(
+    private readonly bridge: StudioBridge,
+    private readonly tenantId: string,
+    private readonly sessionId: string,
+  ) {
+    this.unregister = bridge.registerStream(tenantId, sessionId, (chunk) => {
+      const line = chunk.split('\n').find((l) => l.startsWith('data: '));
+      if (line) this.received.push(JSON.parse(line.slice(6)) as StudioCommandEnvelope);
+    });
+  }
 
-  async publishCommand(_topic: string, envelope: StudioCommandEnvelope): Promise<void> {
-    if (this.failPublish) throw new Error('publish boom');
-    this.sent.push(envelope);
+  /** Simulate the browser replying to the most recently received command. */
+  reply(result: { ok: true; result: unknown } | { ok: false; error: string }, tenantId = this.tenantId): void {
+    const env = this.received.at(-1);
+    if (!env) throw new Error('no command received');
+    this.bridge.resolveResult(tenantId, { cmdId: env.cmdId, sessionId: this.sessionId, ...result } as StudioResultEnvelope);
   }
-  subscribeResults(_topic: string, handler: (r: StudioResultEnvelope) => void): () => void {
-    this.subscribeCalls++;
-    this.handler = handler;
-    return () => {
-      this.handler = null;
-    };
-  }
-  /** Simulate the browser replying to a command (union kept explicit — Omit collapses it). */
-  reply(
-    result:
-      | { cmdId: string; ok: true; result: unknown }
-      | { cmdId: string; ok: false; error: string },
-    sessionId = 's1',
-  ): void {
-    this.handler?.({ ...result, sessionId } as StudioResultEnvelope);
-  }
-  last(): StudioCommandEnvelope {
-    const e = this.sent.at(-1);
-    if (!e) throw new Error('no command sent');
-    return e;
+
+  disconnect(): void {
+    this.unregister();
   }
 }
 
 describe('StudioBridge.call', () => {
   it('resolves with the matching reply payload', async () => {
-    const t = new FakeTransport();
-    const bridge = new StudioBridge(t, 1000);
+    const bridge = new StudioBridge(1000);
+    const session = new FakeSession(bridge, 'tenant1', 's1');
     const p = bridge.call('tenant1', 's1', { op: 'readFile', path: 'a.ts' });
-    // reply once the command has been published (subscription is set up in call()).
-    await tick();
-    t.reply({ cmdId: t.last().cmdId, ok: true, result: { content: 'hello' } });
+    session.reply({ ok: true, result: { content: 'hello' } });
     assert.deepEqual(await p, { content: 'hello' });
   });
 
   it('rejects when the browser replies with ok:false', async () => {
-    const t = new FakeTransport();
-    const bridge = new StudioBridge(t, 1000);
+    const bridge = new StudioBridge(1000);
+    const session = new FakeSession(bridge, 'tenant1', 's1');
     const p = bridge.call('tenant1', 's1', { op: 'execCommand', command: 'npm i' });
-    await tick();
-    t.reply({ cmdId: t.last().cmdId, ok: false, error: 'npm exploded' });
+    session.reply({ ok: false, error: 'npm exploded' });
     await assert.rejects(p, (e: Error) => e instanceof StudioBridgeError && /npm exploded/.test(e.message));
   });
 
-  it('ignores replies for unknown cmdIds (multi-instance safe) and still times out', async () => {
-    const t = new FakeTransport();
-    const bridge = new StudioBridge(t, 30);
-    const p = bridge.call('tenant1', 's1', { op: 'gitPush' });
-    await tick();
-    t.reply({ cmdId: 'some-other-instance-cmd', ok: true, result: {} }); // foreign — must be ignored
-    await assert.rejects(p, (e: Error) => e instanceof StudioBridgeTimeoutError);
-  });
-
-  it('propagates a publish failure as a rejection', async () => {
-    const t = new FakeTransport();
-    t.failPublish = true;
-    const bridge = new StudioBridge(t, 1000);
+  it('rejects immediately when there is no active session for that id', async () => {
+    const bridge = new StudioBridge(1000);
     await assert.rejects(
-      bridge.call('tenant1', 's1', { op: 'gitPush' }),
-      (e: Error) => /publish boom/.test(e.message),
+      bridge.call('tenant1', 'no-such-session', { op: 'gitPush' }),
+      (e: Error) => e instanceof StudioBridgeError && /No active Studio session/.test(e.message),
     );
   });
 
-  it('subscribes once per tenant topic across multiple calls', async () => {
-    const t = new FakeTransport();
-    const bridge = new StudioBridge(t, 1000);
+  it('ignores a result posted by a DIFFERENT tenant than the one who made the call, and still times out', async () => {
+    const bridge = new StudioBridge(30);
+    const session = new FakeSession(bridge, 'tenant1', 's1');
+    const p = bridge.call('tenant1', 's1', { op: 'gitPush' });
+    session.reply({ ok: true, result: {} }, 'tenant2'); // foreign tenant — must be ignored, not resolved
+    await assert.rejects(p, (e: Error) => e instanceof StudioBridgeTimeoutError);
+  });
+
+  it('fails in-flight calls fast when the session disconnects, instead of waiting out the timeout', async () => {
+    const bridge = new StudioBridge(1000);
+    const session = new FakeSession(bridge, 'tenant1', 's1');
+    const p = bridge.call('tenant1', 's1', { op: 'gitPush' });
+    session.disconnect();
+    await assert.rejects(p, (e: Error) => e instanceof StudioBridgeError && /disconnected/.test(e.message));
+  });
+
+  it('resolves multiple in-flight calls to the same session independently', async () => {
+    const bridge = new StudioBridge(1000);
+    const session = new FakeSession(bridge, 'tenant1', 's1');
     const p1 = bridge.call('tenant1', 's1', { op: 'gitPush' });
     const p2 = bridge.call('tenant1', 's1', { op: 'gitCommit', message: 'x' });
-    await tick();
-    assert.equal(t.subscribeCalls, 1);
-    // resolve both by cmdId so the test doesn't leak pending timers
-    for (const env of t.sent) {
-      t.reply({ cmdId: env.cmdId, ok: true, result: env.op.op === 'gitCommit' ? { commit: 'abc' } : {} });
+    for (const env of session.received) {
+      bridge.resolveResult('tenant1', {
+        cmdId: env.cmdId,
+        sessionId: 's1',
+        ok: true,
+        result: env.op.op === 'gitCommit' ? { commit: 'abc' } : {},
+      } as StudioResultEnvelope);
     }
     await Promise.all([p1, p2]);
+  });
+
+  it('caps concurrent streams per tenant', () => {
+    const bridge = new StudioBridge(1000);
+    const sessions = Array.from({ length: 5 }, (_, i) => new FakeSession(bridge, 'tenant1', `s${i}`));
+    assert.throws(() => bridge.registerStream('tenant1', 's-overflow', () => undefined), StudioBridgeError);
+    for (const s of sessions) s.disconnect();
   });
 });
