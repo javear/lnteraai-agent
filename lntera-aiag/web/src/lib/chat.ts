@@ -58,6 +58,19 @@ export function readToolArgs(payload: Record<string, unknown>): Record<string, u
 }
 
 /**
+ * A failed tool call arrives as a DISTINCT `tool-error` chunk, not a `tool-result` with `isError`
+ * (confirmed against a live stream — its payload is `{ error: { cause: { message } }, ... }`,
+ * unrelated in shape to a successful result). Pull out the clean underlying message.
+ */
+export function readToolErrorMessage(payload: Record<string, unknown>): string {
+  const error = payload.error as Record<string, unknown> | undefined;
+  const cause = error?.cause as Record<string, unknown> | undefined;
+  const details = error?.details as Record<string, unknown> | undefined;
+  const msg = cause?.message ?? details?.errorMessage ?? error?.message;
+  return typeof msg === 'string' && msg ? msg : 'Tool call failed.';
+}
+
+/**
  * Turn a raw model id into a friendly "Provider · model" label. Handles Portkey inline ids
  * (`openai/@{slug}/{segment}`) and bare provider model names returned in the finish chunk.
  */
@@ -162,6 +175,14 @@ export async function streamChat(
               toolName: typeof payload.toolName === 'string' ? payload.toolName : undefined,
               result: payload.result ?? payload.output,
               isError: payload.isError === true,
+            });
+            break;
+          case 'tool-error':
+            handlers.onToolResult?.({
+              toolCallId: typeof payload.toolCallId === 'string' ? payload.toolCallId : undefined,
+              toolName: typeof payload.toolName === 'string' ? payload.toolName : undefined,
+              result: readToolErrorMessage(payload),
+              isError: true,
             });
             break;
           case 'tripwire':

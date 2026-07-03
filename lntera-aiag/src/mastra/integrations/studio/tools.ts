@@ -286,19 +286,26 @@ export const studioGitCheckoutTool = createTool({
 });
 
 /** All Studio tools, for the technical agent's toolset. */
+// Keyed by each tool's own `id` — Mastra registers a tool with the LLM under its OBJECT KEY here, NOT
+// its `id` field, so a plain `{ studioWriteFileTool, ... }` shorthand object silently registers the
+// tool as "studioWriteFileTool" while the agent's own system prompt (and the web client's activity
+// mapping in lib/studio/activity.ts) refer to "studio-write-file" — confirmed live: every tool call
+// in production actually arrived as e.g. "studioListTreeTool", never the kebab-case id. Keying by
+// `.id` here makes the registered name, the prompt's prose, and the activity-timeline mapping all
+// agree.
 export const studioTools = {
-  studioWriteFileTool,
-  studioReadFileTool,
-  studioListTreeTool,
-  studioDeleteFileTool,
-  studioMkdirTool,
-  studioRunCommandTool,
-  studioGitCommitTool,
-  studioGitPushTool,
-  studioGitStatusTool,
-  studioGitDiffTool,
-  studioGitLogTool,
-  studioGitListBranchesTool,
-  studioGitCreateBranchTool,
-  studioGitCheckoutTool,
+  [studioWriteFileTool.id]: studioWriteFileTool,
+  [studioReadFileTool.id]: studioReadFileTool,
+  [studioListTreeTool.id]: studioListTreeTool,
+  [studioDeleteFileTool.id]: studioDeleteFileTool,
+  [studioMkdirTool.id]: studioMkdirTool,
+  [studioRunCommandTool.id]: studioRunCommandTool,
+  [studioGitCommitTool.id]: studioGitCommitTool,
+  [studioGitPushTool.id]: studioGitPushTool,
+  [studioGitStatusTool.id]: studioGitStatusTool,
+  [studioGitDiffTool.id]: studioGitDiffTool,
+  [studioGitLogTool.id]: studioGitLogTool,
+  [studioGitListBranchesTool.id]: studioGitListBranchesTool,
+  [studioGitCreateBranchTool.id]: studioGitCreateBranchTool,
+  [studioGitCheckoutTool.id]: studioGitCheckoutTool,
 };
