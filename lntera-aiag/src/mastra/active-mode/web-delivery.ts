@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import type { MastraDBMessage } from '@mastra/core/agent';
-import { generalAgent } from '../agents/general-agent';
 import { logErrorBrief } from '../logger/compact-error';
 import {
   broadcastTenantNotification,
@@ -117,6 +116,10 @@ function toDiscordReply(text: string): DiscordReply {
  */
 async function persistWebNotification(tenantId: string, payload: TenantNotificationPayload): Promise<void> {
   try {
+    // Dynamic import (not a top-level static import) breaks the general-agent -> ... -> web-delivery
+    // circular dependency: general-agent.ts pulls in the ecommerce tools, which pull in the sync
+    // engine, which pulls in this file to deliver notifications.
+    const { generalAgent } = await import('../agents/general-agent');
     const memory = await generalAgent.getMemory();
     if (!memory) return;
     const threadId = notificationsThreadId(tenantId);
