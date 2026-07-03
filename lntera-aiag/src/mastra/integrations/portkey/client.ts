@@ -263,7 +263,9 @@ export async function validateProviderViaPortkey(input: {
     body: JSON.stringify({
       model: `@${input.providerSlug}/${input.model}`,
       messages: [{ role: 'user', content: 'Reply with OK only.' }],
-      max_tokens: 8,
+      // No max_tokens: it's only an auth check, and newer OpenAI models reject `max_tokens`
+      // (they require `max_completion_tokens`), which isn't universally accepted by Groq/Gemini —
+      // so omitting the cap is the safe cross-provider choice.
     }),
   });
 
@@ -273,6 +275,11 @@ export async function validateProviderViaPortkey(input: {
   if (res.status === 429) return { rateLimited: true };
 
   const text = await res.text();
+  // A 400 about an unsupported PARAMETER (not the key) means the request reached the model with a
+  // valid key — accept it so a per-model param quirk can't block a genuine connect.
+  if (res.status === 400 && /unsupported_parameter|max_tokens|max_completion_tokens/i.test(text)) {
+    return { rateLimited: false };
+  }
   throw new Error(
     `Portkey ${input.providerLabel ?? 'provider'} validation failed (${res.status}): ${text.slice(0, 400)}`,
   );
