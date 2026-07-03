@@ -28,6 +28,12 @@ export const technicalAgent = new Agent({
   id: 'technical-agent',
   name: 'Technical Agent',
   maxProcessorRetries: 2,
+  // Mastra's own default for the vNext stream() loop is stopWhen: stepCountIs(5) when nothing
+  // overrides it — meaning the agent was hard-stopping after 5 tool-calling rounds regardless of
+  // how much context budget was left, forcing the user to say "continue" repeatedly. A real build
+  // (inspect files, write several, install, build, fix an error, commit, push) easily needs far
+  // more than 5 steps.
+  defaultOptions: { maxSteps: 50 },
   inputProcessors: [
     groqOnboardGateProcessor,
     groqReasoningRollingCompatProcessor,

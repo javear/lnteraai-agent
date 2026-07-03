@@ -187,6 +187,9 @@ export const generalAgent = new Agent({
   name: 'General Agent',
   /** Allows `processAPIError` retries when sanitizing history after an unexpected 400. */
   maxProcessorRetries: 2,
+  // Mastra's own default (stopWhen: stepCountIs(5)) is thin even for a chat agent — a search_tools →
+  // load_tool → actual-tool round-trip alone is 3 steps before it's done anything useful.
+  defaultOptions: { maxSteps: 20 },
   inputProcessors: [
     groqOnboardGateProcessor,
     ...(isRegexFilterEnabled() ? [createRegexInputGuardProcessor()] : []),
