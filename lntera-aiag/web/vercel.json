@@ -3,7 +3,10 @@
   "installCommand": "bun install",
   "buildCommand": "bun run build:vercel",
   "outputDirectory": "dist",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+    "rewrites": [
+    { "source": "/svc/v1/studio/git/:path*", "destination": "https://lnteraai-mastra-production.up.railway.app/svc/v1/studio/git/:path*" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
   "headers": [
     {
       "source": "/studio(.*)",
