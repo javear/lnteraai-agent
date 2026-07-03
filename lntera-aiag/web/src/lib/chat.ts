@@ -12,16 +12,49 @@ function currentLang(): string {
   }
 }
 
+/** A tool invocation the agent started, with its id + parsed arguments (for inline activity UIs). */
+export interface ToolCallInfo {
+  toolCallId?: string;
+  toolName: string;
+  args?: Record<string, unknown>;
+}
+/** A tool's result, correlated back to its call by `toolCallId`. */
+export interface ToolResultInfo {
+  toolCallId?: string;
+  toolName?: string;
+  result?: unknown;
+  isError?: boolean;
+}
+
 export interface StreamHandlers {
   onText: (delta: string) => void;
   /** Reasoning ("thinking") deltas — shown live while generating, never part of the final content. */
   onReasoning?: (delta: string) => void;
-  onToolStart?: (toolName: string) => void;
+  /** A tool call began. `info` carries the tool id + args (filename, command, …) when the stream
+   *  provides them; callers that only need the name can read `info.toolName`. */
+  onToolStart?: (info: ToolCallInfo) => void;
+  /** A tool call finished, carrying its result payload — correlate via `info.toolCallId`. */
+  onToolResult?: (info: ToolResultInfo) => void;
   /** Processor abort (e.g. provider not configured) — code is the metadata.code, reason is the message. */
   onTripwire?: (code: string | undefined, reason: string) => void;
   /** The provider+model that produced this turn, e.g. "Gemini · gemini-2.0-flash". */
   onModel?: (label: string) => void;
   onError?: (message: string) => void;
+}
+
+/** Pull the tool args out of a tool-call chunk payload across the field names Mastra has used. */
+export function readToolArgs(payload: Record<string, unknown>): Record<string, unknown> | undefined {
+  const raw = payload.args ?? payload.input ?? payload.arguments;
+  if (raw && typeof raw === 'object') return raw as Record<string, unknown>;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -117,7 +150,19 @@ export async function streamChat(
             }
             break;
           case 'tool-call':
-            handlers.onToolStart?.(typeof payload.toolName === 'string' ? payload.toolName : 'tool');
+            handlers.onToolStart?.({
+              toolCallId: typeof payload.toolCallId === 'string' ? payload.toolCallId : undefined,
+              toolName: typeof payload.toolName === 'string' ? payload.toolName : 'tool',
+              args: readToolArgs(payload),
+            });
+            break;
+          case 'tool-result':
+            handlers.onToolResult?.({
+              toolCallId: typeof payload.toolCallId === 'string' ? payload.toolCallId : undefined,
+              toolName: typeof payload.toolName === 'string' ? payload.toolName : undefined,
+              result: payload.result ?? payload.output,
+              isError: payload.isError === true,
+            });
             break;
           case 'tripwire':
             handlers.onTripwire?.(payload.metadata?.code, payload.reason ?? 'Request blocked.');

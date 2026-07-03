@@ -14,23 +14,23 @@ import {
 } from '../../lib/studio/api';
 import { fetchPinnableModels, type PinnableModel } from '../../lib/integrations';
 import { Composer } from '../../components/chat/Composer';
-import { MessageBubble, type ChatMessage } from '../../components/chat/Message';
-import { parseSuggestions } from '../../lib/chat';
-import { stripReasoning } from '../../lib/reasoning';
+import { StudioMessageBubble, type StudioChatMessage } from '../../components/studio/StudioMessage';
 import { newStudioSessionId } from '../../lib/studio/session';
 import { runStudioBridge } from '../../lib/studio/bridge';
 import { BrowserPodProvider, type SandboxProvider } from '../../lib/studio/sandbox';
 import { streamStudioChat } from '../../lib/studio/chat';
-import { TerminalView } from './Terminal';
+import {
+  activityFromToolCall,
+  applyToolResult,
+  type CommandActivity,
+  type StudioActivity,
+  type ThoughtActivity,
+} from '../../lib/studio/activity';
 
-/** Map a Studio tool id to a plain-language noun that reads well after "Using …" in the thinking line. */
-function friendlyTool(toolId: string): string {
-  const id = toolId.toLowerCase();
-  if (id.includes('git')) return 'Git';
-  if (id.includes('run') || id.includes('command') || id.includes('exec')) return 'the terminal';
-  if (id.includes('read') || id.includes('list') || id.includes('tree')) return 'the project files';
-  return 'the editor';
-}
+/** Strip our exec sentinel (see sandbox.ts) out of raw terminal chunks before showing them inline. */
+const SENTINEL_STRIP = /__BP_EXIT__-?\d+\s*/g;
+let actSeq = 0;
+const newActId = () => `pa-${++actSeq}`;
 
 export default function Studio() {
   const { session } = useAuth();
@@ -227,8 +227,7 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
   const [status, setStatus] = useState<'booting' | 'ready' | 'error'>('booting');
   const [bootError, setBootError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [tab, setTab] = useState<'preview' | 'terminal'>('preview');
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<StudioChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -268,10 +267,7 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
     const provider = new BrowserPodProvider({ storageKey: project.id });
     providerRef.current = provider;
     const stopBridge = runStudioBridge({ api, sessionId, provider });
-    const offPreview = provider.onPreview((url) => {
-      setPreviewUrl(url);
-      setTab('preview');
-    });
+    const offPreview = provider.onPreview((url) => setPreviewUrl(url));
 
     (async () => {
       // Boot the pod (a WASM VM — the slow part) and provision the Gitea repo/token concurrently;
@@ -305,11 +301,6 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.id]);
 
-  const subscribeOutput = useCallback(
-    (cb: (chunk: string) => void) => providerRef.current?.subscribeOutput(cb) ?? (() => undefined),
-    [],
-  );
-
   async function send(text: string) {
     const content = text.trim();
     if (!content || streaming || status !== 'ready') return;
@@ -319,67 +310,118 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
     const aiId = newMsgId();
     setMessages((m) => [
       ...m,
-      { id: userId, role: 'user', content, createdAt: startedAt },
-      { id: aiId, role: 'assistant', content: '', pending: true, tool: null, createdAt: startedAt },
+      { id: userId, role: 'user', content, createdAt: startedAt, activity: [] },
+      { id: aiId, role: 'assistant', content: '', pending: true, createdAt: startedAt, activity: [] },
     ]);
     setStreaming(true);
     stopRef.current = false;
 
-    // Coalesce streaming re-renders (~90ms) so applying state + re-parsing markdown isn't O(n²) per
-    // token — same technique as the business chat, which keeps it smooth. Only the changing message
-    // re-renders because MessageBubble is memoized.
+    // The turn's accumulating state. `activity` is rebuilt immutably on each change so the memoized
+    // bubble re-renders; item ids stay stable so per-card UI state (expand/collapse) survives.
     let acc = '';
-    let reasoningAcc = '';
+    let activity: StudioActivity[] = [];
+    let currentThought: ThoughtActivity | null = null;
+    let runningCmdId: string | null = null;
+
     let lastRenderAt = 0;
     let renderTimer: ReturnType<typeof setTimeout> | null = null;
     const THROTTLE = 90;
     const renderNow = () => {
       lastRenderAt = Date.now();
-      setMessages((m) =>
-        m.map((x) =>
-          x.id === aiId
-            ? { ...x, content: acc, pending: false, tool: null, ...(acc ? {} : { reasoning: reasoningAcc }) }
-            : x,
-        ),
-      );
+      const snapshot = [...activity];
+      setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, content: acc, pending: false, activity: snapshot } : x)));
     };
     const scheduleRender = () => {
       const since = Date.now() - lastRenderAt;
       if (since >= THROTTLE) renderNow();
       else if (!renderTimer) renderTimer = setTimeout(() => { renderTimer = null; renderNow(); }, THROTTLE - since);
     };
+    const updateItem = (id: string, fn: (a: StudioActivity) => StudioActivity) => {
+      activity = activity.map((a) => (a.id === id ? fn(a) : a));
+    };
+    // A thought block stays open across consecutive reasoning deltas; it "closes" (its duration is
+    // stamped) as soon as the agent does something else — a tool call or user-facing text.
+    const closeThought = () => {
+      if (!currentThought) return;
+      const started = currentThought.startedAt;
+      updateItem(currentThought.id, (a) => ({ ...a, durationMs: Date.now() - started }));
+      currentThought = null;
+    };
 
-    await streamStudioChat(
-      client,
-      content,
-      { threadId: project.id, resource, sessionId, kind: project.kind, pinnedModel: pinnedModel || undefined },
-      {
-        onText: (d) => {
-          acc += d;
-          scheduleRender();
+    // Live terminal output: the sandbox streams ALL command output here. Since exec is serialized and
+    // only run-command sets `runningCmdId`, chunks during that window belong to that command. The final
+    // (sentinel-stripped) output still comes from the tool result, so this is purely for live feel.
+    const offOutput = providerRef.current?.subscribeOutput((chunk) => {
+      if (!runningCmdId) return;
+      const clean = chunk.replace(SENTINEL_STRIP, '');
+      if (!clean) return;
+      updateItem(runningCmdId, (a) => (a.kind === 'command' ? { ...a, output: a.output + clean } : a));
+      scheduleRender();
+    });
+
+    try {
+      await streamStudioChat(
+        client,
+        content,
+        { threadId: project.id, resource, sessionId, kind: project.kind, pinnedModel: pinnedModel || undefined },
+        {
+          onText: (d) => {
+            closeThought();
+            acc += d;
+            scheduleRender();
+          },
+          onReasoning: (d) => {
+            if (currentThought) {
+              updateItem(currentThought.id, (a) => (a.kind === 'thought' ? { ...a, text: a.text + d } : a));
+            } else {
+              const t: ThoughtActivity = { kind: 'thought', id: newActId(), text: d, startedAt: Date.now(), durationMs: null };
+              currentThought = t;
+              activity = [...activity, t];
+            }
+            scheduleRender();
+          },
+          onToolStart: (info) => {
+            closeThought();
+            const item = activityFromToolCall(info);
+            if (!item) return;
+            activity = [...activity, item];
+            if (item.kind === 'command' && item.running) runningCmdId = item.id;
+            scheduleRender();
+          },
+          onToolResult: (info) => {
+            // Correlate by toolCallId; fall back to the last still-running command/git item.
+            const targetId =
+              (info.toolCallId && activity.find((a) => a.id === info.toolCallId)?.id) ??
+              [...activity].reverse().find((a) => (a.kind === 'command' || a.kind === 'git') && a.running)?.id;
+            if (!targetId) return;
+            updateItem(targetId, (a) => applyToolResult(a, info));
+            if (targetId === runningCmdId) runningCmdId = null;
+            scheduleRender();
+          },
+          onModel: (label) => setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, model: label } : x))),
+          onError: (msg) => {
+            acc = msg;
+            scheduleRender();
+          },
+          onTripwire: (_c, reason) => {
+            acc = reason;
+            scheduleRender();
+          },
         },
-        onReasoning: (d) => {
-          reasoningAcc += d;
-          if (!acc) scheduleRender();
-        },
-        // Before any text, show a plain-language "Working on …" line (via the memoized bubble's
-        // thinking indicator); once text streams, the tool line is replaced by the answer.
-        onToolStart: (tool) =>
-          setMessages((m) => m.map((x) => (x.id === aiId && !acc ? { ...x, tool: friendlyTool(tool) } : x))),
-        onModel: (label) => setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, model: label } : x))),
-        onError: (msg) =>
-          setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, content: msg, pending: false, tool: null } : x))),
-        onTripwire: (_c, reason) =>
-          setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, content: reason, pending: false, tool: null } : x))),
-      },
-      () => stopRef.current,
-    );
+        () => stopRef.current,
+      );
+    } finally {
+      offOutput?.();
+    }
 
     if (renderTimer) clearTimeout(renderTimer);
-    const body = parseSuggestions(stripReasoning(acc)).body;
-    setMessages((m) =>
-      m.map((x) => (x.id === aiId ? { ...x, content: body, pending: false, tool: null, reasoning: undefined } : x)),
+    closeThought();
+    // Finalize any item still marked running (e.g. the user hit Stop mid-command).
+    activity = activity.map((a) =>
+      (a.kind === 'command' || a.kind === 'git') && a.running ? { ...a, running: false } : a,
     );
+    const finalActivity = activity;
+    setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, content: acc, pending: false, activity: finalActivity } : x)));
     setStreaming(false);
   }
 
@@ -387,18 +429,45 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
     const provider = providerRef.current;
     if (!provider || publishing) return;
     setPublishing(true);
-    setTab('terminal');
+
+    // Publish is a button, not an agent turn — but its install/build output belongs in the same inline
+    // timeline (there's no separate Logs tab anymore), so we render it as a synthetic assistant message
+    // and stream each command's output straight into its card via exec's onOutput.
+    const aiId = newMsgId();
+    const installId = newActId();
+    const buildId = newActId();
+    const cmd = (id: string, command: string): CommandActivity => ({ kind: 'command', id, command, output: '', exitCode: null, running: true });
+    setMessages((m) => [
+      ...m,
+      { id: aiId, role: 'assistant', content: '', createdAt: new Date().toISOString(), activity: [cmd(installId, 'npm install')] },
+    ]);
+    const patchCmd = (id: string, fn: (a: CommandActivity) => CommandActivity) =>
+      setMessages((m) =>
+        m.map((x) =>
+          x.id === aiId ? { ...x, activity: x.activity.map((a) => (a.id === id && a.kind === 'command' ? fn(a) : a)) } : x,
+        ),
+      );
+    const setBody = (body: string) => setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, content: body } : x)));
+
     try {
-      const install = await provider.exec('npm', ['install']);
-      if (install.exitCode !== 0) throw new Error('npm install failed — check the terminal.');
-      const build = await provider.exec('npm', ['run', 'build']);
-      if (build.exitCode !== 0) throw new Error('Build failed — check the terminal.');
+      const install = await provider.exec('npm', ['install'], { onOutput: (c) => patchCmd(installId, (a) => ({ ...a, output: a.output + c })) });
+      patchCmd(installId, (a) => ({ ...a, running: false, exitCode: install.exitCode }));
+      if (install.exitCode !== 0) throw new Error('Install failed — see the log above.');
+
+      setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, activity: [...x.activity, cmd(buildId, 'npm run build')] } : x)));
+      const build = await provider.exec('npm', ['run', 'build'], { onOutput: (c) => patchCmd(buildId, (a) => ({ ...a, output: a.output + c })) });
+      patchCmd(buildId, (a) => ({ ...a, running: false, exitCode: build.exitCode }));
+      if (build.exitCode !== 0) throw new Error('Build failed — see the log above.');
+
       const { zipBase64 } = await provider.buildZip('dist');
       const { project: updated, url } = await deployProject(api, project.id, zipBase64);
       setProj(updated);
+      setBody(`✅ Published — your project is live at ${url}`);
       toast.success(`Published: ${url}`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setBody(msg);
+      toast.error(msg);
     } finally {
       setPublishing(false);
     }
@@ -469,7 +538,7 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
                 </p>
               </div>
             ) : (
-              messages.map((m) => <MessageBubble key={m.id} message={m} />)
+              messages.map((m) => <StudioMessageBubble key={m.id} message={m} />)
             )}
           </div>
           <div className="px-2 pb-2">
@@ -489,38 +558,25 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
           </div>
         </div>
 
-        {/* Preview / Logs */}
+        {/* Live preview — the agent's file writes, terminal output and git actions now stream inline in
+            the chat (left), so this pane is just the running app. */}
         <div className="flex min-w-0 flex-1 flex-col bg-muted/20">
-          <div className="flex items-center gap-1 border-b bg-background px-3 py-2">
-            {(['preview', 'terminal'] as const).map((tk) => (
-              <button
-                key={tk}
-                onClick={() => setTab(tk)}
-                className={`rounded-lg px-3 py-1 text-sm font-medium transition-colors ${
-                  tab === tk ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {tk === 'preview' ? 'Preview' : 'Logs'}
-              </button>
-            ))}
+          <div className="flex items-center gap-2 border-b bg-background px-3 py-2">
+            <span className="text-sm font-medium">Preview</span>
             {status === 'booting' ? (
-              <span className="ml-2 text-xs text-muted-foreground">Starting your workspace…</span>
+              <span className="text-xs text-muted-foreground">Starting your workspace…</span>
             ) : null}
           </div>
           <div className="min-h-0 flex-1 p-3">
-            {tab === 'preview' ? (
-              previewUrl ? (
-                <iframe title="Preview" src={previewUrl} className="h-full w-full rounded-lg border bg-white shadow-sm" />
-              ) : (
-                <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center">
-                  <span className="text-[15px] font-medium">Your app will appear here</span>
-                  <span className="max-w-xs text-sm text-muted-foreground">
-                    Once the agent builds and runs it, the live preview shows up automatically.
-                  </span>
-                </div>
-              )
+            {previewUrl ? (
+              <iframe title="Preview" src={previewUrl} className="h-full w-full rounded-lg border bg-white shadow-sm" />
             ) : (
-              <TerminalView subscribe={subscribeOutput} />
+              <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center">
+                <span className="text-[15px] font-medium">Your app will appear here</span>
+                <span className="max-w-xs text-sm text-muted-foreground">
+                  Once the agent builds and runs it, the live preview shows up automatically.
+                </span>
+              </div>
             )}
           </div>
         </div>
