@@ -33,8 +33,10 @@ jobs:
         with:
           # Node 22: @supabase/supabase-js (realtime) needs a native global WebSocket, which Node 20 lacks.
           node-version: 22
-          cache: npm
-          cache-dependency-path: lntera-aiag/web/package-lock.json
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
 
       - name: Write native build env
         working-directory: lntera-aiag/web
@@ -50,5 +52,5 @@ jobs:
         if: ${{ env.SUPABASE_SECRET_KEY != '' }}
         working-directory: lntera-aiag/web
         run: |
-          npm ci
-          npm run ota:publish
+          bun install --frozen-lockfile
+          bun run ota:publish
