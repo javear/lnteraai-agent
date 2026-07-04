@@ -17,7 +17,8 @@
     "send-sample-webhook": "node scripts/send-sample-webhook.mjs",
     "tunnel": "node scripts/tunnel.mjs",
     "mock:sync": "tsx scripts/mock/mock-product-sync.ts",
-    "mock:clean": "tsx scripts/mock/mock-cleanup.ts"
+    "mock:clean": "tsx scripts/mock/mock-cleanup.ts",
+    "studio:gen-templates": "node scripts/generate-studio-templates.mjs"
   },
   "keywords": [],
   "author": "",
@@ -44,6 +45,7 @@
     "discord.js": "14.26.4",
     "exceljs": "^4.4.0",
     "inngest": "^4.6.0",
+    "isomorphic-git": "^1.38.6",
     "jose": "6.2.3",
     "json-bigint": "^1.0.0",
     "pdfkit": "^0.19.1",

@@ -434,13 +434,10 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
     // timeline (there's no separate Logs tab anymore), so we render it as a synthetic assistant message
     // and stream each command's output straight into its card via exec's onOutput.
     const aiId = newMsgId();
-    const installId = newActId();
-    const buildId = newActId();
     const cmd = (id: string, command: string): CommandActivity => ({ kind: 'command', id, command, output: '', exitCode: null, running: true });
-    setMessages((m) => [
-      ...m,
-      { id: aiId, role: 'assistant', content: '', createdAt: new Date().toISOString(), activity: [cmd(installId, 'npm install')] },
-    ]);
+    setMessages((m) => [...m, { id: aiId, role: 'assistant', content: '', createdAt: new Date().toISOString(), activity: [] }]);
+    const addCmd = (id: string, command: string) =>
+      setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, activity: [...x.activity, cmd(id, command)] } : x)));
     const patchCmd = (id: string, fn: (a: CommandActivity) => CommandActivity) =>
       setMessages((m) =>
         m.map((x) =>
@@ -448,18 +445,27 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
         ),
       );
     const setBody = (body: string) => setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, content: body } : x)));
+    const runStep = async (id: string, command: string, args: string[]): Promise<number> => {
+      addCmd(id, [command, ...args].join(' '));
+      const r = await provider.exec(command, args, { onOutput: (c) => patchCmd(id, (a) => ({ ...a, output: a.output + c })) });
+      patchCmd(id, (a) => ({ ...a, running: false, exitCode: r.exitCode }));
+      return r.exitCode;
+    };
 
     try {
-      const install = await provider.exec('npm', ['install'], { onOutput: (c) => patchCmd(installId, (a) => ({ ...a, output: a.output + c })) });
-      patchCmd(installId, (a) => ({ ...a, running: false, exitCode: install.exitCode }));
-      if (install.exitCode !== 0) throw new Error('Install failed — see the log above.');
+      // "mcp" projects are a single EdgeOne Pages Function with no build step at all (the template's
+      // package.json has no "build" script — EdgeOne transpiles the TypeScript at the edge) — deploy
+      // the project root as-is. "webapp" is a Next.js static export, built to "out/".
+      let zipBase64: string;
+      if (project.kind === 'mcp') {
+        setBody('Packaging your MCP server…');
+        zipBase64 = (await provider.buildZip('.')).zipBase64;
+      } else {
+        if ((await runStep(newActId(), 'npm', ['install'])) !== 0) throw new Error('Install failed — see the log above.');
+        if ((await runStep(newActId(), 'npm', ['run', 'build'])) !== 0) throw new Error('Build failed — see the log above.');
+        zipBase64 = (await provider.buildZip('out')).zipBase64;
+      }
 
-      setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, activity: [...x.activity, cmd(buildId, 'npm run build')] } : x)));
-      const build = await provider.exec('npm', ['run', 'build'], { onOutput: (c) => patchCmd(buildId, (a) => ({ ...a, output: a.output + c })) });
-      patchCmd(buildId, (a) => ({ ...a, running: false, exitCode: build.exitCode }));
-      if (build.exitCode !== 0) throw new Error('Build failed — see the log above.');
-
-      const { zipBase64 } = await provider.buildZip('dist');
       const { project: updated, url } = await deployProject(api, project.id, zipBase64);
       setProj(updated);
       setBody(`✅ Published — your project is live at ${url}`);

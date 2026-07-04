@@ -1,0 +1,9 @@
+{
+  "name": "my-mcp-server",
+  "version": "0.1.0",
+  "scripts": {},
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5"
+  }
+}
