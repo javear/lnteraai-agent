@@ -14,7 +14,9 @@ import { getGiteaConfig, signGitProxyToken, verifyGitProxyToken } from '../../..
 import { createGiteaRepo } from '../../../integrations/studio/gitea';
 import { deployToEdgeOne } from '../../../integrations/studio/edgeone';
 import { getStudioBridge } from '../../../integrations/studio/browser-bridge';
+import { seedProjectTemplate } from '../../../integrations/studio/template-seed';
 import type { StudioResultEnvelope } from '../../../integrations/studio/protocol';
+import { logErrorBrief } from '../../../logger/compact-error';
 import { OPEN_API_PREFIX } from '../constants';
 import { openApiJsonError, resolveTenantFromBearer, type OpenApiHandlerContext } from '../middleware/bearer-tenant';
 
@@ -185,6 +187,15 @@ export const studioInitProjectRoute = registerApiRoute(`${OPEN_API_PREFIX}/studi
 
     try {
       const repo = await createGiteaRepo(repoNameFor(project.id));
+      // Seed the starter template on first creation only — never on a later reconnect/re-init of the
+      // same project, which would clobber the tenant's own work. Best-effort: if this fails, the
+      // tenant still gets a working (if empty, README-only) repo; the technical agent can scaffold by
+      // hand as a fallback.
+      if (repo.created) {
+        await seedProjectTemplate({ kind: project.kind, repoFullName: repo.fullName }).catch((err) => {
+          logErrorBrief(`[studio] template seed failed (project=${project.id})`, err);
+        });
+      }
       const updated = await updateTenantProject(auth.tenantId, project.id, { gitea_repo: repo.cloneUrl });
       const token = signGitProxyToken({ projectId: project.id, repo: repo.fullName, exp: Date.now() + GIT_PROXY_TTL_MS });
       // Return a PATH only. The browser prefixes its own origin (the whitelisted frontend, e.g.

@@ -4,6 +4,10 @@ export interface GiteaRepo {
   fullName: string; // "owner/name"
   cloneUrl: string; // https clone URL on Gitea
   htmlUrl: string;
+  /** True only on the actual creation path — false when an existing repo was reused (409). Callers
+   *  that seed a starter template on first creation use this to avoid re-seeding (and clobbering
+   *  the tenant's own work) on a later reconnect/re-init of the same project. */
+  created: boolean;
 }
 
 function authHeaders(token: string): Record<string, string> {
@@ -31,7 +35,7 @@ export async function createGiteaRepo(name: string): Promise<GiteaRepo> {
     body: JSON.stringify({ name, private: true, auto_init: true, default_branch: 'main' }),
   });
 
-  if (res.ok) return toRepo(await res.json());
+  if (res.ok) return toRepo(await res.json(), true);
   if (res.status === 409) return findUserRepo(name);
   throw new Error(`Gitea repo create failed (${res.status}): ${await safeText(res)}`);
 }
@@ -45,13 +49,13 @@ async function findUserRepo(name: string): Promise<GiteaRepo> {
   const list = (await res.json()) as unknown[];
   const match = list.find((r) => (r as { name?: string }).name === name);
   if (!match) throw new Error(`Gitea repo "${name}" exists but could not be located.`);
-  return toRepo(match);
+  return toRepo(match, false);
 }
 
-function toRepo(json: unknown): GiteaRepo {
+function toRepo(json: unknown, created: boolean): GiteaRepo {
   const r = json as { full_name?: string; clone_url?: string; html_url?: string };
   if (!r.full_name || !r.clone_url) throw new Error('Unexpected Gitea repo payload.');
-  return { fullName: r.full_name, cloneUrl: r.clone_url, htmlUrl: r.html_url ?? r.clone_url };
+  return { fullName: r.full_name, cloneUrl: r.clone_url, htmlUrl: r.html_url ?? r.clone_url, created };
 }
 
 async function safeText(res: Response): Promise<string> {
