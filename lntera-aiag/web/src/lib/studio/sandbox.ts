@@ -4,6 +4,13 @@ import { GitRepo, type GitLogEntry, type GitStatusEntry } from './git';
 import { hydratePodFromGit, syncPodToGit } from './git-sync';
 import type { StudioTreeEntry } from './protocol';
 
+/** Lifecycle of the background dev-server process (see `startDevServer`). */
+export interface DevServerUpdate {
+  status: 'idle' | 'starting' | 'exited';
+  exitCode: number | null;
+  chunk?: string;
+}
+
 /**
  * The in-browser code runtime the Studio drives. Swappable (BrowserPod today; WebContainers or a
  * remote E2B sandbox later) — the Realtime bridge listener + the UI depend only on this interface.
@@ -48,6 +55,18 @@ export interface SandboxProvider {
   /** Public preview URL for a server running inside the sandbox (Portal), or null. */
   previewUrl(): string | null;
 
+  /**
+   * Start a long-lived background process (e.g. a dev server) on a dedicated terminal, separate
+   * from exec()'s serialized worker — so it never blocks/hangs a normal command. No-op if a
+   * process is already starting. Resolves once launched, NOT once it exits or is ready to serve
+   * — watch onDevServerUpdate()/onPreview() for actual readiness.
+   */
+  startDevServer(command: string, args?: string[], opts?: { cwd?: string }): Promise<void>;
+  /** Current dev-server lifecycle status ('idle' before the first start, 'exited' if it crashed/stopped). */
+  devServerStatus(): { status: 'idle' | 'starting' | 'exited'; exitCode: number | null };
+  /** Notified on every dev-server status change and output chunk. */
+  onDevServerUpdate(cb: (update: DevServerUpdate) => void): () => void;
+
   /** Subscribe to ALL command output (for the terminal UI). Returns an unsubscribe fn. */
   subscribeOutput(cb: (chunk: string) => void): () => void;
   /** Notified when the preview (Portal) URL becomes available or changes. */
@@ -82,6 +101,16 @@ export class BrowserPodProvider implements SandboxProvider {
   private readonly previewSubs = new Set<(url: string) => void>();
   // Git runs entirely outside the pod (plain page JS against IndexedDB) — see git.ts for why.
   private readonly git: GitRepo;
+
+  // Dev server: a SEPARATE terminal from `worker` because it never exits — running it on the
+  // shared worker would permanently wedge exec()'s serialized sentinel-based completion tracking.
+  private devTerminal: Terminal | null = null;
+  private devState: { status: 'idle' | 'starting' | 'exited'; exitCode: number | null } = {
+    status: 'idle',
+    exitCode: null,
+  };
+  private devTailBuf = '';
+  private readonly devSubs = new Set<(update: DevServerUpdate) => void>();
 
   // Serialize exec (single worker terminal) + track the in-flight capture.
   private execChain: Promise<unknown> = Promise.resolve();
@@ -158,6 +187,66 @@ export class BrowserPodProvider implements SandboxProvider {
   }
   previewUrl(): string | null {
     return this.preview;
+  }
+
+  devServerStatus(): { status: 'idle' | 'starting' | 'exited'; exitCode: number | null } {
+    return this.devState;
+  }
+  onDevServerUpdate(cb: (update: DevServerUpdate) => void): () => void {
+    this.devSubs.add(cb);
+    return () => this.devSubs.delete(cb);
+  }
+  private setDevState(patch: Partial<{ status: 'idle' | 'starting' | 'exited'; exitCode: number | null }>, chunk?: string): void {
+    this.devState = { ...this.devState, ...patch };
+    const update: DevServerUpdate = { ...this.devState, ...(chunk !== undefined ? { chunk } : {}) };
+    for (const cb of this.devSubs) cb(update);
+  }
+
+  async startDevServer(command: string, args: string[] = [], opts?: { cwd?: string }): Promise<void> {
+    if (this.devState.status === 'starting') return;
+    const pod = this.podOrThrow();
+
+    if (!this.devTerminal) {
+      const decoder = new TextDecoder();
+      this.devTerminal = await pod.createCustomTerminal({
+        cols: 120,
+        rows: 40,
+        onOutput: (buffer: ArrayBuffer) => {
+          const view = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+          const copy = new Uint8Array(view.byteLength);
+          copy.set(view);
+          const text = decoder.decode(copy);
+          // Keep only a short tail for sentinel-boundary detection — the process runs indefinitely,
+          // so accumulating full output here (like exec()'s `a.buf`) would leak memory over a session.
+          this.devTailBuf = (this.devTailBuf + text).slice(-200);
+          const m = SENTINEL_RE.exec(this.devTailBuf);
+          if (m) {
+            this.devTailBuf = '';
+            this.setDevState({ status: 'exited', exitCode: Number(m[1]) }, text.replace(SENTINEL_RE, ''));
+            return;
+          }
+          this.setDevState({}, text);
+        },
+      });
+    }
+
+    const cwd = this.abs(opts?.cwd ?? '.');
+    const line = [command, ...args].map(shellQuote).join(' ');
+    const env = 'export CI=true npm_config_yes=true npm_config_fund=false npm_config_audit=false;';
+    const script = `${env} cd ${shellQuote(cwd)} 2>/dev/null; ${line} < /dev/null 2>&1; printf '\\n${SENTINEL}%s\\n' "$?"`;
+
+    this.devTailBuf = '';
+    this.setDevState({ status: 'starting', exitCode: null });
+    try {
+      const started = pod.run('bash', ['-lc', script], { terminal: this.devTerminal, echo: false }) as unknown;
+      if (started && typeof (started as { catch?: unknown }).catch === 'function') {
+        (started as Promise<unknown>).catch((err) => {
+          this.setDevState({ status: 'exited', exitCode: -1 }, err instanceof Error ? err.message : String(err));
+        });
+      }
+    } catch (err) {
+      this.setDevState({ status: 'exited', exitCode: -1 }, err instanceof Error ? err.message : String(err));
+    }
   }
 
   async writeFile(path: string, content: string): Promise<void> {
@@ -329,9 +418,12 @@ export class BrowserPodProvider implements SandboxProvider {
   async dispose(): Promise<void> {
     this.outputSubs.clear();
     this.previewSubs.clear();
+    this.devSubs.clear();
     this.active = null;
     this.pod = null;
     this.worker = null;
+    this.devTerminal = null;
+    this.devState = { status: 'idle', exitCode: null };
   }
 
   /** Resolve a project-relative path against the workdir (absolute paths pass through). */
