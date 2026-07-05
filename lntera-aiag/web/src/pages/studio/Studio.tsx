@@ -17,7 +17,7 @@ import { Composer } from '../../components/chat/Composer';
 import { StudioMessageBubble, type StudioChatMessage } from '../../components/studio/StudioMessage';
 import { newStudioSessionId } from '../../lib/studio/session';
 import { runStudioBridge } from '../../lib/studio/bridge';
-import { BrowserPodProvider, type SandboxProvider } from '../../lib/studio/sandbox';
+import { BrowserPodProvider, type DevServerUpdate, type SandboxProvider } from '../../lib/studio/sandbox';
 import { streamStudioChat } from '../../lib/studio/chat';
 import {
   activityFromToolCall,
@@ -227,6 +227,11 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
   const [status, setStatus] = useState<'booting' | 'ready' | 'error'>('booting');
   const [bootError, setBootError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [devServer, setDevServer] = useState<{ status: 'idle' | 'starting' | 'exited'; exitCode: number | null }>({
+    status: 'idle',
+    exitCode: null,
+  });
+  const [devOutput, setDevOutput] = useState('');
   const [messages, setMessages] = useState<StudioChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
@@ -268,6 +273,12 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
     providerRef.current = provider;
     const stopBridge = runStudioBridge({ api, sessionId, provider });
     const offPreview = provider.onPreview((url) => setPreviewUrl(url));
+    const offDevServer = provider.onDevServerUpdate((update: DevServerUpdate) => {
+      setDevServer({ status: update.status, exitCode: update.exitCode });
+      // A fresh 'starting' event with no chunk marks a new run — clear the previous run's tail.
+      if (update.status === 'starting' && update.chunk === undefined) setDevOutput('');
+      else if (update.chunk) setDevOutput((prev) => (prev + update.chunk).slice(-4000));
+    });
 
     (async () => {
       // Boot the pod (a WASM VM — the slow part) and provision the Gitea repo/token concurrently;
@@ -280,14 +291,32 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
         provider.boot(),
         initProject(api, project.id).catch((e: unknown) => (e instanceof Error ? e : new Error(String(e)))),
       ]);
+      let cloned = false;
       try {
         if (initResult instanceof Error) throw initResult;
         const cloneUrl = `${window.location.origin}${initResult.gitPath}`;
         await provider.gitClone(cloneUrl);
+        cloned = true;
       } catch (e) {
         setGitWarning(e instanceof Error ? e.message : String(e));
       }
       setStatus('ready');
+
+      // Webapp projects get a live local preview: install once, then run the dev server in the
+      // background so BrowserPod's port detection (onPreview) picks it up. Best-effort — errors
+      // surface through devServer/devOutput state in the Preview pane, not a blocking boot error.
+      // MCP projects have no dev server (an edge function, not a visual app) — nothing to start.
+      if (cloned && project.kind === 'webapp') {
+        void (async () => {
+          try {
+            const install = await provider.exec('npm', ['install']);
+            if (install.exitCode !== 0) return;
+            await provider.startDevServer('npm', ['run', 'dev', '--', '-H', '0.0.0.0']);
+          } catch {
+            // best-effort — see comment above
+          }
+        })();
+      }
     })().catch((e) => {
       setBootError(e instanceof Error ? e.message : String(e));
       setStatus('error');
@@ -295,6 +324,7 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
 
     return () => {
       offPreview();
+      offDevServer();
       stopBridge();
       void provider.dispose();
     };
@@ -571,11 +601,36 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
             <span className="text-sm font-medium">Preview</span>
             {status === 'booting' ? (
               <span className="text-xs text-muted-foreground">Starting your workspace…</span>
+            ) : project.kind === 'webapp' && devServer.status === 'starting' && !previewUrl ? (
+              <span className="text-xs text-muted-foreground">Starting dev server…</span>
+            ) : project.kind === 'webapp' && devServer.status === 'exited' ? (
+              <span className="text-xs text-destructive">Dev server stopped (exit {devServer.exitCode})</span>
             ) : null}
           </div>
           <div className="min-h-0 flex-1 p-3">
             {previewUrl ? (
               <iframe title="Preview" src={previewUrl} className="h-full w-full rounded-lg border bg-white shadow-sm" />
+            ) : project.kind === 'webapp' && devServer.status === 'exited' ? (
+              <div className="flex h-full min-h-0 flex-col gap-2">
+                <Alert tone="error">The dev server stopped unexpectedly (exit code {devServer.exitCode}).</Alert>
+                <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-lg border bg-background p-3 font-mono text-xs">
+                  {devOutput || 'No output captured.'}
+                </pre>
+              </div>
+            ) : project.kind === 'webapp' && devServer.status === 'starting' ? (
+              <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center">
+                <span className="text-[15px] font-medium">Starting your dev server…</span>
+                <span className="max-w-xs text-sm text-muted-foreground">
+                  This usually takes a few seconds the first time.
+                </span>
+              </div>
+            ) : project.kind === 'mcp' ? (
+              <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center">
+                <span className="text-[15px] font-medium">MCP extensions have no visual preview</span>
+                <span className="max-w-xs text-sm text-muted-foreground">
+                  Publish, then connect it to your assistant to try it out.
+                </span>
+              </div>
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center">
                 <span className="text-[15px] font-medium">Your app will appear here</span>
