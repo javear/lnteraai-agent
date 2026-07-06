@@ -15,6 +15,7 @@ import {
 import { fetchPinnableModels, type PinnableModel } from '../../lib/integrations';
 import { Composer } from '../../components/chat/Composer';
 import { StudioMessageBubble, type StudioChatMessage } from '../../components/studio/StudioMessage';
+import { McpTester } from '../../components/studio/McpTester';
 import { newStudioSessionId } from '../../lib/studio/session';
 import { runStudioBridge } from '../../lib/studio/bridge';
 import { BrowserPodProvider, type DevServerUpdate, type SandboxProvider } from '../../lib/studio/sandbox';
@@ -672,11 +673,14 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
                   This usually takes a few seconds the first time.
                 </span>
               </div>
+            ) : project.kind === 'mcp' && proj.mcp_url ? (
+              // Re-mount on each new deploy URL so a fresh publish re-fetches the tool list.
+              <McpTester key={proj.mcp_url} api={api} projectId={project.id} />
             ) : project.kind === 'mcp' ? (
               <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center">
-                <span className="text-[15px] font-medium">MCP extensions have no visual preview</span>
+                <span className="text-[15px] font-medium">Your extension's test console appears here</span>
                 <span className="max-w-xs text-sm text-muted-foreground">
-                  Publish, then connect it to your assistant to try it out.
+                  Hit Publish and you'll be able to see and try every tool your extension offers, right here.
                 </span>
               </div>
             ) : (

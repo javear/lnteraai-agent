@@ -97,3 +97,34 @@ export async function connectMcpProject(api: Api, id: string): Promise<StudioPro
   );
   return project;
 }
+
+/** One tool as reported by the MCP server's own tools/list. */
+export interface McpToolDef {
+  name: string;
+  description?: string;
+  inputSchema?: {
+    type?: string;
+    properties?: Record<string, { type?: string; description?: string }>;
+    required?: string[];
+  };
+}
+
+/**
+ * Proxy one JSON-RPC call to the project's deployed MCP endpoint (server-side, so the EdgeOne
+ * function needs no CORS). Returns the upstream JSON-RPC response as-is.
+ */
+export async function mcpCall(
+  api: Api,
+  id: string,
+  method: string,
+  params?: unknown,
+): Promise<{ status: number; response: { result?: unknown; error?: { code?: number; message?: string } } }> {
+  return json(
+    await api(`/svc/v1/studio/projects/${id}/mcp-call`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ method, ...(params !== undefined ? { params } : {}) }),
+    }),
+    'MCP call failed.',
+  );
+}

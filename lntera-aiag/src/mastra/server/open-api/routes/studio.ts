@@ -254,6 +254,68 @@ export const studioDeployProjectRoute = registerApiRoute(`${OPEN_API_PREFIX}/stu
   },
 });
 
+const mcpCallBody = z
+  .object({
+    method: z.string().min(1).max(128),
+    params: z.unknown().optional(),
+  })
+  .strict();
+
+/**
+ * POST /svc/v1/studio/projects/:id/mcp-call — proxy ONE JSON-RPC call to the project's own deployed
+ * MCP endpoint, for the Studio "MCP Tester" panel. Proxied server-side (not called from the browser)
+ * so no CORS support is required of the EdgeOne function. Not an open proxy: the target URL is the
+ * server-stored mcp_url of a project owned by the authenticated tenant — never caller-supplied.
+ */
+export const studioMcpCallRoute = registerApiRoute(`${OPEN_API_PREFIX}/studio/projects/:id/mcp-call`, {
+  method: 'POST',
+  requiresAuth: false,
+  openapi: {
+    summary: "Proxy a JSON-RPC call to the project's deployed MCP endpoint (tester panel)",
+    tags: ['Studio'],
+    parameters: [authHeaderParam],
+    responses: { 200: { description: '{ status, response }' }, 400: { description: 'Invalid/not deployed' }, 401: { description: 'Unauthorized' }, 404: { description: 'Not found' } },
+  },
+  handler: async (c: StudioContext) => {
+    const auth = await resolveTenantFromBearer(c);
+    if (auth instanceof Response) return auth;
+
+    const id = c.req.param('id') ?? '';
+    const project = await getTenantProject(auth.tenantId, id);
+    if (!project) return openApiJsonError(c, 404, 'not_found', 'Project not found.');
+    if (project.kind !== 'mcp' || !project.mcp_url) {
+      return openApiJsonError(c, 400, 'not_deployed', 'Publish the project first — there is no live MCP endpoint to test yet.');
+    }
+
+    let body;
+    try {
+      body = mcpCallBody.parse(await c.req.json());
+    } catch (err) {
+      const msg = err instanceof z.ZodError ? err.issues.map((i) => i.message).join('; ') : String(err);
+      return openApiJsonError(c, 400, 'invalid_body', msg);
+    }
+
+    try {
+      const res = await fetch(project.mcp_url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: body.method, params: body.params ?? {} }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      const text = await res.text();
+      let response: unknown;
+      try {
+        response = JSON.parse(text);
+      } catch {
+        response = { raw: text.slice(0, 4000) };
+      }
+      return c.json({ status: res.status, response });
+    } catch (err) {
+      return openApiJsonError(c, 400, 'mcp_call_failed', err instanceof Error ? err.message : 'MCP call failed.');
+    }
+  },
+});
+
 /** POST /svc/v1/studio/projects/:id/connect — attach a deployed MCP project to the business agent. */
 export const studioConnectProjectRoute = registerApiRoute(`${OPEN_API_PREFIX}/studio/projects/:id/connect`, {
   method: 'POST',
@@ -486,6 +548,7 @@ export const studioRoutes = [
   studioInitProjectRoute,
   studioDeployProjectRoute,
   studioConnectProjectRoute,
+  studioMcpCallRoute,
   studioCommandStreamRoute,
   studioCommandResultRoute,
   studioGitProxyGetRoute,
