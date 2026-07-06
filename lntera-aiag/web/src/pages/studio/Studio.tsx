@@ -19,6 +19,7 @@ import { newStudioSessionId } from '../../lib/studio/session';
 import { runStudioBridge } from '../../lib/studio/bridge';
 import { BrowserPodProvider, type DevServerUpdate, type SandboxProvider } from '../../lib/studio/sandbox';
 import { streamStudioChat } from '../../lib/studio/chat';
+import type { StreamHandlers } from '../../lib/chat';
 import {
   activityFromToolCall,
   applyToolResult,
@@ -414,12 +415,19 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
       scheduleRender();
     });
 
-    try {
-      await streamStudioChat(
-        client,
-        content,
-        { threadId: project.id, resource, sessionId, kind: project.kind, pinnedModel: pinnedModel || undefined },
-        {
+    // Auto-continue: a turn that ends with reason 'tool-calls' or 'length' was CUT OFF mid-work
+    // (step or token limit), not finished — the agent still had things to do. Instead of leaving a
+    // half-done task and waiting for the user to type "continue" (a recurring confusion), quietly
+    // resume it in the same bubble, bounded so a pathological loop can't run away.
+    const MAX_AUTO_CONTINUES = 2;
+    const CONTINUE_PROMPT =
+      'Continue exactly where you left off on my previous request. Do not repeat work already done — pick up the remaining steps and finish, then verify as usual.';
+    let finishReason: string | undefined;
+
+    const handlers: StreamHandlers = {
+          onFinish: (reason) => {
+            finishReason = reason;
+          },
           onText: (d) => {
             closeThought();
             acc += d;
@@ -462,9 +470,24 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
             acc = reason;
             scheduleRender();
           },
-        },
-        () => stopRef.current,
-      );
+    };
+
+    try {
+      let prompt = content;
+      for (let round = 0; ; round++) {
+        finishReason = undefined;
+        await streamStudioChat(
+          client,
+          prompt,
+          { threadId: project.id, resource, sessionId, kind: project.kind, pinnedModel: pinnedModel || undefined },
+          handlers,
+          () => stopRef.current,
+        );
+        const cutOff = finishReason === 'tool-calls' || finishReason === 'length';
+        if (!cutOff || stopRef.current || round >= MAX_AUTO_CONTINUES) break;
+        if (acc && !acc.endsWith('\n\n')) acc += '\n\n';
+        prompt = CONTINUE_PROMPT;
+      }
     } finally {
       offOutput?.();
     }

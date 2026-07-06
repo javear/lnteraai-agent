@@ -39,7 +39,18 @@ export interface StreamHandlers {
   onTripwire?: (code: string | undefined, reason: string) => void;
   /** The provider+model that produced this turn, e.g. "Gemini · gemini-2.0-flash". */
   onModel?: (label: string) => void;
+  /** The turn's terminal `finish` chunk, with its finish reason when the stream provides one —
+   *  'stop' is a natural end; 'tool-calls'/'length' mean the agent was cut off mid-work (step or
+   *  token limit) and a caller may choose to auto-continue. */
+  onFinish?: (reason: string | undefined) => void;
   onError?: (message: string) => void;
+}
+
+/** Best-effort finish reason across the payload shapes Mastra/AI-SDK streams have used. */
+export function readFinishReason(payload: Record<string, unknown>): string | undefined {
+  const step = payload.stepResult as { reason?: unknown } | undefined;
+  const raw = payload.finishReason ?? step?.reason ?? payload.reason;
+  return typeof raw === 'string' ? raw : undefined;
 }
 
 /** Pull the tool args out of a tool-call chunk payload across the field names Mastra has used. */
