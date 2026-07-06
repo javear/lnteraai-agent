@@ -24,7 +24,7 @@ export async function deployToEdgeOne(input: {
   const zipPath = join(dir, 'site.zip');
   try {
     await writeFile(zipPath, Buffer.from(input.zipBase64, 'base64'));
-    const stdout = await runEdgeone(['makers', 'deploy', zipPath, '-n', input.projectName, '-t', token]);
+    const stdout = await runEdgeone(['makers', 'deploy', zipPath, '-n', input.projectName, '-t', token], [token]);
     const url = extractUrl(stdout);
     if (!url) throw new Error(`Could not parse a deploy URL from EdgeOne output:\n${stdout.slice(0, 500)}`);
     return { url };
@@ -45,11 +45,11 @@ const EDGEONE_LAUNCHERS: Array<[string, string[]]> = [
   ['npx', ['--yes', 'edgeone']],
 ];
 
-async function runEdgeone(args: string[]): Promise<string> {
+async function runEdgeone(args: string[], redact: string[] = []): Promise<string> {
   let lastError: unknown;
   for (const [cmd, prefix] of EDGEONE_LAUNCHERS) {
     try {
-      return await run(cmd, [...prefix, ...args]);
+      return await run(cmd, [...prefix, ...args], redact);
     } catch (err) {
       lastError = err;
       if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') continue; // launcher missing → try next
@@ -61,12 +61,37 @@ async function runEdgeone(args: string[]): Promise<string> {
   );
 }
 
-function run(cmd: string, args: string[]): Promise<string> {
+/** Strip secret values (e.g. the API token, which rides in argv) out of a string before it's ever thrown/logged. */
+function redactSecrets(text: string, redact: string[]): string {
+  let out = text;
+  for (const secret of redact) {
+    if (secret) out = out.split(secret).join('[redacted]');
+  }
+  return out;
+}
+
+/** The CLI colors its output for a terminal — strip the ANSI codes before this ever reaches a toast. */
+// eslint-disable-next-line no-control-regex
+const ANSI_RE = /\x1b\[[0-9;]*m/g;
+function stripAnsi(text: string): string {
+  return text.replace(ANSI_RE, '');
+}
+
+function run(cmd: string, args: string[], redact: string[] = []): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(cmd, args, { timeout: 180_000, maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile(cmd, args, { timeout: 180_000, maxBuffer: 16 * 1024 * 1024 }, (err, rawStdout, rawStderr) => {
+      const stdout = stripAnsi(rawStdout);
+      const stderr = stripAnsi(rawStderr);
       if (err) {
         // Preserve ENOENT so runEdgeone can fall through to the next launcher.
-        const wrapped = new Error(`${cmd} failed: ${stderr || err.message}`) as NodeJS.ErrnoException;
+        //
+        // The CLI writes its actual, useful failure reason to STDOUT (confirmed directly — its
+        // colored [cli][✘] lines are stdout, not stderr), so preferring stderr alone silently
+        // discarded it and left only Node's generic "Command failed: <full argv>" — which, worse,
+        // embeds the token we passed via `-t` in plain text. Prefer real CLI output; redact secrets
+        // from whatever we end up using either way, since the argv fallback can still leak it.
+        const detail = [stdout, stderr].map((s) => s.trim()).filter(Boolean).join('\n') || err.message;
+        const wrapped = new Error(`${cmd} failed: ${redactSecrets(detail, redact)}`) as NodeJS.ErrnoException;
         wrapped.code = (err as NodeJS.ErrnoException).code;
         reject(wrapped);
         return;
