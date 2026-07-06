@@ -202,16 +202,28 @@ export const studioMessagesRoute = registerApiRoute(`${OPEN_API_PREFIX}/studio/p
     const beforeRaw = c.req.query('before');
     const before = beforeRaw ? new Date(beforeRaw) : null;
 
-    const result = await memory.recall({
-      threadId: project.id,
-      resourceId: auth.tenantId,
-      perPage: limit,
-      page: 0,
-      orderBy: { field: 'createdAt', direction: 'DESC' },
-      ...(before && !Number.isNaN(before.getTime())
-        ? { filter: { dateRange: { end: before, endExclusive: true } } }
-        : {}),
-    });
+    let result;
+    try {
+      result = await memory.recall({
+        threadId: project.id,
+        resourceId: auth.tenantId,
+        perPage: limit,
+        page: 0,
+        orderBy: { field: 'createdAt', direction: 'DESC' },
+        ...(before && !Number.isNaN(before.getTime())
+          ? { filter: { dateRange: { end: before, endExclusive: true } } }
+          : {}),
+      });
+    } catch (err) {
+      // A brand-new project's thread doesn't exist until the agent's first turn creates it (Mastra
+      // auto-creates threads lazily on first stream() call, never up front) — recall() throws rather
+      // than returning empty for a thread it's never heard of. That's not a real error here, just
+      // "no history yet."
+      if (err instanceof Error && /no thread found/i.test(err.message)) {
+        return c.json({ messages: [], hasMore: false, nextBefore: null });
+      }
+      throw err;
+    }
 
     const ordered = [...result.messages].sort(
       (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),

@@ -346,9 +346,26 @@ export const studioDeployPreviewTool = createTool({
     if (!project) throw new Error('Project not found.');
 
     const { zipBase64 } = await getStudioBridge().call(tenantId, sessionId, { op: 'buildZip', dir: '.' });
-    const { url } = await deployToEdgeOne({ projectName: repoNameFor(project.id), zipBase64, env: 'preview' });
-    await updateTenantProject(tenantId, project.id, { preview_url: url });
-    return { ok: true as const, url };
+    const projectName = repoNameFor(project.id);
+    try {
+      const { url } = await deployToEdgeOne({ projectName, zipBase64, env: 'preview' });
+      await updateTenantProject(tenantId, project.id, { preview_url: url });
+      return { ok: true as const, url };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes('create a production deployment first')) throw err;
+      // EdgeOne refuses to deploy ANY environment for a brand-new project until a production
+      // deployment exists at least once — a one-time platform requirement, confirmed live (a fresh
+      // project's very first deploy attempt, via this preview path, failed with exactly this message).
+      // Bootstrap production transparently with the same build, then retry the preview deploy the
+      // agent actually asked for. This genuinely creates the tenant's first production deployment, so
+      // record it as such — future updates to production still only ever happen via explicit Publish.
+      const prod = await deployToEdgeOne({ projectName, zipBase64, env: 'production' });
+      await updateTenantProject(tenantId, project.id, { mcp_url: prod.url, status: 'deployed' });
+      const { url } = await deployToEdgeOne({ projectName, zipBase64, env: 'preview' });
+      await updateTenantProject(tenantId, project.id, { preview_url: url });
+      return { ok: true as const, url };
+    }
   },
 });
 
