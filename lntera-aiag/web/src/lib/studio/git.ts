@@ -19,6 +19,9 @@ if (typeof globalThis.Buffer === 'undefined') {
 const REPO_DIR = '/repo';
 const AUTHOR = { name: 'Lntera Studio', email: 'studio@lntera.ai' };
 
+/** Outcome of a sync attempt against the remote's current HEAD. */
+export type GitSyncStatus = 'up-to-date' | 'fast-forwarded' | 'diverged' | 'uncommitted-changes';
+
 export type GitFileStatus = 'added' | 'modified' | 'deleted';
 export interface GitStatusEntry {
   path: string;
@@ -75,6 +78,51 @@ export class GitRepo {
     if (!result.ok || result.error) {
       throw new Error(`git push failed: ${result.error ?? 'unknown error'}`);
     }
+  }
+
+  /**
+   * Network op: check the remote's current HEAD and fast-forward the local branch to match it, but
+   * ONLY when that's unambiguously safe — never touches anything if there are uncommitted local
+   * changes (would silently discard them) or if local has its own commits the remote doesn't have yet
+   * (a real merge, which this deliberately doesn't attempt — same "refuse rather than guess" posture
+   * as checkout()). This is what lets a browser tab pick up work pushed from elsewhere (another
+   * session, another device, or a server-side fix) without needing to re-clone from scratch.
+   */
+  async pull(url: string, ref?: string): Promise<GitSyncStatus> {
+    const branch = ref ?? (await this.currentBranch());
+    if (!branch) return 'up-to-date'; // no commits/branch yet — nothing to compare against
+
+    await git.fetch({ fs: this.fs, http, dir: REPO_DIR, url, ref: branch, singleBranch: true, tags: false });
+
+    let localOid: string | null;
+    try {
+      localOid = await git.resolveRef({ fs: this.fs, dir: REPO_DIR, ref: branch });
+    } catch {
+      localOid = null; // local branch has no commits yet
+    }
+    const remoteOid = await git.resolveRef({ fs: this.fs, dir: REPO_DIR, ref: `refs/remotes/origin/${branch}` });
+    if (localOid === remoteOid) return 'up-to-date';
+
+    if ((await this.status()).length > 0) return 'uncommitted-changes';
+
+    // Fast-forward only: remote must be strictly ahead of local (local's history is a prefix of it).
+    const remoteIsAhead =
+      localOid === null ||
+      (await git.isDescendent({ fs: this.fs, dir: REPO_DIR, oid: remoteOid, ancestor: localOid }).catch(() => false));
+    if (remoteIsAhead) {
+      await git.writeRef({ fs: this.fs, dir: REPO_DIR, ref: `refs/heads/${branch}`, value: remoteOid, force: true });
+      await git.checkout({ fs: this.fs, dir: REPO_DIR, ref: branch, force: true });
+      return 'fast-forwarded';
+    }
+
+    // Not remote-ahead — if LOCAL is instead the one strictly ahead (its own commits not yet pushed),
+    // there's simply nothing new to pull; that's normal, not a conflict, so don't flag it as one.
+    const localIsAhead =
+      localOid !== null &&
+      (await git.isDescendent({ fs: this.fs, dir: REPO_DIR, oid: localOid, ancestor: remoteOid }).catch(() => false));
+    if (localIsAhead) return 'up-to-date';
+
+    return 'diverged'; // both sides have commits the other lacks — a real merge, which this won't attempt
   }
 
   async currentBranch(): Promise<string | undefined> {

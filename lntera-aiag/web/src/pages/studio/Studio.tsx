@@ -6,6 +6,7 @@ import { Alert, Badge, Button, Card } from '../../ui';
 import {
   connectMcpProject,
   createProject,
+  deleteProject,
   deployProject,
   getStudioMessages,
   initProject,
@@ -20,6 +21,7 @@ import { McpTester } from '../../components/studio/McpTester';
 import { newStudioSessionId } from '../../lib/studio/session';
 import { runStudioBridge } from '../../lib/studio/bridge';
 import { BrowserPodProvider, type DevServerUpdate, type SandboxProvider } from '../../lib/studio/sandbox';
+import type { GitSyncStatus } from '../../lib/studio/git';
 import { streamStudioChat } from '../../lib/studio/chat';
 import type { StreamHandlers } from '../../lib/chat';
 import {
@@ -142,6 +144,15 @@ export default function Studio() {
           toast.error(e instanceof Error ? e.message : String(e));
         }
       }}
+      onDelete={async (p) => {
+        if (!window.confirm(`Delete "${p.name}"? This can't be undone.`)) return;
+        try {
+          await deleteProject(api, p.id);
+          reload();
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : String(e));
+        }
+      }}
       hasSession={Boolean(session)}
     />
   );
@@ -151,11 +162,13 @@ function ProjectList({
   projects,
   onOpen,
   onCreate,
+  onDelete,
   hasSession,
 }: {
   projects: StudioProject[] | null;
   onOpen: (p: StudioProject) => void;
   onCreate: (name: string, kind: StudioProjectKind) => void;
+  onDelete: (p: StudioProject) => void;
   hasSession: boolean;
 }) {
   const [name, setName] = useState('');
@@ -225,9 +238,14 @@ function ProjectList({
                   </a>
                 ) : null}
               </div>
-              <Button variant="secondary" onClick={() => onOpen(p)}>
-                Open
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" onClick={() => onDelete(p)}>
+                  Delete
+                </Button>
+                <Button variant="secondary" onClick={() => onOpen(p)}>
+                  Open
+                </Button>
+              </div>
             </Card>
           ))
         )}
@@ -262,6 +280,7 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [proj, setProj] = useState<StudioProject>(project);
   const [gitWarning, setGitWarning] = useState<string | null>(null);
   const [models, setModels] = useState<PinnableModel[]>([]);
@@ -337,13 +356,10 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
         initProject(api, project.id).catch((e: unknown) => (e instanceof Error ? e : new Error(String(e)))),
       ]);
       let cloned = false;
-      try {
-        if (initResult instanceof Error) throw initResult;
-        const cloneUrl = `${window.location.origin}${initResult.gitPath}`;
-        await provider.gitClone(cloneUrl);
-        cloned = true;
-      } catch (e) {
-        setGitWarning(e instanceof Error ? e.message : String(e));
+      if (initResult instanceof Error) {
+        setGitWarning(initResult.message);
+      } else {
+        cloned = (await applySync(provider, initResult.gitPath)) !== null;
       }
       setStatus('ready');
 
@@ -524,6 +540,46 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
     setStreaming(false);
   }
 
+  /**
+   * Clone (first time) or sync (every later call) the project's git state into the sandbox, and
+   * surface the outcome. Shared by the boot flow and the manual "Sync" button — the only difference is
+   * whether a routine "nothing new" result gets a toast (silent on boot, since that's the common case
+   * on every reopen; explicit on a manual click, so pressing the button always visibly does something).
+   */
+  async function applySync(provider: SandboxProvider, gitPath: string, opts?: { manual?: boolean }): Promise<'cloned' | GitSyncStatus | null> {
+    try {
+      const cloneUrl = `${window.location.origin}${gitPath}`;
+      const sync = await provider.gitClone(cloneUrl);
+      if (sync === 'fast-forwarded') toast.success('Synced the latest changes from another session.');
+      else if (sync === 'diverged') {
+        toast.info("There's newer work on the server that couldn't be auto-synced — ask the agent to check and merge it in.");
+      } else if (opts?.manual) {
+        toast.success('Already up to date.');
+      }
+      setGitWarning(null);
+      return sync;
+    } catch (e) {
+      setGitWarning(e instanceof Error ? e.message : String(e));
+      return null;
+    }
+  }
+
+  async function syncNow() {
+    const provider = providerRef.current;
+    if (!provider || syncing) return;
+    setSyncing(true);
+    try {
+      const initResult = await initProject(api, project.id).catch((e: unknown) => (e instanceof Error ? e : new Error(String(e))));
+      if (initResult instanceof Error) {
+        setGitWarning(initResult.message);
+        return;
+      }
+      await applySync(provider, initResult.gitPath, { manual: true });
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   async function publish() {
     const provider = providerRef.current;
     if (!provider || publishing) return;
@@ -613,6 +669,9 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
               {proj.kind === 'mcp' ? 'MCP endpoint' : 'Live site'} ↗
             </a>
           ) : null}
+          <Button variant="ghost" disabled={syncing || status !== 'ready'} onClick={() => void syncNow()}>
+            {syncing ? 'Syncing…' : 'Sync'}
+          </Button>
           <Button variant="secondary" disabled={publishing || status !== 'ready'} onClick={publish}>
             {publishing ? 'Publishing…' : 'Publish'}
           </Button>

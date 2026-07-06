@@ -1,6 +1,6 @@
 import { BrowserPod, type Terminal, type TextFile } from '@leaningtech/browserpod';
 import { zipSync } from 'fflate';
-import { GitRepo, type GitLogEntry, type GitStatusEntry } from './git';
+import { GitRepo, type GitLogEntry, type GitStatusEntry, type GitSyncStatus } from './git';
 import { hydratePodFromGit, syncPodToGit } from './git-sync';
 import type { StudioTreeEntry } from './protocol';
 
@@ -30,8 +30,13 @@ export interface SandboxProvider {
     opts?: { cwd?: string; onOutput?: (chunk: string, stream: 'stdout' | 'stderr') => void },
   ): Promise<{ exitCode: number; stdout: string; stderr: string }>;
 
-  /** Network op (clone/fetch), idempotent — a no-op re-clone if this browser already has the repo. */
-  gitClone(url: string, ref?: string): Promise<void>;
+  /**
+   * Network op, idempotent — clones on first call; on subsequent calls (e.g. re-opening the project
+   * in an already-hydrated browser), fetches and fast-forwards the local branch if the remote has
+   * moved and it's safe to do so (see GitRepo.pull()). Returns 'cloned' the first time, otherwise the
+   * sync outcome.
+   */
+  gitClone(url: string, ref?: string): Promise<'cloned' | GitSyncStatus>;
   /** Local-only: syncs the pod's current files into the git tree, then stages + commits everything. */
   gitCommit(message: string): Promise<{ commit: string }>;
   /** Network op: push the current branch. */
@@ -388,9 +393,18 @@ export class BrowserPodProvider implements SandboxProvider {
     });
   }
 
-  async gitClone(url: string, ref?: string): Promise<void> {
-    if (!(await this.git.isCloned())) await this.git.clone(url, ref);
+  async gitClone(url: string, ref?: string): Promise<'cloned' | GitSyncStatus> {
+    let result: 'cloned' | GitSyncStatus;
+    if (!(await this.git.isCloned())) {
+      await this.git.clone(url, ref);
+      result = 'cloned';
+    } else {
+      result = await this.git.pull(url, ref);
+    }
+    // The pod is a brand-new WASM instance every boot — only git's IndexedDB state persists across
+    // reloads — so it always needs re-hydrating from whatever git ends up holding, sync or no sync.
     await hydratePodFromGit(this, this.git);
+    return result;
   }
 
   async gitCommit(message: string): Promise<{ commit: string }> {
