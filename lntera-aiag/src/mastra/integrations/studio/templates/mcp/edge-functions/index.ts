@@ -1,7 +1,9 @@
-// Minimal MCP (Model Context Protocol) server exposed as a Tencent EdgeOne Pages Function — a single
+// Minimal MCP (Model Context Protocol) server exposed as a Tencent EdgeOne Edge Function — a single
 // HTTP endpoint implementing the MCP JSON-RPC methods a business assistant needs to discover and call
 // this server's tools. No server process, no build step: EdgeOne runs this file directly as an edge
-// function. Replace EXAMPLE_TOOL with a real one; add more the same way.
+// function. Must live at edge-functions/index.ts (project root, not a subfolder) so it serves at "/",
+// matching the bare project URL this server is called at. Replace EXAMPLE_TOOL with a real one; add
+// more the same way.
 
 interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -103,3 +105,8 @@ export async function onRequest({ request }: { request: Request }): Promise<Resp
       return jsonRpcError(body.id, -32601, `Method not found: ${body.method}`);
   }
 }
+
+// EdgeOne's newer "Edge Functions" docs show a default export (`export default function onRequest`),
+// while the platform historically also accepted a named one — export both so this deploys correctly
+// either way rather than depending on exactly which convention the current platform expects.
+export default onRequest;
