@@ -32,6 +32,29 @@ const SENTINEL_STRIP = /__BP_EXIT__-?\d+\s*/g;
 let actSeq = 0;
 const newActId = () => `pa-${++actSeq}`;
 
+/**
+ * Pick the right `npm run dev` args for whatever dev server this project actually has. The current
+ * starter template is Next.js, but a project created before that template existed (hand-scaffolded
+ * by an earlier agent) may still be Vite-based — each needs a different host-binding flag for
+ * BrowserPod's port detection to see it, and passing the wrong one could error out or hang. Returns
+ * null for anything we don't recognize, so the caller can skip starting a dev server entirely rather
+ * than guess.
+ */
+async function resolveDevServerArgs(provider: SandboxProvider): Promise<string[] | null> {
+  try {
+    const pkg = JSON.parse(await provider.readFile('package.json')) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+    if (deps.next) return ['run', 'dev', '--', '-H', '0.0.0.0'];
+    if (deps.vite) return ['run', 'dev', '--', '--host', '0.0.0.0'];
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export default function Studio() {
   const { session } = useAuth();
   const [projects, setProjects] = useState<StudioProject[] | null>(null);
@@ -311,7 +334,9 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
           try {
             const install = await provider.exec('npm', ['install']);
             if (install.exitCode !== 0) return;
-            await provider.startDevServer('npm', ['run', 'dev', '--', '-H', '0.0.0.0']);
+            const devArgs = await resolveDevServerArgs(provider);
+            if (!devArgs) return; // unrecognized dev tooling — leave the Preview pane on its default placeholder
+            await provider.startDevServer('npm', devArgs);
           } catch {
             // best-effort — see comment above
           }
