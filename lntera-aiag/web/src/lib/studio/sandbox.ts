@@ -326,13 +326,19 @@ export class BrowserPodProvider implements SandboxProvider {
     // Node walker → JSON, printed after a unique marker (not just "the last line") — confirmed live
     // that BrowserPod's `node` invocations can emit their own extra line (e.g. a startup banner like
     // "Node.js v22.15.0") alongside our script's output, which broke the previous "last line is our
-    // JSON" assumption deterministically (a retry didn't help — it's not a race, it's BrowserPod's
-    // own behavior around every `node -e` call). Scanning for our marker is immune to whatever
-    // BrowserPod prints before or after it.
+    // JSON" assumption deterministically. Scanning for our marker is immune to whatever BrowserPod
+    // prints before or after it.
     const marker = '__STUDIO_TREE_JSON__';
     const script = `const fs=require('fs'),p=require('path');const base=${JSON.stringify(base)};const out=[];function walk(d){for(const e of fs.readdirSync(d,{withFileTypes:true})){if(e.name==='.git'||e.name==='node_modules')continue;const fp=p.join(d,e.name);const rel=p.relative(${JSON.stringify(WORKDIR)},fp);if(e.isDirectory()){out.push({path:rel,type:'dir'});walk(fp);}else{out.push({path:rel,type:'file'});}}}try{walk(base);}catch(e){}console.log(${JSON.stringify(marker)}+JSON.stringify(out));`;
 
-    const { stdout } = await this.exec('node', ['-e', script]);
+    // BrowserPod's own launcher doesn't handle `node -e <script>` — confirmed live: it errors trying
+    // to require('-e') as a MODULE rather than recognizing Node's inline-eval flag at all (an error
+    // straight out of BrowserPod's own bpworker.js, not our script or real Node). Side-step the flag
+    // entirely: write the script to a real file (outside the project's own workdir, so it never
+    // shows up in the listing it produces) and run that — the most standard invocation there is.
+    const scriptPath = '/tmp/.studio-list-tree.js';
+    await this.writeFile(scriptPath, script);
+    const { stdout } = await this.exec('node', [scriptPath]);
     const lines = stdout.trim().split('\n');
     const markedLine = [...lines].reverse().find((l) => l.startsWith(marker));
     if (markedLine === undefined) {
