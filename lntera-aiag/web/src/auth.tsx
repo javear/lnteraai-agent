@@ -123,9 +123,15 @@ export function SessionProvider({
       supabase,
       session,
       loading,
-      api: (path, init = {}) => {
+      api: async (path, init = {}) => {
         const headers = new Headers(init.headers);
-        const token = session?.access_token;
+        // Read the token at CALL time, not closure-creation time. Long-lived callers (the Studio
+        // bridge holds one `api` reference for hours) would otherwise keep sending the access token
+        // that was current when this closure was built — after Supabase's ~1h auto-refresh that
+        // token is dead and every request 401s. getSession() returns the live session and
+        // transparently refreshes an expired one before the request goes out.
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token ?? session?.access_token;
         if (token) headers.set('Authorization', `Bearer ${token}`);
         return fetch(apiUrl(path), { ...init, headers });
       },
