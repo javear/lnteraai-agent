@@ -7,6 +7,7 @@ import {
   connectMcpProject,
   createProject,
   deployProject,
+  getStudioMessages,
   initProject,
   listProjects,
   type StudioProject,
@@ -273,6 +274,25 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
+
+  // Load this project's stored chat history so reopening it doesn't start blank — independent of the
+  // sandbox boot below (history is server-side memory, no pod/git involved). Loaded turns render with
+  // an empty activity timeline (the inline file/terminal/git timeline isn't reconstructed from stored
+  // messages) since only the plain text is persisted.
+  useEffect(() => {
+    let cancelled = false;
+    getStudioMessages(api, project.id)
+      .then(({ messages: history }) => {
+        if (cancelled || history.length === 0) return;
+        setMessages(history.map((m) => ({ ...m, activity: [] })));
+      })
+      .catch(() => {
+        // Best-effort — an empty history load just means the chat starts blank, same as before.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, project.id]);
 
   // Models the user can pin for the technical agent (their advanced BYOK Claude/GPT are ideal for
   // coding). Drop a stale pin if its provider is no longer connected.

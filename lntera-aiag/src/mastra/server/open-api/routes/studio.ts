@@ -17,6 +17,9 @@ import { getStudioBridge } from '../../../integrations/studio/browser-bridge';
 import { seedProjectTemplate } from '../../../integrations/studio/template-seed';
 import type { StudioResultEnvelope } from '../../../integrations/studio/protocol';
 import { logErrorBrief } from '../../../logger/compact-error';
+import { technicalAgent } from '../../../agents/technical-agent';
+import { extractModelIdentity } from '../../../integrations/portkey/model-config';
+import { llmModelLabel } from '../../../models/llm-providers';
 import { OPEN_API_PREFIX } from '../constants';
 import { openApiJsonError, resolveTenantFromBearer, type OpenApiHandlerContext } from '../middleware/bearer-tenant';
 
@@ -144,6 +147,95 @@ export const studioGetProjectRoute = registerApiRoute(`${OPEN_API_PREFIX}/studio
     const project = await getTenantProject(auth.tenantId, id);
     if (!project) return openApiJsonError(c, 404, 'not_found', 'Project not found.');
     return c.json({ project });
+  },
+});
+
+/** Flatten a stored message's content parts to plain display text — same shape chat-history.ts reads. */
+function studioMessageText(content: unknown): string {
+  const c = content as { parts?: Array<{ type?: string; text?: string }>; content?: string };
+  const fromParts = (c?.parts ?? [])
+    .filter((p) => p?.type === 'text' && typeof p.text === 'string')
+    .map((p) => p.text as string)
+    .join('')
+    .trim();
+  if (fromParts) return fromParts;
+  return typeof c?.content === 'string' ? c.content.trim() : '';
+}
+
+/** "Provider · model" label from Mastra's stored `content.metadata.modelId`, same parsing as the live stream. */
+function studioMessageModelLabel(content: unknown): string | undefined {
+  const meta = (content as { metadata?: { modelId?: unknown } } | null)?.metadata;
+  const modelId = meta && typeof meta.modelId === 'string' ? meta.modelId.trim() : '';
+  if (!modelId) return undefined;
+  const identity = extractModelIdentity(modelId);
+  return identity ? llmModelLabel(identity) : undefined;
+}
+
+type StudioMessagesContext = StudioContext & { req: StudioContext['req'] & { query: (name: string) => string | undefined } };
+
+/**
+ * GET /svc/v1/studio/projects/:id/messages?before=<ISO>&limit=50 — the technical agent's stored
+ * conversation for this project (newest-page-first, ASC for display), so reopening a project shows
+ * its chat history instead of starting blank every time. Unlike the business chat's per-USER threads
+ * (chat-history.ts), a Studio thread is per-PROJECT — ownership is exactly "does this project belong
+ * to the caller's tenant" (already the check every other Studio route uses), and resourceId is always
+ * the SERVER-resolved tenantId, never anything the caller could supply, so this can't leak another
+ * tenant's thread even if project ids were guessable.
+ */
+export const studioMessagesRoute = registerApiRoute(`${OPEN_API_PREFIX}/studio/projects/:id/messages`, {
+  method: 'GET',
+  requiresAuth: false,
+  openapi: {
+    summary: "List a Studio project's chat history (paginated, newest-first)",
+    tags: ['Studio'],
+    parameters: [authHeaderParam],
+    responses: { 200: { description: 'Messages page' }, 401: { description: 'Unauthorized' }, 404: { description: 'Not found' } },
+  },
+  handler: async (c: StudioMessagesContext) => {
+    const auth = await resolveTenantFromBearer(c);
+    if (auth instanceof Response) return auth;
+
+    const id = c.req.param('id') ?? '';
+    const project = await getTenantProject(auth.tenantId, id);
+    if (!project) return openApiJsonError(c, 404, 'not_found', 'Project not found.');
+
+    const memory = await technicalAgent.getMemory();
+    if (!memory) return openApiJsonError(c, 503, 'memory_unavailable', 'Agent memory is not configured.');
+
+    const limit = Math.min(Math.max(Number(c.req.query('limit')) || 50, 1), 100);
+    const beforeRaw = c.req.query('before');
+    const before = beforeRaw ? new Date(beforeRaw) : null;
+
+    const result = await memory.recall({
+      threadId: project.id,
+      resourceId: auth.tenantId,
+      perPage: limit,
+      page: 0,
+      orderBy: { field: 'createdAt', direction: 'DESC' },
+      ...(before && !Number.isNaN(before.getTime())
+        ? { filter: { dateRange: { end: before, endExclusive: true } } }
+        : {}),
+    });
+
+    const ordered = [...result.messages].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+    const messages = ordered
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .map((m) => ({
+        id: m.id,
+        role: m.role as 'user' | 'assistant',
+        content: studioMessageText(m.content),
+        createdAt: new Date(m.createdAt).toISOString(),
+        model: m.role === 'assistant' ? studioMessageModelLabel(m.content) : undefined,
+      }))
+      .filter((m) => m.content.length > 0);
+
+    return c.json({
+      messages,
+      hasMore: result.hasMore,
+      nextBefore: ordered.length ? new Date(ordered[0].createdAt).toISOString() : null,
+    });
   },
 });
 
@@ -545,6 +637,7 @@ export const studioRoutes = [
   studioListProjectsRoute,
   studioCreateProjectRoute,
   studioGetProjectRoute,
+  studioMessagesRoute,
   studioInitProjectRoute,
   studioDeployProjectRoute,
   studioConnectProjectRoute,

@@ -89,6 +89,30 @@ export async function deployProject(
   );
 }
 
+export interface StudioHistoryMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+  model?: string;
+}
+
+/** Load a page of a project's stored chat history (newest-page-first via `before`, ASC for display). */
+export async function getStudioMessages(
+  api: Api,
+  id: string,
+  opts?: { before?: string; limit?: number },
+): Promise<{ messages: StudioHistoryMessage[]; hasMore: boolean; nextBefore: string | null }> {
+  const params = new URLSearchParams();
+  if (opts?.before) params.set('before', opts.before);
+  if (opts?.limit) params.set('limit', String(opts.limit));
+  const qs = params.toString();
+  return json(
+    await api(`/svc/v1/studio/projects/${id}/messages${qs ? `?${qs}` : ''}`),
+    'Failed to load chat history.',
+  );
+}
+
 /** Attach a deployed MCP project to the tenant's business agent. */
 export async function connectMcpProject(api: Api, id: string): Promise<StudioProject> {
   const { project } = await json<{ project: StudioProject }>(
