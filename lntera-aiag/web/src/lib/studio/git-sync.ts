@@ -46,12 +46,24 @@ export async function syncPodToGit(provider: SandboxProvider, git: GitRepo): Pro
   const podFiles = entries.filter((e) => e.type === 'file' && !ig.ignores(e.path));
   const podPaths = new Set(podFiles.map((e) => e.path));
 
+  const gitPaths = await git.listWorkdirPaths();
+  // Refuse a sync that would delete every file git already tracks in one shot. listTree() now
+  // throws on a genuine read failure (see sandbox.ts) rather than masking it as "no files", so
+  // reaching here with zero pod files while git has real tracked ones is exactly the scenario that
+  // let a real commit land with git's canonical empty-tree hash, wiping an entire project, live.
+  // Fail loudly instead so the agent/user sees a real error and can retry, rather than silently
+  // committing the deletion of everything.
+  if (gitPaths.length > 0 && podFiles.length === 0) {
+    throw new Error(
+      "The sandbox reported no files at all, but git has tracked files from before — refusing to sync (this would delete everything). Try again.",
+    );
+  }
+
   for (const entry of podFiles) {
     const content = await provider.readFile(entry.path);
     await git.writeWorkdirFile(entry.path, content);
   }
 
-  const gitPaths = await git.listWorkdirPaths();
   for (const p of gitPaths) {
     if (!podPaths.has(p)) await git.deleteWorkdirFile(p);
   }

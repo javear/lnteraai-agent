@@ -330,8 +330,16 @@ export class BrowserPodProvider implements SandboxProvider {
     const jsonLine = lines[lines.length - 1] ?? '[]';
     try {
       return JSON.parse(jsonLine) as StudioTreeEntry[];
-    } catch {
-      return [];
+    } catch (err) {
+      // A genuine "no files" result is valid JSON ('[]') and never reaches this catch — this only
+      // fires on unparseable output (e.g. exec output corruption/truncation), which used to be
+      // silently treated as "the project is empty." That's dangerous: syncPodToGit() takes an empty
+      // listTree() result as authoritative and deletes every git-tracked file to match — confirmed
+      // live to have produced a commit with git's empty-tree hash, wiping a real project. Surface the
+      // real failure instead of masking it as emptiness.
+      throw new Error(
+        `Failed to list project files — unexpected output from the sandbox: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 
