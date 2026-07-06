@@ -30,9 +30,12 @@ function templateFilesFor(kind: ProjectKind): Record<string, string> {
 }
 
 /**
- * Clone the (empty, auto-init'd) repo, write the `kind`-scoped starter template over it, and push a
- * single "Initial commit" — best-effort: a failure here just leaves the tenant with the auto-init'd
- * empty repo (a README only), which the technical agent can still scaffold into by hand as a fallback.
+ * Clone the repo, write the `kind`-scoped starter template over it, and push a single "Initial
+ * commit" — but ONLY if the repo is still in Gitea's bare auto-init state (README only). This makes
+ * the call idempotent/self-healing: it's safe to call again on every `init` (e.g. the tenant
+ * reopening the project after a first attempt silently failed, such as a transient Gitea/proxy
+ * timeout) without ever clobbering real content — the tenant's own commits, or a previous
+ * successful seed, always short-circuit this to a no-op.
  */
 export async function seedProjectTemplate(args: { kind: ProjectKind; repoFullName: string }): Promise<void> {
   const cfg = getGiteaConfig();
@@ -44,6 +47,13 @@ export async function seedProjectTemplate(args: { kind: ProjectKind; repoFullNam
   const dir = await mkdtemp(join(tmpdir(), 'studio-seed-'));
   try {
     await git.clone({ fs, http, dir, url, headers, singleBranch: true });
+
+    // Gitea's auto-init only ever creates a README — any other file (ours from a prior seed, or the
+    // tenant's/agent's own work) means there's real content here that must not be overwritten.
+    const hasRealContent = fs
+      .readdirSync(dir)
+      .some((name) => name !== '.git' && name.toLowerCase() !== 'readme.md');
+    if (hasRealContent) return;
 
     for (const [relPath, content] of Object.entries(files)) {
       const abs = join(dir, relPath);
