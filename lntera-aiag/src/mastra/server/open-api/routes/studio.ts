@@ -187,15 +187,15 @@ export const studioInitProjectRoute = registerApiRoute(`${OPEN_API_PREFIX}/studi
 
     try {
       const repo = await createGiteaRepo(repoNameFor(project.id));
-      // Seed the starter template on first creation only — never on a later reconnect/re-init of the
-      // same project, which would clobber the tenant's own work. Best-effort: if this fails, the
-      // tenant still gets a working (if empty, README-only) repo; the technical agent can scaffold by
-      // hand as a fallback.
-      if (repo.created) {
-        await seedProjectTemplate({ kind: project.kind, repoFullName: repo.fullName }).catch((err) => {
-          logErrorBrief(`[studio] template seed failed (project=${project.id})`, err);
-        });
-      }
+      // Attempt the starter-template seed on EVERY init, not just first creation: seedProjectTemplate
+      // is self-guarding (it no-ops unless the repo is still in Gitea's bare auto-init state), so this
+      // can never clobber the tenant's own work — but it DOES self-heal a project whose first seed
+      // attempt silently failed (e.g. a transient Gitea/proxy timeout), which previously left the
+      // tenant with a permanently empty repo the technical agent's own instructions forbid scaffolding
+      // into. Best-effort either way: a failure here still leaves a usable (if empty) repo.
+      await seedProjectTemplate({ kind: project.kind, repoFullName: repo.fullName }).catch((err) => {
+        logErrorBrief(`[studio] template seed failed (project=${project.id})`, err);
+      });
       const updated = await updateTenantProject(auth.tenantId, project.id, { gitea_repo: repo.cloneUrl });
       const token = signGitProxyToken({ projectId: project.id, repo: repo.fullName, exp: Date.now() + GIT_PROXY_TTL_MS });
       // Return a PATH only. The browser prefixes its own origin (the whitelisted frontend, e.g.
