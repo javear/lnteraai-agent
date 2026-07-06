@@ -95,6 +95,8 @@ export function activityFromToolCall(info: ToolCallInfo): StudioActivity | null 
       return { kind: 'read', id, label: 'Checked the history' };
     case 'studio-git-list-branches':
       return { kind: 'read', id, label: 'Checked the branches' };
+    case 'studio-check-preview':
+      return { kind: 'read', id, label: 'Checked the live preview' };
     default:
       return null;
   }

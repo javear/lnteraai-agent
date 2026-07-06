@@ -285,6 +285,38 @@ export const studioGitCheckoutTool = createTool({
   },
 });
 
+export const studioCheckPreviewTool = createTool({
+  id: 'studio-check-preview',
+  strict: false,
+  description:
+    "Check whether the user's app is actually running in the live preview. Reports the dev server's state (idle/starting/exited + exit code), whether the preview URL is up, and the most recent server output (compile errors appear there). Pass waitSeconds to wait for a slow startup instead of polling in a loop. Webapp projects only — mcp projects have no dev server and always report 'idle'.",
+  requestContextSchema,
+  inputSchema: z.object({
+    waitSeconds: z
+      .number()
+      .int()
+      .min(0)
+      .max(90)
+      .optional()
+      .describe('Block up to this many seconds for the preview to come up (or the server to fail) before reporting.'),
+  }),
+  outputSchema: z.object({
+    devServer: z.enum(['idle', 'starting', 'exited']),
+    exitCode: z.number().nullable(),
+    previewReady: z.boolean(),
+    outputTail: z.string(),
+  }),
+  execute: async (input, context) => {
+    const tenantId = requireTenantContext(context);
+    const sessionId = requireStudioSession(context);
+    const result = await getStudioBridge().call(tenantId, sessionId, {
+      op: 'checkPreview',
+      waitSeconds: input.waitSeconds,
+    });
+    return { ...result, outputTail: truncateForAgent(result.outputTail) };
+  },
+});
+
 /** All Studio tools, for the technical agent's toolset. */
 // Keyed by each tool's own `id` — Mastra registers a tool with the LLM under its OBJECT KEY here, NOT
 // its `id` field, so a plain `{ studioWriteFileTool, ... }` shorthand object silently registers the
@@ -308,4 +340,5 @@ export const studioTools = {
   [studioGitListBranchesTool.id]: studioGitListBranchesTool,
   [studioGitCreateBranchTool.id]: studioGitCreateBranchTool,
   [studioGitCheckoutTool.id]: studioGitCheckoutTool,
+  [studioCheckPreviewTool.id]: studioCheckPreviewTool,
 };

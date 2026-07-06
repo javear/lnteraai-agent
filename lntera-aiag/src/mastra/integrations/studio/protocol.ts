@@ -57,7 +57,11 @@ export type StudioOp =
   | { op: 'gitCreateBranch'; name: string; checkout?: boolean }
   | { op: 'gitCheckout'; ref: string }
   /** Read a built directory back as a base64 zip so the server can forward it to the deploy proxy. */
-  | { op: 'buildZip'; dir: string };
+  | { op: 'buildZip'; dir: string }
+  /** Health of the auto-started dev server + whether the live preview is up. `waitSeconds` blocks
+   *  (polling) until the preview is ready, the server exits, or the wait elapses — the agent's
+   *  "wait and see if it actually runs" primitive. */
+  | { op: 'checkPreview'; waitSeconds?: number };
 
 export type StudioOpName = StudioOp['op'];
 
@@ -79,6 +83,15 @@ export interface StudioResultByOp {
   gitCreateBranch: Record<string, never>;
   gitCheckout: Record<string, never>;
   buildZip: { zipBase64: string };
+  checkPreview: {
+    /** 'idle' = never started (e.g. an mcp project); 'exited' = it crashed or stopped. */
+    devServer: 'idle' | 'starting' | 'exited';
+    exitCode: number | null;
+    /** True once the sandbox has detected a bound port and produced a live preview URL. */
+    previewReady: boolean;
+    /** Recent dev-server output (capped) — where a compile error will show up. */
+    outputTail: string;
+  };
 }
 
 export type StudioResult<K extends StudioOpName = StudioOpName> = StudioResultByOp[K];
