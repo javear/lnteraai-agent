@@ -1,5 +1,11 @@
 import { getGiteaConfig } from './config';
 
+/** Derive a stable, unique external-service project name from a Studio project id — shared by every
+ *  integration keyed on "the project's name elsewhere" (Gitea repo, EdgeOne project). */
+export function repoNameFor(projectId: string): string {
+  return `studio-${projectId.slice(0, 8)}`;
+}
+
 export interface GiteaRepo {
   fullName: string; // "owner/name"
   cloneUrl: string; // https clone URL on Gitea

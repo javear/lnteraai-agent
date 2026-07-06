@@ -97,6 +97,7 @@ export async function updateTenantProject(
     gitea_repo: string | null;
     deploy_url: string | null;
     mcp_url: string | null;
+    preview_url: string | null;
     gitea_secret_ref: VaultSecretRefValue | null;
     mcp_secret_ref: VaultSecretRefValue | null;
     config: Record<string, unknown>;

@@ -603,6 +603,11 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
           {status === 'booting' ? 'Starting sandbox…' : status === 'error' ? 'Sandbox error' : 'Ready'}
         </span>
         <div className="ml-auto flex items-center gap-2">
+          {proj.kind === 'mcp' && proj.preview_url ? (
+            <a href={proj.preview_url} target="_blank" rel="noreferrer" className="text-xs text-muted-foreground underline">
+              Preview ↗
+            </a>
+          ) : null}
           {liveUrl ? (
             <a href={liveUrl} target="_blank" rel="noreferrer" className="text-xs underline">
               {proj.kind === 'mcp' ? 'MCP endpoint' : 'Live site'} ↗
@@ -693,14 +698,16 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
                   This usually takes a few seconds the first time.
                 </span>
               </div>
-            ) : project.kind === 'mcp' && proj.mcp_url ? (
-              // Re-mount on each new deploy URL so a fresh publish re-fetches the tool list.
-              <McpTester key={proj.mcp_url} api={api} projectId={project.id} />
+            ) : project.kind === 'mcp' && proj.preview_url ? (
+              // Preview, not production — this reflects the agent's own latest work, no Publish
+              // needed. Re-mount on each new URL so a fresh redeploy re-fetches the tool list.
+              <McpTester key={proj.preview_url} api={api} projectId={project.id} target="preview" />
             ) : project.kind === 'mcp' ? (
               <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center">
                 <span className="text-[15px] font-medium">Your extension's test console appears here</span>
                 <span className="max-w-xs text-sm text-muted-foreground">
-                  Hit Publish and you'll be able to see and try every tool your extension offers, right here.
+                  Once the agent builds something and deploys a preview, you'll be able to see and try every
+                  tool your extension offers, right here — no need to publish first.
                 </span>
               </div>
             ) : (

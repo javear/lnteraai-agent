@@ -97,6 +97,8 @@ export function activityFromToolCall(info: ToolCallInfo): StudioActivity | null 
       return { kind: 'read', id, label: 'Checked the branches' };
     case 'studio-check-preview':
       return { kind: 'read', id, label: 'Checked the live preview' };
+    case 'studio-deploy-preview':
+      return { kind: 'git', id, toolCallId: info.toolCallId, label: 'Deploying preview…', running: true };
     default:
       return null;
   }
@@ -125,6 +127,7 @@ export function applyToolResult(activity: StudioActivity, info: ToolResultInfo):
       return { ...activity, running: false, label: 'Committed', detail: commit ? commit.slice(0, 7) : undefined };
     }
     if (activity.label.startsWith('Pushing')) return { ...activity, running: false, label: 'Pushed' };
+    if (activity.label.startsWith('Deploying')) return { ...activity, running: false, label: 'Preview deployed', detail: str(result.url) };
     return { ...activity, running: false };
   }
   return activity;

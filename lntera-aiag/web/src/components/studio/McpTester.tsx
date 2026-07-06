@@ -42,7 +42,17 @@ function coerceValue(raw: string, type: string | undefined): unknown {
   return raw;
 }
 
-function ToolCard({ api, projectId, tool }: { api: Api; projectId: string; tool: McpToolDef }) {
+function ToolCard({
+  api,
+  projectId,
+  target,
+  tool,
+}: {
+  api: Api;
+  projectId: string;
+  target: 'preview' | 'production';
+  tool: McpToolDef;
+}) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [run, setRun] = useState<ToolRun>({ running: false, output: null, isError: false });
   const props = tool.inputSchema?.properties ?? {};
@@ -57,7 +67,7 @@ function ToolCard({ api, projectId, tool }: { api: Api; projectId: string; tool:
         if (raw === undefined || raw === '') continue;
         args[key] = coerceValue(raw, spec.type);
       }
-      const { response } = await mcpCall(api, projectId, 'tools/call', { name: tool.name, arguments: args });
+      const { response } = await mcpCall(api, projectId, 'tools/call', { name: tool.name, arguments: args }, target);
       if (response.error) {
         setRun({ running: false, output: response.error.message ?? 'The tool returned an error.', isError: true });
       } else {
@@ -126,10 +136,19 @@ function ToolCard({ api, projectId, tool }: { api: Api; projectId: string; tool:
 }
 
 /**
- * Lists the deployed MCP server's tools and lets the user try each one live. Only meaningful once
- * the project is published (`mcp_url` set) — the parent gates on that.
+ * Lists an MCP server's tools and lets the user try each one live. `target` picks which deployed
+ * environment to hit — 'preview' (the agent's own auto-updating deploy, no Publish needed) or
+ * 'production' (only ever set by an explicit Publish) — the parent gates on the matching URL existing.
  */
-export function McpTester({ api, projectId }: { api: Api; projectId: string }) {
+export function McpTester({
+  api,
+  projectId,
+  target,
+}: {
+  api: Api;
+  projectId: string;
+  target: 'preview' | 'production';
+}) {
   const [tools, setTools] = useState<McpToolDef[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -138,7 +157,7 @@ export function McpTester({ api, projectId }: { api: Api; projectId: string }) {
     setLoading(true);
     setError(null);
     try {
-      const { response } = await mcpCall(api, projectId, 'tools/list');
+      const { response } = await mcpCall(api, projectId, 'tools/list', undefined, target);
       if (response.error) throw new Error(response.error.message ?? 'The server returned an error.');
       const list = (response.result as { tools?: McpToolDef[] } | undefined)?.tools;
       setTools(Array.isArray(list) ? list : []);
@@ -148,7 +167,7 @@ export function McpTester({ api, projectId }: { api: Api; projectId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [api, projectId]);
+  }, [api, projectId, target]);
 
   useEffect(() => {
     void load();
@@ -158,7 +177,9 @@ export function McpTester({ api, projectId }: { api: Api; projectId: string }) {
     <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-sm font-semibold">Try your assistant extension</div>
+          <div className="text-sm font-semibold">
+            {target === 'production' ? 'Try your published extension' : 'Try your assistant extension'}
+          </div>
           <div className="text-xs text-muted-foreground">
             These are the tools your extension offers — run any of them to see a live response.
           </div>
@@ -175,10 +196,10 @@ export function McpTester({ api, projectId }: { api: Api; projectId: string }) {
           <div className="text-sm text-muted-foreground">Asking your extension what it can do…</div>
         ) : tools && tools.length === 0 ? (
           <div className="text-sm text-muted-foreground">
-            Your extension doesn't offer any tools yet — ask the agent to add one, then publish again.
+            Your extension doesn't offer any tools yet — ask the agent to add one.
           </div>
         ) : (
-          (tools ?? []).map((t) => <ToolCard key={t.name} api={api} projectId={projectId} tool={t} />)
+          (tools ?? []).map((t) => <ToolCard key={t.name} api={api} projectId={projectId} target={target} tool={t} />)
         )}
       </div>
     </div>

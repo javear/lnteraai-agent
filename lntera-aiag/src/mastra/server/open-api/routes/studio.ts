@@ -11,7 +11,7 @@ import {
 import { PROJECT_KINDS } from '../../../integrations/shared/types';
 import { createIntegrationVaultSecret } from '../../../integrations/shared/vault';
 import { getGiteaConfig, signGitProxyToken, verifyGitProxyToken } from '../../../integrations/studio/config';
-import { createGiteaRepo } from '../../../integrations/studio/gitea';
+import { createGiteaRepo, repoNameFor } from '../../../integrations/studio/gitea';
 import { deployToEdgeOne } from '../../../integrations/studio/edgeone';
 import { getStudioBridge } from '../../../integrations/studio/browser-bridge';
 import { seedProjectTemplate } from '../../../integrations/studio/template-seed';
@@ -25,10 +25,6 @@ import { openApiJsonError, resolveTenantFromBearer, type OpenApiHandlerContext }
 
 /** Clone-URL proxy tokens live ~7 days; a reconnect/init re-mints them. */
 const GIT_PROXY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-/** Repo name is derived from the project id so it's unique + stable per project. */
-function repoNameFor(projectId: string): string {
-  return `studio-${projectId.slice(0, 8)}`;
-}
 
 type StudioContext = OpenApiHandlerContext & { req: { param: (name: string) => string | undefined } };
 
@@ -331,7 +327,11 @@ export const studioDeployProjectRoute = registerApiRoute(`${OPEN_API_PREFIX}/stu
     }
 
     try {
-      const { url } = await deployToEdgeOne({ projectName: repoNameFor(project.id), zipBase64: body.zipBase64 });
+      const { url } = await deployToEdgeOne({
+        projectName: repoNameFor(project.id),
+        zipBase64: body.zipBase64,
+        env: 'production',
+      });
       // A web app's URL is its site; an MCP project's URL is its endpoint.
       const patch =
         project.kind === 'mcp'
@@ -350,14 +350,19 @@ const mcpCallBody = z
   .object({
     method: z.string().min(1).max(128),
     params: z.unknown().optional(),
+    /** Which deployed environment to call — 'preview' (the agent's own, auto-updating deploy) or
+     *  'production' (only ever set by the user's explicit Publish). Defaults to preview since that's
+     *  what the tester panel targets before anything's been published. */
+    target: z.enum(['preview', 'production']).optional(),
   })
   .strict();
 
 /**
  * POST /svc/v1/studio/projects/:id/mcp-call — proxy ONE JSON-RPC call to the project's own deployed
- * MCP endpoint, for the Studio "MCP Tester" panel. Proxied server-side (not called from the browser)
- * so no CORS support is required of the EdgeOne function. Not an open proxy: the target URL is the
- * server-stored mcp_url of a project owned by the authenticated tenant — never caller-supplied.
+ * MCP endpoint (preview or production), for the Studio "MCP Tester" panel. Proxied server-side (not
+ * called from the browser) so no CORS support is required of the EdgeOne function. Not an open proxy:
+ * the target URL is always a server-stored column (preview_url/mcp_url) of a project owned by the
+ * authenticated tenant — never caller-supplied.
  */
 export const studioMcpCallRoute = registerApiRoute(`${OPEN_API_PREFIX}/studio/projects/:id/mcp-call`, {
   method: 'POST',
@@ -375,9 +380,7 @@ export const studioMcpCallRoute = registerApiRoute(`${OPEN_API_PREFIX}/studio/pr
     const id = c.req.param('id') ?? '';
     const project = await getTenantProject(auth.tenantId, id);
     if (!project) return openApiJsonError(c, 404, 'not_found', 'Project not found.');
-    if (project.kind !== 'mcp' || !project.mcp_url) {
-      return openApiJsonError(c, 400, 'not_deployed', 'Publish the project first — there is no live MCP endpoint to test yet.');
-    }
+    if (project.kind !== 'mcp') return openApiJsonError(c, 400, 'wrong_kind', 'Only mcp projects have an MCP endpoint.');
 
     let body;
     try {
@@ -387,8 +390,20 @@ export const studioMcpCallRoute = registerApiRoute(`${OPEN_API_PREFIX}/studio/pr
       return openApiJsonError(c, 400, 'invalid_body', msg);
     }
 
+    const targetUrl = (body.target ?? 'preview') === 'production' ? project.mcp_url : project.preview_url;
+    if (!targetUrl) {
+      return openApiJsonError(
+        c,
+        400,
+        'not_deployed',
+        body.target === 'production'
+          ? 'Publish the project first — there is no live production endpoint to test yet.'
+          : "Nothing's deployed to preview yet — ask the agent to build something first.",
+      );
+    }
+
     try {
-      const res = await fetch(project.mcp_url, {
+      const res = await fetch(targetUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: body.method, params: body.params ?? {} }),

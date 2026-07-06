@@ -12,6 +12,9 @@ export interface StudioProject {
   gitea_repo: string | null;
   deploy_url: string | null;
   mcp_url: string | null;
+  /** Persistent "development" deploy URL the agent redeploys to on its own — separate from mcp_url,
+   *  which only changes via the user's explicit Publish action. */
+  preview_url: string | null;
   status: StudioProjectStatus;
   config: Record<string, unknown>;
   created_at: string;
@@ -142,12 +145,13 @@ export async function mcpCall(
   id: string,
   method: string,
   params?: unknown,
+  target: 'preview' | 'production' = 'preview',
 ): Promise<{ status: number; response: { result?: unknown; error?: { code?: number; message?: string } } }> {
   return json(
     await api(`/svc/v1/studio/projects/${id}/mcp-call`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ method, ...(params !== undefined ? { params } : {}) }),
+      body: JSON.stringify({ method, target, ...(params !== undefined ? { params } : {}) }),
     }),
     'MCP call failed.',
   );

@@ -4,8 +4,11 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { requireTenantContext, TENANT_MASTER_ID_KEY } from '../shared/marketplace-auth';
+import { getTenantProject, updateTenantProject } from '../shared/tenant-projects';
 import { getStudioBridge } from './browser-bridge';
-import { STUDIO_SESSION_ID_KEY } from './protocol';
+import { deployToEdgeOne } from './edgeone';
+import { repoNameFor } from './gitea';
+import { STUDIO_PROJECT_ID_KEY, STUDIO_SESSION_ID_KEY } from './protocol';
 
 type ToolContext = Parameters<typeof requireTenantContext>[0];
 
@@ -20,9 +23,19 @@ function requireStudioSession(context: ToolContext): string {
   return raw.trim();
 }
 
+/** Read the open project's id from requestContext (for tools acting on the project's stored row). */
+function requireStudioProjectId(context: ToolContext): string {
+  const raw = context?.requestContext?.get(STUDIO_PROJECT_ID_KEY);
+  if (typeof raw !== 'string' || raw.trim() === '') {
+    throw new Error(`Missing "${STUDIO_PROJECT_ID_KEY}" in requestContext — open the Studio to start a session.`);
+  }
+  return raw.trim();
+}
+
 const requestContextSchema = z.object({
   [TENANT_MASTER_ID_KEY]: z.string().uuid().describe('UUID of the active tenant_master row.'),
   [STUDIO_SESSION_ID_KEY]: z.string().min(1).describe('Active Studio browser session id.'),
+  [STUDIO_PROJECT_ID_KEY]: z.string().min(1).describe('The open Studio project id.').optional(),
 });
 
 /**
@@ -317,6 +330,28 @@ export const studioCheckPreviewTool = createTool({
   },
 });
 
+export const studioDeployPreviewTool = createTool({
+  id: 'studio-deploy-preview',
+  strict: false,
+  description:
+    'For "mcp" projects only. Deploy the current code to a persistent preview URL — separate from the production URL, which only ever changes when the user clicks Publish. Use this as your verification step after a green build: it proves the server actually deploys and runs, not just that it type-checks, and it gives the user a real link reflecting your latest work with no publish needed. Redeploys the SAME preview URL every time — safe to call repeatedly.',
+  requestContextSchema,
+  inputSchema: z.object({}),
+  outputSchema: z.object({ ok: z.literal(true), url: z.string() }),
+  execute: async (input, context) => {
+    const tenantId = requireTenantContext(context);
+    const sessionId = requireStudioSession(context);
+    const projectId = requireStudioProjectId(context);
+    const project = await getTenantProject(tenantId, projectId);
+    if (!project) throw new Error('Project not found.');
+
+    const { zipBase64 } = await getStudioBridge().call(tenantId, sessionId, { op: 'buildZip', dir: '.' });
+    const { url } = await deployToEdgeOne({ projectName: repoNameFor(project.id), zipBase64, env: 'preview' });
+    await updateTenantProject(tenantId, project.id, { preview_url: url });
+    return { ok: true as const, url };
+  },
+});
+
 /** All Studio tools, for the technical agent's toolset. */
 // Keyed by each tool's own `id` — Mastra registers a tool with the LLM under its OBJECT KEY here, NOT
 // its `id` field, so a plain `{ studioWriteFileTool, ... }` shorthand object silently registers the
@@ -341,4 +376,5 @@ export const studioTools = {
   [studioGitCreateBranchTool.id]: studioGitCreateBranchTool,
   [studioGitCheckoutTool.id]: studioGitCheckoutTool,
   [studioCheckPreviewTool.id]: studioCheckPreviewTool,
+  [studioDeployPreviewTool.id]: studioDeployPreviewTool,
 };
