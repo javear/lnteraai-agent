@@ -323,29 +323,33 @@ export class BrowserPodProvider implements SandboxProvider {
 
   async listTree(path?: string): Promise<StudioTreeEntry[]> {
     const base = this.abs(path ?? '.');
-    // Node walker → JSON. Robust across the pod's coreutils and yields file/dir types + rel paths.
-    const script = `const fs=require('fs'),p=require('path');const base=${JSON.stringify(base)};const out=[];function walk(d){for(const e of fs.readdirSync(d,{withFileTypes:true})){if(e.name==='.git'||e.name==='node_modules')continue;const fp=p.join(d,e.name);const rel=p.relative(${JSON.stringify(WORKDIR)},fp);if(e.isDirectory()){out.push({path:rel,type:'dir'});walk(fp);}else{out.push({path:rel,type:'file'});}}}try{walk(base);}catch(e){}console.log(JSON.stringify(out));`;
+    // Node walker → JSON, printed after a unique marker (not just "the last line") — confirmed live
+    // that BrowserPod's `node` invocations can emit their own extra line (e.g. a startup banner like
+    // "Node.js v22.15.0") alongside our script's output, which broke the previous "last line is our
+    // JSON" assumption deterministically (a retry didn't help — it's not a race, it's BrowserPod's
+    // own behavior around every `node -e` call). Scanning for our marker is immune to whatever
+    // BrowserPod prints before or after it.
+    const marker = '__STUDIO_TREE_JSON__';
+    const script = `const fs=require('fs'),p=require('path');const base=${JSON.stringify(base)};const out=[];function walk(d){for(const e of fs.readdirSync(d,{withFileTypes:true})){if(e.name==='.git'||e.name==='node_modules')continue;const fp=p.join(d,e.name);const rel=p.relative(${JSON.stringify(WORKDIR)},fp);if(e.isDirectory()){out.push({path:rel,type:'dir'});walk(fp);}else{out.push({path:rel,type:'file'});}}}try{walk(base);}catch(e){}console.log(${JSON.stringify(marker)}+JSON.stringify(out));`;
 
-    // A genuine "no files" result is valid JSON ('[]'); anything else that doesn't parse means the
-    // pod handed back something other than our script's output (observed live: a stray Node startup
-    // line instead of JSON) — a transient exec hiccup, not a real signal about the project's state.
-    // One retry clears it in practice; still failing after that is surfaced as a real error rather
-    // than masked as emptiness, since syncPodToGit() treats an empty result as authoritative and
-    // will delete every git-tracked file to match it (confirmed live to have wiped a real project).
-    let lastErr: unknown;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const { stdout } = await this.exec('node', ['-e', script]);
-      const lines = stdout.trim().split('\n');
-      const jsonLine = lines[lines.length - 1] ?? '[]';
-      try {
-        return JSON.parse(jsonLine) as StudioTreeEntry[];
-      } catch (err) {
-        lastErr = err;
-      }
+    const { stdout } = await this.exec('node', ['-e', script]);
+    const lines = stdout.trim().split('\n');
+    const markedLine = [...lines].reverse().find((l) => l.startsWith(marker));
+    if (markedLine === undefined) {
+      throw new Error(`Failed to list project files — no output found from the sandbox (got: ${stdout.slice(0, 200)})`);
     }
-    throw new Error(
-      `Failed to list project files — unexpected output from the sandbox: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`,
-    );
+    try {
+      return JSON.parse(markedLine.slice(marker.length)) as StudioTreeEntry[];
+    } catch (err) {
+      // A genuine "no files" result is valid JSON ('[]') and never reaches this catch. Reaching here
+      // means our OWN marked line failed to parse — a real problem, not "the project is empty".
+      // syncPodToGit() treats an empty listTree() result as authoritative and will delete every
+      // git-tracked file to match it (confirmed live to have wiped a real project), so this must
+      // surface as a real error rather than being masked as emptiness.
+      throw new Error(
+        `Failed to list project files — unexpected output from the sandbox: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   exec(
