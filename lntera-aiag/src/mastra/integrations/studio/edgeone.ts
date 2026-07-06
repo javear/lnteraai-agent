@@ -7,9 +7,11 @@ import { getEdgeOneToken } from './config';
 /**
  * Deploy a built site (base64 zip) to EdgeOne Pages and return the assigned public URL.
  *
- * Uses the EdgeOne CLI direct-upload (`edgeone pages deploy <zip> -n <project> -t <token>`), which
+ * Uses the EdgeOne CLI direct-upload (`edgeone makers deploy <zip> -n <project> -t <token>`), which
  * accepts a ZIP and auto-assigns a per-project subdomain. Requires the `edgeone` CLI on the server
- * and EDGEONE_API_TOKEN. Validate the CLI invocation + URL parsing in the Phase 0 spike.
+ * and EDGEONE_API_TOKEN. `makers` is the current subcommand — `pages` (used until the CLI deprecated
+ * it, breaking every publish with a "pages" is deprecated" warning and a non-zero exit) is now just a
+ * deprecated alias for the same thing; flags are unchanged.
  */
 export async function deployToEdgeOne(input: {
   projectName: string;
@@ -22,7 +24,7 @@ export async function deployToEdgeOne(input: {
   const zipPath = join(dir, 'site.zip');
   try {
     await writeFile(zipPath, Buffer.from(input.zipBase64, 'base64'));
-    const stdout = await runEdgeone(['pages', 'deploy', zipPath, '-n', input.projectName, '-t', token]);
+    const stdout = await runEdgeone(['makers', 'deploy', zipPath, '-n', input.projectName, '-t', token]);
     const url = extractUrl(stdout);
     if (!url) throw new Error(`Could not parse a deploy URL from EdgeOne output:\n${stdout.slice(0, 500)}`);
     return { url };
