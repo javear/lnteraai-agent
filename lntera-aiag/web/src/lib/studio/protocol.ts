@@ -45,7 +45,8 @@ export type StudioOp =
   | { op: 'gitListBranches' }
   | { op: 'gitCreateBranch'; name: string; checkout?: boolean }
   | { op: 'gitCheckout'; ref: string }
-  | { op: 'buildZip'; dir: string };
+  | { op: 'buildZip'; dir: string }
+  | { op: 'checkPreview'; waitSeconds?: number };
 
 export type StudioOpName = StudioOp['op'];
 
@@ -66,6 +67,12 @@ export interface StudioResultByOp {
   gitCreateBranch: Record<string, never>;
   gitCheckout: Record<string, never>;
   buildZip: { zipBase64: string };
+  checkPreview: {
+    devServer: 'idle' | 'starting' | 'exited';
+    exitCode: number | null;
+    previewReady: boolean;
+    outputTail: string;
+  };
 }
 
 export type StudioResult<K extends StudioOpName = StudioOpName> = StudioResultByOp[K];

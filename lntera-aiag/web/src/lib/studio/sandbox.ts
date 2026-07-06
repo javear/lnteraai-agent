@@ -64,6 +64,16 @@ export interface SandboxProvider {
   startDevServer(command: string, args?: string[], opts?: { cwd?: string }): Promise<void>;
   /** Current dev-server lifecycle status ('idle' before the first start, 'exited' if it crashed/stopped). */
   devServerStatus(): { status: 'idle' | 'starting' | 'exited'; exitCode: number | null };
+  /**
+   * Snapshot of dev-server health + preview readiness for the agent. With `waitSeconds`, polls until
+   * the preview URL is live, the dev server exits, or the wait elapses — whichever comes first.
+   */
+  checkPreview(waitSeconds?: number): Promise<{
+    devServer: 'idle' | 'starting' | 'exited';
+    exitCode: number | null;
+    previewReady: boolean;
+    outputTail: string;
+  }>;
   /** Notified on every dev-server status change and output chunk. */
   onDevServerUpdate(cb: (update: DevServerUpdate) => void): () => void;
 
@@ -110,6 +120,9 @@ export class BrowserPodProvider implements SandboxProvider {
     exitCode: null,
   };
   private devTailBuf = '';
+  // Rolling tail of dev-server output for checkPreview reporting (compile errors live here). Kept
+  // separate from devTailBuf, whose short window exists only for sentinel-boundary detection.
+  private devOutputTail = '';
   private readonly devSubs = new Set<(update: DevServerUpdate) => void>();
 
   // Serialize exec (single worker terminal) + track the in-flight capture.
@@ -216,6 +229,7 @@ export class BrowserPodProvider implements SandboxProvider {
           const copy = new Uint8Array(view.byteLength);
           copy.set(view);
           const text = decoder.decode(copy);
+          this.devOutputTail = (this.devOutputTail + text).slice(-4000);
           // Keep only a short tail for sentinel-boundary detection — the process runs indefinitely,
           // so accumulating full output here (like exec()'s `a.buf`) would leak memory over a session.
           this.devTailBuf = (this.devTailBuf + text).slice(-200);
@@ -236,6 +250,7 @@ export class BrowserPodProvider implements SandboxProvider {
     const script = `${env} cd ${shellQuote(cwd)} 2>/dev/null; ${line} < /dev/null 2>&1; printf '\\n${SENTINEL}%s\\n' "$?"`;
 
     this.devTailBuf = '';
+    this.devOutputTail = '';
     this.setDevState({ status: 'starting', exitCode: null });
     try {
       const started = pod.run('bash', ['-lc', script], { terminal: this.devTerminal, echo: false }) as unknown;
@@ -247,6 +262,28 @@ export class BrowserPodProvider implements SandboxProvider {
     } catch (err) {
       this.setDevState({ status: 'exited', exitCode: -1 }, err instanceof Error ? err.message : String(err));
     }
+  }
+
+  async checkPreview(waitSeconds?: number): Promise<{
+    devServer: 'idle' | 'starting' | 'exited';
+    exitCode: number | null;
+    previewReady: boolean;
+    outputTail: string;
+  }> {
+    const snapshot = () => ({
+      devServer: this.devState.status,
+      exitCode: this.devState.exitCode,
+      previewReady: this.preview !== null,
+      outputTail: this.devOutputTail.replace(SENTINEL_RE, ''),
+    });
+    const deadline = Date.now() + Math.max(0, waitSeconds ?? 0) * 1000;
+    // Poll rather than subscribe: the terminal states we wait for (preview up / server exited) are
+    // both plain fields, and a 500ms cadence is far below the caller's own RPC timeout resolution.
+    while (Date.now() < deadline) {
+      if (this.preview !== null || this.devState.status === 'exited') break;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    return snapshot();
   }
 
   async writeFile(path: string, content: string): Promise<void> {

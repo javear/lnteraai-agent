@@ -45,6 +45,8 @@ async function dispatch(op: StudioOp, provider: SandboxProvider): Promise<Studio
       return {};
     case 'buildZip':
       return provider.buildZip(op.dir);
+    case 'checkPreview':
+      return provider.checkPreview(op.waitSeconds);
   }
 }
 
