@@ -1,6 +1,6 @@
 import type { MastraClient } from '@mastra/client-js';
 import { browserTimezone } from '../insights';
-import { friendlyStreamError, parseModelLabel, readToolArgs, readToolErrorMessage, type StreamHandlers } from '../chat';
+import { friendlyStreamError, parseModelLabel, readFinishReason, readToolArgs, readToolErrorMessage, type StreamHandlers } from '../chat';
 import type { StudioProjectKind } from './api';
 
 /** Matches the server agent id (src/mastra/agents/technical-agent.ts). */
@@ -89,6 +89,7 @@ export async function streamStudioChat(
             const id = payload.response?.modelId ?? payload.metadata?.modelId;
             const label = parseModelLabel(id);
             if (label) handlers.onModel?.(label);
+            if (chunk?.type === 'finish') handlers.onFinish?.(readFinishReason(payload));
             break;
           }
           case 'error':
