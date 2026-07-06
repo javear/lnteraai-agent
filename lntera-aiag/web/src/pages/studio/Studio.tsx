@@ -298,12 +298,21 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
   // sandbox boot below (history is server-side memory, no pod/git involved). Loaded turns render with
   // an empty activity timeline (the inline file/terminal/git timeline isn't reconstructed from stored
   // messages) since only the plain text is persisted.
+  //
+  // Deliberately depends on project.id ONLY, not `api` — `api` gets a new closure identity whenever
+  // the auth session object changes (e.g. Supabase's background token refresh, roughly hourly), and
+  // this effect re-firing mid-conversation would re-fetch stale server history and overwrite the
+  // live/streaming `messages` state with it — a real, silent bug hit live: a chat turn mid-stream
+  // (typing, using tools) simply vanished with no error, because nothing actually failed here, it
+  // just clobbered current state with an outdated snapshot. The `current.length > 0` guard is a
+  // second layer: even if this ever re-fires for any other reason, it can only ever fill an empty
+  // conversation, never replace one that's already showing something.
   useEffect(() => {
     let cancelled = false;
     getStudioMessages(api, project.id)
       .then(({ messages: history }) => {
         if (cancelled || history.length === 0) return;
-        setMessages(history.map((m) => ({ ...m, activity: [] })));
+        setMessages((current) => (current.length > 0 ? current : history.map((m) => ({ ...m, activity: [] }))));
       })
       .catch(() => {
         // Best-effort — an empty history load just means the chat starts blank, same as before.
@@ -311,7 +320,8 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
     return () => {
       cancelled = true;
     };
-  }, [api, project.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id]);
 
   // Models the user can pin for the technical agent (their advanced BYOK Claude/GPT are ideal for
   // coding). Drop a stale pin if its provider is no longer connected.
