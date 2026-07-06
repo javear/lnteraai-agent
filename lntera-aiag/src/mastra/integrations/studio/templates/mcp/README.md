@@ -1,7 +1,7 @@
 # Studio starter (MCP server)
 
-A minimal Model Context Protocol server deployed as a Tencent EdgeOne Pages Function — a single HTTP
-endpoint (`functions/mcp-server/index.ts`) implementing the MCP JSON-RPC methods (`initialize`,
+A minimal Model Context Protocol server deployed as a Tencent EdgeOne Edge Function — a single HTTP
+endpoint (`edge-functions/index.ts`) implementing the MCP JSON-RPC methods (`initialize`,
 `tools/list`, `tools/call`) a business assistant needs to discover and call this server's tools. No
 build step: EdgeOne runs the TypeScript directly as an edge function.
 
