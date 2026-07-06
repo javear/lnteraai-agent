@@ -16,6 +16,9 @@ import { getEdgeOneToken } from './config';
 export async function deployToEdgeOne(input: {
   projectName: string;
   zipBase64: string;
+  /** 'production' (default) is the tenant's stable, Publish-triggered URL; 'preview' is a separate,
+   *  persistent URL the agent redeploys to on its own — the same project, two live environments. */
+  env?: 'production' | 'preview';
 }): Promise<{ url: string }> {
   const token = getEdgeOneToken();
   if (!token) throw new Error('EdgeOne is not configured (set EDGEONE_API_TOKEN).');
@@ -28,10 +31,10 @@ export async function deployToEdgeOne(input: {
     // of which we can assume is writable (the runtime container runs as a non-root user with no home
     // dir set, and its cwd/WORKDIR is owned by root: EACCES mkdir'ing '/app/.edgeone' in production).
     // Point both at our own tmp dir, which we just created and know is writable.
-    const stdout = await runEdgeone(['makers', 'deploy', zipPath, '-n', input.projectName, '-t', token], {
-      redact: [token],
-      cwd: dir,
-    });
+    const stdout = await runEdgeone(
+      ['makers', 'deploy', zipPath, '-n', input.projectName, '-e', input.env ?? 'production', '-t', token],
+      { redact: [token], cwd: dir },
+    );
     const url = extractUrl(stdout);
     if (!url) throw new Error(`Could not parse a deploy URL from EdgeOne output:\n${stdout.slice(0, 500)}`);
     return { url };

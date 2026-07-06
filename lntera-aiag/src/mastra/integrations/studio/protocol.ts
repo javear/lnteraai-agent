@@ -17,6 +17,10 @@
 /** requestContext key carrying the active Studio session (browser tab) id, set by the web client. */
 export const STUDIO_SESSION_ID_KEY = 'studioSessionId';
 
+/** requestContext key carrying the open project's id, set by the web client — for tools that act on
+ *  the project's stored row (e.g. deploying), not just its live browser session. */
+export const STUDIO_PROJECT_ID_KEY = 'studioProjectId';
+
 /** A file/dir entry from `listTree`. */
 export interface StudioTreeEntry {
   path: string;

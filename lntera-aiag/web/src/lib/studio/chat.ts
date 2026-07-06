@@ -35,6 +35,7 @@ export async function streamStudioChat(
         nowIso: new Date().toISOString(),
         language: currentLang(),
         studioSessionId: args.sessionId,
+        studioProjectId: args.threadId,
         projectKind: args.kind,
         ...(args.pinnedModel ? { groqModel: args.pinnedModel } : {}),
       } as never,
