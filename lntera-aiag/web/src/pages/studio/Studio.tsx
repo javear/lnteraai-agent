@@ -503,10 +503,20 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
             const targetId =
               (info.toolCallId && activity.find((a) => a.id === info.toolCallId)?.id) ??
               [...activity].reverse().find((a) => (a.kind === 'command' || a.kind === 'git') && a.running)?.id;
-            if (!targetId) return;
-            updateItem(targetId, (a) => applyToolResult(a, info));
-            if (targetId === runningCmdId) runningCmdId = null;
-            scheduleRender();
+            if (targetId) {
+              updateItem(targetId, (a) => applyToolResult(a, info));
+              if (targetId === runningCmdId) runningCmdId = null;
+              scheduleRender();
+            }
+            // studio-deploy-preview runs entirely server-side (the agent's own tool call) and writes
+            // preview_url straight to the DB — nothing tells THIS browser tab about it otherwise, so
+            // `proj` (what the Preview pane's McpTester gates on) would stay stale until a manual
+            // reload. Confirmed live: a deploy succeeded, the activity log even showed the new URL,
+            // but the tester never appeared. Update proj directly from the tool's own result.
+            if (info.toolName === 'studio-deploy-preview' && !info.isError) {
+              const url = (info.result as { url?: unknown } | null)?.url;
+              if (typeof url === 'string') setProj((p) => ({ ...p, preview_url: url }));
+            }
           },
           onModel: (label) => setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, model: label } : x))),
           onError: (msg) => {
