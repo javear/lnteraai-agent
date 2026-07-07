@@ -60,6 +60,30 @@ async function resolveDevServerArgs(provider: SandboxProvider): Promise<string[]
   }
 }
 
+/**
+ * BrowserPod's per-project persistent storage (cached node_modules/build state, keyed by project id
+ * — see the `storageKey` passed to BrowserPodProvider) can only be held by one tab at a time; its SDK
+ * exposes no explicit dispose/close call to release it proactively, so a reload sometimes races the
+ * previous tab's teardown and boot() fails with a "device already opened" error even though nothing
+ * is actually still using it. Retrying after a short wait clears it in practice — a genuinely
+ * different active tab keeps failing every attempt, so this still surfaces as a real error rather
+ * than looping forever.
+ */
+async function bootWithRetry(provider: SandboxProvider): Promise<void> {
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await provider.boot();
+      return;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const isStaleLock = /already opened|another tab/i.test(msg);
+      if (!isStaleLock || attempt === maxAttempts) throw e;
+      await new Promise((r) => setTimeout(r, 1500 * attempt));
+    }
+  }
+}
+
 export default function Studio() {
   const { session } = useAuth();
   const [projects, setProjects] = useState<StudioProject[] | null>(null);
@@ -362,7 +386,7 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
       // best-effort: if it fails, the sandbox stays fully usable (chat/write/build/preview); only
       // cross-browser persistence is off.
       const [, initResult] = await Promise.all([
-        provider.boot(),
+        bootWithRetry(provider),
         initProject(api, project.id).catch((e: unknown) => (e instanceof Error ? e : new Error(String(e)))),
       ]);
       let cloned = false;

@@ -209,12 +209,15 @@ function SidebarContent({
               <Plug />
               {t('nav.integrations')}
             </NavLink>
-            {import.meta.env.MODE !== 'native' ? (
-              <NavLink to="/studio" onClick={onNavigate} className={navItemClass}>
-                <Wrench />
-                Studio
-              </NavLink>
-            ) : null}
+            {/* Always shown, even on native/mobile where Studio can't actually run (it needs a
+                desktop-sized screen for its own sandbox) — Studio.tsx's own `narrow` check already
+                shows a friendly "open on desktop" nudge instead of a broken page. Hiding the menu
+                item entirely just made Studio undiscoverable on those platforms with no explanation
+                at all, which is worse. */}
+            <NavLink to="/studio" onClick={onNavigate} className={navItemClass}>
+              <Wrench />
+              Studio
+            </NavLink>
           </div>
 
           <div className="mt-6">
