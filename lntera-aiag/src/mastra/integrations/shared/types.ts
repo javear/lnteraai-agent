@@ -4,7 +4,15 @@ export const PLATFORMS = ['shopee', 'tiktok'] as const;
 export type Platform = (typeof PLATFORMS)[number];
 export type Uuid = string;
 
-export const INTEGRATION_CODES = ['discord', 'groq', 'gemini', 'openai', 'anthropic', 'openrouter'] as const;
+export const INTEGRATION_CODES = [
+  'discord',
+  'groq',
+  'gemini',
+  'openai',
+  'anthropic',
+  'openrouter',
+  'knowledge',
+] as const;
 export type IntegrationCode = (typeof INTEGRATION_CODES)[number];
 
 export function isIntegrationCode(value: string): value is IntegrationCode {

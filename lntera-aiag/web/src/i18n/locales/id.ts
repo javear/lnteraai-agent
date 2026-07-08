@@ -27,6 +27,7 @@ export const id: Record<string, string> = {
   // Navigation / app chrome
   'nav.chat': 'Obrolan',
   'nav.integrations': 'Integrasi',
+  'nav.knowledge': 'Pengetahuan',
   'nav.navigation': 'Navigasi',
   'nav.openMenu': 'Buka menu',
   'nav.theme': 'Tema',

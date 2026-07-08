@@ -28,6 +28,7 @@ export const en: Record<string, string> = {
   // Navigation / app chrome
   'nav.chat': 'Chat',
   'nav.integrations': 'Integrations',
+  'nav.knowledge': 'Knowledge',
   'nav.navigation': 'Navigation',
   'nav.openMenu': 'Open menu',
   'nav.theme': 'Theme',
