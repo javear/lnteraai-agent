@@ -12,6 +12,18 @@ function currentLang(): string {
   }
 }
 
+/** Loose local shape for a stream chunk — avoids importing @mastra/core's full `ChunkType` union (a
+ *  large discriminated union) while still avoiding `any`. `payload` is `unknown` (not `Record<string,
+ *  unknown>`): the real union's payload variants are concrete interfaces without an index signature,
+ *  which TS won't structurally match against `Record<...>` through `processDataStream`'s generic
+ *  callback slot — cast it once at the read site instead (`chunk?.payload ?? {}` as a Record). Fields
+ *  vary by chunk `type`, so they're read defensively (typeof/property guards) rather than narrowed
+ *  per-variant. */
+export interface StreamChunk {
+  type?: string;
+  payload?: unknown;
+}
+
 /** A tool invocation the agent started, with its id + parsed arguments (for inline activity UIs). */
 export interface ToolCallInfo {
   toolCallId?: string;
@@ -152,11 +164,10 @@ export async function streamChat(
       } as never,
     });
 
-    // chunk is @mastra/core's ChunkType union; read loosely to avoid importing the heavy type.
     await res.processDataStream({
-      onChunk: async (chunk: any) => {
+      onChunk: async (chunk: StreamChunk) => {
         if (shouldStop()) return;
-        const payload = chunk?.payload ?? {};
+        const payload = (chunk?.payload ?? {}) as Record<string, unknown>;
         switch (chunk?.type) {
           case 'reasoning-delta': {
             // Separate "thinking" stream (most reasoning models) → live indicator only.
@@ -196,13 +207,19 @@ export async function streamChat(
               isError: true,
             });
             break;
-          case 'tripwire':
-            handlers.onTripwire?.(payload.metadata?.code, payload.reason ?? 'Request blocked.');
+          case 'tripwire': {
+            const metadata = payload.metadata as Record<string, unknown> | undefined;
+            const code = typeof metadata?.code === 'string' ? metadata.code : undefined;
+            const reason = typeof payload.reason === 'string' ? payload.reason : 'Request blocked.';
+            handlers.onTripwire?.(code, reason);
             break;
+          }
           case 'step-finish':
           case 'finish': {
             // The Portkey/provider model that produced this step (response.modelId).
-            const id = payload.response?.modelId ?? payload.metadata?.modelId;
+            const response = payload.response as Record<string, unknown> | undefined;
+            const metadata = payload.metadata as Record<string, unknown> | undefined;
+            const id = response?.modelId ?? metadata?.modelId;
             const label = parseModelLabel(id);
             if (label) handlers.onModel?.(label);
             break;

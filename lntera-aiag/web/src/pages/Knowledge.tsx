@@ -1,130 +1,283 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { lazy, Suspense } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense, type ReactNode } from 'react';
 import { toast } from 'sonner';
+import { FileText, Loader2, Search, Trash2, Upload, X, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../auth';
-import { Badge, Button, Card, Skeleton } from '../ui';
-import { apiErrorMessage } from '../lib/integrations';
-import { BuildTag } from '../components/BuildTag';
+import { Badge, Button, Skeleton } from '../ui';
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
+import {
+  ALLOWED_KNOWLEDGE_EXTENSIONS,
+  MAX_KNOWLEDGE_UPLOAD_BYTES,
+  formatBytes,
+  isAllowedKnowledgeFile,
+  uploadKnowledgeDocument,
+  listKnowledgeDocuments,
+  deleteKnowledgeDocument,
+  fetchKnowledgeGraph,
+  type KnowledgeDocument,
+  type KnowledgeUsage,
+  type KnowledgeGraphSnapshot,
+  type KnowledgeGraphNode,
+} from '../lib/knowledge';
 
-// The force-graph canvas is a heavy dependency (d3-force + canvas rendering) — split it out of the
-// main Knowledge chunk so the document list/upload UI stays fast even before the graph loads.
+// The force-graph canvas is a heavy dependency (d3-force + canvas rendering) — split it out so the
+// toolbar/sheet UI stays fast even before the graph engine loads.
 const ForceGraph2D = lazy(() => import('react-force-graph-2d'));
 
-const ALLOWED_EXTENSIONS = ['.pdf', '.xlsx', '.xls', '.txt', '.md', '.csv'];
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
-
-type DocumentStatus = 'pending' | 'processing' | 'ready' | 'failed';
-
-interface KnowledgeDocument {
-  id: string;
-  filename: string;
-  mime_type: string;
-  byte_size: number;
-  status: DocumentStatus;
-  source_type: 'document' | 'chat';
-  error_message: string | null;
-  created_at: string;
-}
-
-interface KnowledgeUsage {
-  bytes_used: number;
-  byte_limit: number;
-  graph_evicted_at: string | null;
-}
-
-interface GraphSnapshot {
-  nodes: Array<{ id: string; caption: string; type?: string }>;
-  edges: Array<{ source: string; target: string; label: string }>;
-  rebuilding?: boolean;
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
-}
-
-function statusTone(status: DocumentStatus): 'success' | 'danger' | 'neutral' {
+function statusTone(status: KnowledgeDocument['status']): 'success' | 'danger' | 'neutral' {
   if (status === 'ready') return 'success';
   if (status === 'failed') return 'danger';
   return 'neutral';
 }
 
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // "data:<mime>;base64,<payload>" — keep only the payload.
-      const comma = result.indexOf(',');
-      resolve(comma >= 0 ? result.slice(comma + 1) : result);
-    };
-    reader.onerror = () => reject(reader.error ?? new Error('Could not read file.'));
-    reader.readAsDataURL(file);
-  });
+function EmptyState({
+  icon: Icon,
+  title,
+  desc,
+  action,
+  spin,
+}: {
+  icon: LucideIcon;
+  title: string;
+  desc: string;
+  action?: ReactNode;
+  spin?: boolean;
+}) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
+        <Icon className={`h-7 w-7 text-muted-foreground ${spin ? 'animate-spin' : ''}`} />
+      </div>
+      <div>
+        <p className="text-[16px] font-semibold">{title}</p>
+        <p className="mt-1 max-w-xs text-[13px] text-muted-foreground">{desc}</p>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function NodeDetailCard({
+  node,
+  graph,
+  onClose,
+}: {
+  node: KnowledgeGraphNode;
+  graph: KnowledgeGraphSnapshot | null;
+  onClose: () => void;
+}) {
+  const related = useMemo(() => {
+    if (!graph) return [];
+    const ids = new Set<string>();
+    for (const e of graph.edges) {
+      if (e.source === node.id) ids.add(e.target);
+      else if (e.target === node.id) ids.add(e.source);
+    }
+    return graph.nodes.filter((n) => ids.has(n.id));
+  }, [graph, node]);
+
+  return (
+    <div className="animate-fade-in-up absolute bottom-4 left-4 right-4 z-20 max-w-sm rounded-2xl border bg-background/95 p-4 shadow-lg backdrop-blur-md sm:left-6 sm:right-auto">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-[15px] font-semibold">{node.caption}</p>
+          {node.type ? <Badge tone="neutral">{node.type}</Badge> : null}
+        </div>
+        <button
+          onClick={onClose}
+          className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          aria-label="Close"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      {related.length > 0 ? (
+        <div className="mt-3">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Connected to</p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {related.slice(0, 10).map((r) => (
+              <span key={r.id} className="rounded-full border bg-muted/40 px-2 py-0.5 text-[12px]">
+                {r.caption}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <p className="mt-2 text-[13px] text-muted-foreground">No direct connections yet.</p>
+      )}
+    </div>
+  );
+}
+
+function DocumentsSheet({
+  open,
+  onOpenChange,
+  documents,
+  usage,
+  uploading,
+  busyId,
+  onUploadClick,
+  onDelete,
+  fileInputRef,
+  onFileSelected,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  documents: KnowledgeDocument[] | null;
+  usage: KnowledgeUsage | null;
+  uploading: boolean;
+  busyId: string | null;
+  onUploadClick: () => void;
+  onDelete: (doc: KnowledgeDocument) => void;
+  fileInputRef: React.RefObject<HTMLInputElement>;
+  onFileSelected: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}) {
+  const usagePct = usage ? Math.min(100, Math.round((usage.bytes_used / usage.byte_limit) * 100)) : 0;
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="flex w-[88vw] flex-col p-6 sm:w-[420px] sm:max-w-none">
+        <SheetTitle>Documents</SheetTitle>
+        <SheetDescription>Upload documents to grow your knowledge graph.</SheetDescription>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ALLOWED_KNOWLEDGE_EXTENSIONS.join(',')}
+          className="hidden"
+          onChange={onFileSelected}
+        />
+        <Button disabled={uploading} onClick={onUploadClick} className="gap-2">
+          <Upload className="h-4 w-4" />
+          {uploading ? 'Uploading…' : 'Upload a document'}
+        </Button>
+        <p className="-mt-2 text-[12px] text-muted-foreground">PDF, XLSX, XLS, TXT, MD, or CSV.</p>
+
+        {usage ? (
+          <div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className={`h-full rounded-full ${usagePct >= 90 ? 'bg-destructive' : 'bg-brand'}`}
+                style={{ width: `${usagePct}%` }}
+              />
+            </div>
+            <p className="mt-1 text-[12px] text-muted-foreground">
+              {formatBytes(usage.bytes_used)} of {formatBytes(usage.byte_limit)} used
+            </p>
+          </div>
+        ) : null}
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {documents === null ? (
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+          ) : documents.length === 0 ? (
+            <p className="text-[13px] text-muted-foreground">Nothing uploaded yet.</p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {documents.map((doc) => (
+                <li key={doc.id} className="rounded-xl border p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="truncate text-[13px] font-medium">{doc.filename}</span>
+                        <Badge tone={statusTone(doc.status)}>{doc.status}</Badge>
+                        {doc.source_type === 'chat' ? <Badge tone="neutral">from chat</Badge> : null}
+                      </div>
+                      <p className="mt-0.5 truncate text-[12px] text-muted-foreground">
+                        {formatBytes(doc.byte_size)}
+                        {doc.status === 'failed' && doc.error_message ? ` · ${doc.error_message}` : ''}
+                      </p>
+                    </div>
+                    <button
+                      disabled={busyId === doc.id}
+                      onClick={() => onDelete(doc)}
+                      className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                      aria-label={`Remove ${doc.filename}`}
+                    >
+                      {busyId === doc.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
 }
 
 export default function Knowledge() {
   const { api } = useAuth();
   const [documents, setDocuments] = useState<KnowledgeDocument[] | null>(null);
   const [usage, setUsage] = useState<KnowledgeUsage | null>(null);
-  const [graph, setGraph] = useState<GraphSnapshot | null>(null);
+  const [graph, setGraph] = useState<KnowledgeGraphSnapshot | null>(null);
   const [uploading, setUploading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [selectedNode, setSelectedNode] = useState<KnowledgeGraphNode | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const canvasWrapRef = useRef<HTMLDivElement>(null);
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
 
   const loadDocuments = useCallback(async () => {
-    const res = await api('/svc/v1/knowledge/documents');
-    if (!res.ok) throw new Error(await apiErrorMessage(res, 'Could not load your knowledge base.'));
-    const data = (await res.json()) as { documents: KnowledgeDocument[]; usage: KnowledgeUsage };
+    const data = await listKnowledgeDocuments(api);
     setDocuments(data.documents);
     setUsage(data.usage);
   }, [api]);
 
   const loadGraph = useCallback(async () => {
-    const res = await api('/svc/v1/knowledge/graph');
-    if (!res.ok) return;
-    setGraph((await res.json()) as GraphSnapshot);
+    try {
+      setGraph(await fetchKnowledgeGraph(api));
+    } catch {
+      // keep the previously rendered graph on a transient error rather than blanking the canvas
+    }
   }, [api]);
 
   useEffect(() => {
     loadDocuments().catch((err) => toast.error(err instanceof Error ? err.message : String(err)));
-    loadGraph().catch(() => {});
+    void loadGraph();
   }, [loadDocuments, loadGraph]);
 
-  // Any document still pending/processing → keep polling so status updates without a manual refresh.
+  // Any document still pending/processing → keep polling so status + the graph update live.
   useEffect(() => {
     if (!documents?.some((d) => d.status === 'pending' || d.status === 'processing')) return;
     const t = window.setInterval(() => {
       loadDocuments().catch(() => {});
+      void loadGraph();
     }, 4000);
     return () => window.clearInterval(t);
-  }, [documents, loadDocuments]);
+  }, [documents, loadDocuments, loadGraph]);
+
+  // react-force-graph needs explicit pixel dimensions — track the canvas wrapper's actual size.
+  useEffect(() => {
+    const el = canvasWrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) setCanvasSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-
-    const ext = `.${file.name.split('.').pop()?.toLowerCase() ?? ''}`;
-    if (!ALLOWED_EXTENSIONS.includes(ext)) {
-      toast.error(`Unsupported file type. Supported: ${ALLOWED_EXTENSIONS.join(', ')}`);
+    if (!isAllowedKnowledgeFile(file.name)) {
+      toast.error(`Unsupported file type. Supported: ${ALLOWED_KNOWLEDGE_EXTENSIONS.join(', ')}`);
       return;
     }
-    if (file.size > MAX_UPLOAD_BYTES) {
+    if (file.size > MAX_KNOWLEDGE_UPLOAD_BYTES) {
       toast.error('File is larger than the 10MB knowledge base limit.');
       return;
     }
-
     setUploading(true);
     try {
-      const fileBase64 = await fileToBase64(file);
-      const res = await api('/svc/v1/knowledge/documents', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: file.name, mimeType: file.type || 'application/octet-stream', fileBase64 }),
-      });
-      if (!res.ok) throw new Error(await apiErrorMessage(res, 'Upload failed.'));
+      await uploadKnowledgeDocument(api, file);
       toast.success(`${file.name} uploaded — indexing now.`);
       await loadDocuments();
     } catch (err) {
@@ -137,8 +290,7 @@ export default function Knowledge() {
   async function handleDelete(doc: KnowledgeDocument) {
     setBusyId(doc.id);
     try {
-      const res = await api(`/svc/v1/knowledge/documents/${doc.id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error(await apiErrorMessage(res, 'Delete failed.'));
+      await deleteKnowledgeDocument(api, doc.id);
       toast.success(`${doc.filename} removed.`);
       await Promise.all([loadDocuments(), loadGraph()]);
     } catch (err) {
@@ -148,132 +300,123 @@ export default function Knowledge() {
     }
   }
 
-  const usagePct = usage ? Math.min(100, Math.round((usage.bytes_used / usage.byte_limit) * 100)) : 0;
+  // Search narrows the rendered graph to matching entities + the edges directly between them.
+  const visibleGraphData = useMemo(() => {
+    if (!graph) return { nodes: [], links: [] };
+    const q = search.trim().toLowerCase();
+    if (!q) return { nodes: graph.nodes, links: graph.edges };
+    const matchIds = new Set(graph.nodes.filter((n) => n.caption.toLowerCase().includes(q)).map((n) => n.id));
+    return {
+      nodes: graph.nodes.filter((n) => matchIds.has(n.id)),
+      links: graph.edges.filter((e) => matchIds.has(e.source) && matchIds.has(e.target)),
+    };
+  }, [graph, search]);
+
+  const hasNodes = (graph?.nodes.length ?? 0) > 0;
+  const rebuilding = Boolean(graph?.rebuilding);
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-5 pb-16 pt-8 sm:px-6 sm:pb-24 sm:pt-10">
-      <h1 className="text-2xl font-semibold tracking-tight sm:text-[26px]">Knowledge</h1>
-      <p className="mt-2 text-[15px] text-muted-foreground">
-        Upload documents and let your assistant remember facts from chat — it can search this to answer
-        questions specific to your business.
-      </p>
-
-      <Card className="mt-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <h3 className="text-[15px] font-semibold">Upload a document</h3>
-            <p className="mt-1 text-[13px] text-muted-foreground">
-              PDF, XLSX, XLS, TXT, MD, or CSV. {usage ? `${formatBytes(usage.bytes_used)} of ${formatBytes(usage.byte_limit)} used.` : null}
-            </p>
-            {usage ? (
-              <div className="mt-2 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-muted">
-                <div
-                  className={`h-full rounded-full ${usagePct >= 90 ? 'bg-destructive' : 'bg-brand'}`}
-                  style={{ width: `${usagePct}%` }}
-                />
+    <div className="relative h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-muted/10">
+      <div ref={canvasWrapRef} className="absolute inset-0">
+        {rebuilding ? (
+          <EmptyState
+            icon={Loader2}
+            spin
+            title="Rebuilding your knowledge graph"
+            desc="Your knowledge base was paused after a period of inactivity and is repopulating from your documents — check back shortly."
+          />
+        ) : !hasNodes ? (
+          <EmptyState
+            icon={FileText}
+            title="No knowledge yet"
+            desc="Upload a document or save a fact from chat — entities and their relationships will appear here as a graph."
+            action={
+              <Button onClick={() => setSheetOpen(true)} className="gap-2">
+                <Upload className="h-4 w-4" />
+                Upload a document
+              </Button>
+            }
+          />
+        ) : canvasSize.width > 0 && canvasSize.height > 0 ? (
+          <Suspense
+            fallback={
+              <div className="flex h-full items-center justify-center">
+                <Skeleton className="h-3/4 w-3/4 rounded-2xl" />
               </div>
-            ) : null}
-          </div>
-          <div className="shrink-0">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={ALLOWED_EXTENSIONS.join(',')}
-              className="hidden"
-              onChange={handleFileSelected}
+            }
+          >
+            <ForceGraph2D
+              width={canvasSize.width}
+              height={canvasSize.height}
+              graphData={visibleGraphData}
+              backgroundColor="rgba(0,0,0,0)"
+              nodeLabel="caption"
+              nodeAutoColorBy="type"
+              linkColor={() => 'rgba(148,163,184,0.4)'}
+              linkWidth={1}
+              nodeRelSize={5}
+              onNodeClick={(node) => setSelectedNode(node as unknown as KnowledgeGraphNode)}
+              onBackgroundClick={() => setSelectedNode(null)}
+              cooldownTicks={100}
             />
-            <Button disabled={uploading} onClick={() => fileInputRef.current?.click()}>
-              {uploading ? 'Uploading…' : 'Upload'}
-            </Button>
-          </div>
-        </div>
-        {usage?.graph_evicted_at ? (
-          <p className="mt-3 text-[13px] text-muted-foreground">
-            Your knowledge base was paused after a long period of inactivity. It rebuilds automatically the
-            next time it's used.
-          </p>
+          </Suspense>
         ) : null}
-      </Card>
-
-      <div className="mt-6">
-        <h2 className="text-[15px] font-semibold">Documents</h2>
-        {documents === null ? (
-          <div className="mt-3 flex flex-col gap-2">
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
-          </div>
-        ) : documents.length === 0 ? (
-          <p className="mt-3 text-[13px] text-muted-foreground">Nothing uploaded yet.</p>
-        ) : (
-          <ul className="mt-3 flex flex-col gap-2">
-            {documents.map((doc) => (
-              <li key={doc.id}>
-                <Card className="transition-shadow hover:shadow-md">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="truncate text-[14px] font-medium">{doc.filename}</span>
-                        <Badge tone={statusTone(doc.status)}>{doc.status}</Badge>
-                        {doc.source_type === 'chat' ? <Badge tone="neutral">from chat</Badge> : null}
-                      </div>
-                      <p className="mt-0.5 truncate text-[12px] text-muted-foreground">
-                        {formatBytes(doc.byte_size)}
-                        {doc.status === 'failed' && doc.error_message ? ` · ${doc.error_message}` : ''}
-                      </p>
-                    </div>
-                    <Button
-                      variant="danger"
-                      disabled={busyId === doc.id}
-                      onClick={() => handleDelete(doc)}
-                    >
-                      {busyId === doc.id ? 'Removing…' : 'Remove'}
-                    </Button>
-                  </div>
-                </Card>
-              </li>
-            ))}
-          </ul>
-        )}
       </div>
 
-      <div className="mt-6">
-        <h2 className="text-[15px] font-semibold">Knowledge graph</h2>
-        <p className="mt-1 text-[13px] text-muted-foreground">
-          Entities extracted from your documents and saved facts, connected by their relationships.
-        </p>
-        <Card className="mt-3 overflow-hidden p-0">
-          {graph?.rebuilding ? (
-            <div className="flex h-[360px] items-center justify-center text-[13px] text-muted-foreground">
-              Rebuilding your knowledge graph — check back shortly.
-            </div>
-          ) : !graph || graph.nodes.length === 0 ? (
-            <div className="flex h-[360px] items-center justify-center text-[13px] text-muted-foreground">
-              Upload a document to see its knowledge graph here.
-            </div>
-          ) : (
-            <Suspense
-              fallback={<div className="flex h-[360px] items-center justify-center"><Skeleton className="h-full w-full" /></div>}
+      {/* Floating glass toolbar */}
+      <div className="absolute left-4 right-4 top-4 z-10 flex items-center gap-2 rounded-2xl border bg-background/75 px-3 py-2 shadow-md backdrop-blur-md sm:left-6 sm:right-6">
+        <h1 className="shrink-0 text-[15px] font-semibold tracking-tight">Knowledge</h1>
+        <div className="relative min-w-0 max-w-xs flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search entities…"
+            className="w-full rounded-lg border bg-background/60 py-1.5 pl-8 pr-7 text-[13px] outline-none focus:ring-2 focus:ring-ring"
+          />
+          {search ? (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+              aria-label="Clear search"
             >
-              <div style={{ height: 360 }}>
-                <ForceGraph2D
-                  graphData={{
-                    nodes: graph.nodes.map((n) => ({ id: n.id, caption: n.caption, type: n.type })),
-                    links: graph.edges.map((e) => ({ source: e.source, target: e.target, label: e.label })),
-                  }}
-                  height={360}
-                  nodeLabel="caption"
-                  nodeAutoColorBy="type"
-                  linkLabel="label"
-                  linkDirectionalArrowLength={4}
-                  nodeRelSize={4}
-                />
-              </div>
-            </Suspense>
-          )}
-        </Card>
+              <X className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+        </div>
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {usage ? (
+            <span className="hidden text-[12px] text-muted-foreground sm:inline">
+              {formatBytes(usage.bytes_used)} / {formatBytes(usage.byte_limit)}
+            </span>
+          ) : null}
+          <button
+            onClick={() => setSheetOpen(true)}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+            aria-label="Documents"
+            title="Documents"
+          >
+            <FileText className="h-[18px] w-[18px]" />
+          </button>
+        </div>
       </div>
 
-      <BuildTag />
+      {selectedNode ? (
+        <NodeDetailCard node={selectedNode} graph={graph} onClose={() => setSelectedNode(null)} />
+      ) : null}
+
+      <DocumentsSheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        documents={documents}
+        usage={usage}
+        uploading={uploading}
+        busyId={busyId}
+        onUploadClick={() => fileInputRef.current?.click()}
+        onDelete={handleDelete}
+        fileInputRef={fileInputRef}
+        onFileSelected={handleFileSelected}
+      />
     </div>
   );
 }

@@ -1,6 +1,14 @@
 import type { MastraClient } from '@mastra/client-js';
 import { browserTimezone } from '../insights';
-import { friendlyStreamError, parseModelLabel, readFinishReason, readToolArgs, readToolErrorMessage, type StreamHandlers } from '../chat';
+import {
+  friendlyStreamError,
+  parseModelLabel,
+  readFinishReason,
+  readToolArgs,
+  readToolErrorMessage,
+  type StreamChunk,
+  type StreamHandlers,
+} from '../chat';
 import type { StudioProjectKind } from './api';
 
 /** Matches the server agent id (src/mastra/agents/technical-agent.ts). */
@@ -42,9 +50,9 @@ export async function streamStudioChat(
     });
 
     await res.processDataStream({
-      onChunk: async (chunk: any) => {
+      onChunk: async (chunk: StreamChunk) => {
         if (shouldStop()) return;
-        const payload = chunk?.payload ?? {};
+        const payload = (chunk?.payload ?? {}) as Record<string, unknown>;
         switch (chunk?.type) {
           case 'reasoning-delta': {
             const r =
@@ -82,12 +90,18 @@ export async function streamStudioChat(
               isError: true,
             });
             break;
-          case 'tripwire':
-            handlers.onTripwire?.(payload.metadata?.code, payload.reason ?? 'Request blocked.');
+          case 'tripwire': {
+            const metadata = payload.metadata as Record<string, unknown> | undefined;
+            const code = typeof metadata?.code === 'string' ? metadata.code : undefined;
+            const reason = typeof payload.reason === 'string' ? payload.reason : 'Request blocked.';
+            handlers.onTripwire?.(code, reason);
             break;
+          }
           case 'step-finish':
           case 'finish': {
-            const id = payload.response?.modelId ?? payload.metadata?.modelId;
+            const response = payload.response as Record<string, unknown> | undefined;
+            const metadata = payload.metadata as Record<string, unknown> | undefined;
+            const id = response?.modelId ?? metadata?.modelId;
             const label = parseModelLabel(id);
             if (label) handlers.onModel?.(label);
             if (chunk?.type === 'finish') handlers.onFinish?.(readFinishReason(payload));

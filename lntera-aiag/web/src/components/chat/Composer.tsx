@@ -1,11 +1,13 @@
-import { useEffect, useRef, type KeyboardEvent } from 'react';
-import { ArrowUp, Square, SlidersHorizontal } from 'lucide-react';
+import { useEffect, useRef, type ChangeEvent, type KeyboardEvent } from 'react';
+import { ArrowUp, FileText, Paperclip, Square, SlidersHorizontal, X } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ModelPicker } from '@/components/chat/ModelPicker';
 import { useOnlineStatus } from '@/lib/pwa';
 import { useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import type { PinnableModel } from '@/lib/integrations';
+import { ALLOWED_KNOWLEDGE_EXTENSIONS, MAX_KNOWLEDGE_UPLOAD_BYTES, formatBytes, isAllowedKnowledgeFile } from '@/lib/knowledge';
 
 export function Composer({
   value,
@@ -17,6 +19,8 @@ export function Composer({
   models,
   pinnedModel,
   onPinModel,
+  attachedFile,
+  onAttach,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -30,12 +34,32 @@ export function Composer({
   /** Currently pinned model code ('' = Auto / default round-robin). */
   pinnedModel?: string;
   onPinModel?: (modelCode: string) => void;
+  /** A document staged to upload as knowledge alongside the next message. */
+  attachedFile?: File | null;
+  onAttach?: (file: File | null) => void;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const online = useOnlineStatus();
   const t = useT();
   const disabled = streaming || !online;
   const showPicker = Boolean(models && models.length > 0 && onPinModel);
+  const canSend = (value.trim() || attachedFile) && !disabled;
+
+  function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !onAttach) return;
+    if (!isAllowedKnowledgeFile(file.name)) {
+      toast.error(`Unsupported file type. Supported: ${ALLOWED_KNOWLEDGE_EXTENSIONS.join(', ')}`);
+      return;
+    }
+    if (file.size > MAX_KNOWLEDGE_UPLOAD_BYTES) {
+      toast.error('File is larger than the 10MB knowledge base limit.');
+      return;
+    }
+    onAttach(file);
+  }
 
   // Auto-grow up to a cap (smaller on mobile so the keyboard + list stay visible).
   useEffect(() => {
@@ -49,13 +73,28 @@ export function Composer({
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (!disabled && value.trim()) onSend();
+      if (canSend) onSend();
     }
   }
 
   return (
     <div className="border-t bg-background px-3 pt-3 pb-[max(0.85rem,env(safe-area-inset-bottom))] sm:px-4">
       <div className="mx-auto max-w-3xl">
+        {attachedFile ? (
+          <div className="mb-2 flex items-center gap-2 rounded-xl border bg-muted/40 px-3 py-2 text-[13px]">
+            <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate font-medium">{attachedFile.name}</span>
+            <span className="shrink-0 text-muted-foreground">{formatBytes(attachedFile.size)}</span>
+            <button
+              type="button"
+              onClick={() => onAttach?.(null)}
+              className="shrink-0 rounded-full p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+              aria-label="Remove attachment"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : null}
         <div
           className={cn(
             'rounded-2xl border bg-background shadow-sm transition-shadow',
@@ -76,6 +115,29 @@ export function Composer({
 
           {/* Action bar — left tools, right send. Mirrors the Claude/Cursor composer layout. */}
           <div className="flex items-center gap-1 px-2 pb-2 pt-0.5">
+            {onAttach ? (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={ALLOWED_KNOWLEDGE_EXTENSIONS.join(',')}
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  type="button"
+                  className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={disabled || Boolean(attachedFile)}
+                  aria-label="Attach a document"
+                  title="Attach a document to add to your knowledge base"
+                >
+                  <Paperclip className="h-[18px] w-[18px]" />
+                </Button>
+              </>
+            ) : null}
             {onConfig ? (
               <Button
                 size="icon"
@@ -116,7 +178,7 @@ export function Composer({
                   size="icon"
                   className="h-9 w-9 rounded-xl [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
                   onClick={onSend}
-                  disabled={!value.trim() || disabled}
+                  disabled={!canSend}
                   aria-label={t('chat.send')}
                 >
                   <ArrowUp className="h-5 w-5" />
