@@ -149,7 +149,7 @@ function DocumentsSheet({
           <Upload className="h-4 w-4" />
           {uploading ? 'Uploading…' : 'Upload a document'}
         </Button>
-        <p className="-mt-2 text-[12px] text-muted-foreground">PDF, XLSX, XLS, TXT, MD, or CSV.</p>
+        <p className="-mt-2 text-[12px] text-muted-foreground">PDF, XLSX, XLS, TXT, MD, CSV, JPG, PNG, or WEBP — images are read via OCR.</p>
 
         {usage ? (
           <div>

@@ -10,6 +10,7 @@ import {
   downloadKnowledgeFile,
 } from '../../integrations/knowledge/documents-repo';
 import { extractDocumentText } from '../../integrations/knowledge/parsers';
+import { extractImageText } from '../../integrations/knowledge/image-ocr';
 import { chunkText } from '../../integrations/knowledge/chunk';
 import { embedTexts } from '../../integrations/embeddings/qwen-embeddings';
 import { extractEntitiesAndRelationships } from '../../integrations/knowledge/extract-entities';
@@ -43,6 +44,9 @@ export const ingestDocumentFn = inngest.createFunction(
     try {
       const text = await step.run('parse', async () => {
         const buffer = await downloadKnowledgeFile(doc.storage_path);
+        // Images have no text to parse — describe/OCR them via a vision-capable model instead, then
+        // feed the result into the same chunk/embed/extract pipeline as any other document.
+        if (doc.mime_type.startsWith('image/')) return extractImageText(tenantId, buffer, doc.mime_type);
         return extractDocumentText(buffer, doc.mime_type, doc.filename);
       });
 

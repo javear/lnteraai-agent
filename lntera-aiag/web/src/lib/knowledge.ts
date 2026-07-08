@@ -2,7 +2,7 @@
 // /knowledge page, so the upload/validation logic lives in exactly one place.
 import { apiErrorMessage } from './integrations';
 
-export const ALLOWED_KNOWLEDGE_EXTENSIONS = ['.pdf', '.xlsx', '.xls', '.txt', '.md', '.csv'];
+export const ALLOWED_KNOWLEDGE_EXTENSIONS = ['.pdf', '.xlsx', '.xls', '.txt', '.md', '.csv', '.jpg', '.jpeg', '.png', '.webp'];
 export const MAX_KNOWLEDGE_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 export type KnowledgeDocumentStatus = 'pending' | 'processing' | 'ready' | 'failed';
