@@ -32,7 +32,7 @@ const authHeaderParam = {
 // comfortably above the whole-tenant 10MB cap so a single valid upload is never blocked by this.
 const MAX_BASE64_LENGTH = 14 * 1024 * 1024;
 
-const ALLOWED_EXTENSIONS = /\.(pdf|xlsx|xls|txt|md|csv)$/i;
+const ALLOWED_EXTENSIONS = /\.(pdf|xlsx|xls|txt|md|csv|jpg|jpeg|png|webp)$/i;
 
 const uploadBody = z
   .object({
@@ -91,7 +91,7 @@ export const knowledgeUploadDocumentRoute = registerApiRoute(`${OPEN_API_PREFIX}
     }
 
     if (!ALLOWED_EXTENSIONS.test(body.filename)) {
-      return openApiJsonError(c, 400, 'unsupported_type', 'Supported: PDF, XLSX, XLS, TXT, MD, CSV.');
+      return openApiJsonError(c, 400, 'unsupported_type', 'Supported: PDF, XLSX, XLS, TXT, MD, CSV, JPG, PNG, WEBP.');
     }
 
     let buffer: Buffer;
