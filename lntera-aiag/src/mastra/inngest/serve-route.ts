@@ -12,6 +12,8 @@ import { insightArmSweepFn } from './functions/sweep-insight-arms';
 import { runInsightFn } from './functions/run-insight';
 import { runScheduledTaskFn } from './functions/run-scheduled-task';
 import { scheduledTaskSweepFn } from './functions/sweep-scheduled-tasks';
+import { ingestDocumentFn } from './functions/ingest-document';
+import { knowledgeEvictionSweepFn } from './functions/sweep-knowledge-eviction';
 
 export const INNGEST_SERVE_PATH = '/inngest';
 
@@ -21,7 +23,14 @@ const serveOrigin = process.env.MASTRA_PUBLIC_BASE_URL?.trim();
 
 const inngestHandler = serve({
   client: inngest,
-  functions: [insightArmSweepFn, runInsightFn, runScheduledTaskFn, scheduledTaskSweepFn],
+  functions: [
+    insightArmSweepFn,
+    runInsightFn,
+    runScheduledTaskFn,
+    scheduledTaskSweepFn,
+    ingestDocumentFn,
+    knowledgeEvictionSweepFn,
+  ],
   servePath: INNGEST_SERVE_PATH,
   ...(serveOrigin ? { serveOrigin } : {}),
 });

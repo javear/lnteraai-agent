@@ -28,6 +28,7 @@ const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const Chat = lazy(() => import('./pages/Chat'));
 const Integrations = lazy(() => import('./pages/Integrations'));
+const Knowledge = lazy(() => import('./pages/Knowledge'));
 // Marketing landing — web only. Gated on the BUILD mode (not the runtime IS_NATIVE) so Rollup
 // dead-code-eliminates the dynamic import: the chunk never ships in the native (Capacitor) bundle.
 const Landing = import.meta.env.MODE === 'native' ? null : lazy(() => import('./pages/Landing'));
@@ -182,6 +183,14 @@ function Boot() {
             element={
               <Suspense fallback={<PageRouteSkeleton />}>
                 <Integrations />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/knowledge"
+            element={
+              <Suspense fallback={<PageRouteSkeleton />}>
+                <Knowledge />
               </Suspense>
             }
           />
