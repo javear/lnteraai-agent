@@ -7,6 +7,7 @@ import { useMastra } from '../lib/mastra';
 import { parseSuggestions, streamChat } from '../lib/chat';
 import { stripReasoning } from '../lib/reasoning';
 import { apiErrorMessage, fetchPinnableModels, isAnyLlmActive, type PinnableModel } from '../lib/integrations';
+import { uploadKnowledgeDocument } from '../lib/knowledge';
 import { useChats } from '../lib/chat-store';
 import { useNotifications, type TenantNotification } from '../lib/notifications';
 import { generateTitle, getMessages, type HistoryMessage } from '../lib/threads';
@@ -62,6 +63,7 @@ export default function Chat() {
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -367,12 +369,27 @@ export default function Chat() {
     }
   }
 
-  async function send(text: string) {
+  async function send(text: string, file?: File | null) {
     const content = text.trim();
-    if (!content || streaming) return;
+    if ((!content && !file) || streaming) return;
     setError(null);
     setSuggestions([]);
     setInput('');
+    setAttachedFile(null);
+
+    // Upload first — if it fails, surface the error and don't send a half-broken turn.
+    let attachments: { name: string; size: number }[] | undefined;
+    let wireContent = content;
+    if (file) {
+      try {
+        await uploadKnowledgeDocument(api, file);
+        attachments = [{ name: file.name, size: file.size }];
+        wireContent = `${content ? `${content}\n\n` : ''}[Attached document: ${file.name}]`;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not upload that document.');
+        return;
+      }
+    }
 
     const startedAt = new Date().toISOString();
     const userMsgId = newId();
@@ -380,7 +397,7 @@ export default function Chat() {
     nearBottomRef.current = true;
     setMessages((m) => [
       ...m,
-      { id: userMsgId, role: 'user', content, createdAt: startedAt },
+      { id: userMsgId, role: 'user', content, attachments, createdAt: startedAt },
       { id: aiId, role: 'assistant', content: '', pending: true, tool: null, createdAt: startedAt },
     ]);
     setStreaming(true);
@@ -391,7 +408,7 @@ export default function Chat() {
     let threadId = routeThreadId;
     if (!threadId) {
       try {
-        const created = await createSession(deriveTitle(content));
+        const created = await createSession(deriveTitle(content || (file ? `Uploaded: ${file.name}` : '')));
         threadId = created.id;
         createdThisSessionRef.current.add(created.id); // keep optimistic messages if reloaded early
         historyForRef.current = created.id; // suppress the route-change reload below
@@ -446,7 +463,7 @@ export default function Chat() {
 
     await streamChat(
       client,
-      content,
+      wireContent,
       threadId,
       resource,
       {
@@ -659,7 +676,7 @@ export default function Chat() {
       <Composer
         value={input}
         onChange={setInput}
-        onSend={() => void send(input)}
+        onSend={() => void send(input, attachedFile)}
         onStop={() => {
           stopRef.current = true;
           setStreaming(false);
@@ -669,6 +686,8 @@ export default function Chat() {
         models={pinnableModels}
         pinnedModel={pinnedModel}
         onPinModel={setPinnedModel}
+        attachedFile={attachedFile}
+        onAttach={setAttachedFile}
       />
       <Modal
         open={automationOpen}

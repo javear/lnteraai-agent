@@ -1,11 +1,12 @@
 import { memo } from 'react';
-import { Sparkles } from 'lucide-react';
+import { FileText, Sparkles } from 'lucide-react';
 import { Avatar } from '../../ui';
 import { parseSuggestions } from '../../lib/chat';
 import { stripReasoning } from '../../lib/reasoning';
 import { useT } from '../../i18n';
 import type { NotificationAction, NotificationContextRef } from '../../lib/notifications';
 import type { ChartSpec } from '../../lib/insights';
+import { formatBytes } from '../../lib/knowledge';
 import { Markdown } from './Markdown';
 import { NotificationActions } from './NotificationActions';
 import { InsightChart } from './InsightChart';
@@ -34,6 +35,25 @@ export interface ChatMessage {
   contextRef?: NotificationContextRef;
   /** Charts for scheduled business-insight messages. */
   charts?: ChartSpec[];
+  /** Documents attached via the composer's attach button (already uploaded to the knowledge base). */
+  attachments?: { name: string; size: number }[];
+}
+
+function AttachmentChips({ attachments }: { attachments: { name: string; size: number }[] }) {
+  return (
+    <div className="flex flex-wrap justify-end gap-1.5">
+      {attachments.map((a, i) => (
+        <div
+          key={`${a.name}-${i}`}
+          className="flex max-w-[220px] items-center gap-1.5 rounded-lg border bg-background/80 px-2.5 py-1.5 text-[12px] text-foreground shadow-sm"
+        >
+          <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <span className="truncate">{a.name}</span>
+          <span className="shrink-0 text-muted-foreground">{formatBytes(a.size)}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 /** Localized "when it arrived": time only if today, else date + time (year only if not this year). */
@@ -56,11 +76,15 @@ function MessageBubbleImpl({ message }: { message: ChatMessage }) {
   const t = useT();
   const timeLabel = formatMessageTime(message.createdAt);
   if (message.role === 'user') {
+    const hasAttachments = (message.attachments?.length ?? 0) > 0;
     return (
-      <div className="flex animate-fade-in flex-col items-end">
-        <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-[15px] leading-relaxed text-primary-foreground [overflow-wrap:anywhere]">
-          {message.content}
-        </div>
+      <div className="flex animate-fade-in flex-col items-end gap-1.5">
+        {hasAttachments ? <AttachmentChips attachments={message.attachments!} /> : null}
+        {message.content ? (
+          <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-[15px] leading-relaxed text-primary-foreground [overflow-wrap:anywhere]">
+            {message.content}
+          </div>
+        ) : null}
         {timeLabel ? <div className="mt-1 px-1 text-[11px] text-muted-foreground/70">{timeLabel}</div> : null}
       </div>
     );
