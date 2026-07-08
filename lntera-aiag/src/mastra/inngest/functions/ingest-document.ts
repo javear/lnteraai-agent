@@ -25,8 +25,9 @@ export const ingestDocumentFn = inngest.createFunction(
   {
     id: 'ingest-knowledge-document',
     // Serialize per tenant — concurrent ingestion for the same tenant graph would race MERGE-based
-    // entity dedup (two chunks creating the "same" entity as separate nodes if interleaved).
-    concurrency: [{ limit: 8 }, { key: 'event.data.tenantId', limit: 1 }],
+    // entity dedup (two chunks creating the "same" entity as separate nodes if interleaved). Global
+    // limit stays under the plan's per-function cap of 5 (same margin run-insight.ts keeps).
+    concurrency: [{ limit: 4 }, { key: 'event.data.tenantId', limit: 1 }],
     retries: 2,
     triggers: [{ event: 'knowledge/document.uploaded' }],
   },
