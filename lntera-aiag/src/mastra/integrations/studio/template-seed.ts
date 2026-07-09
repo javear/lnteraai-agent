@@ -23,7 +23,7 @@ import { getGiteaConfig } from './config';
 import { WEBAPP_TEMPLATE_FILES, MCP_TEMPLATE_FILES } from './template-manifest';
 import type { ProjectKind } from '../shared/types';
 
-const AUTHOR = { name: 'Lntera Studio', email: 'studio@lntera.ai' };
+const AUTHOR = { name: 'Lntera Forge', email: 'forge@lntera.ai' };
 
 function templateFilesFor(kind: ProjectKind): Record<string, string> {
   return kind === 'mcp' ? MCP_TEMPLATE_FILES : WEBAPP_TEMPLATE_FILES;
@@ -70,7 +70,7 @@ export async function seedProjectTemplate(args: { kind: ProjectKind; repoFullNam
     await git.commit({
       fs,
       dir,
-      message: 'Initial commit from Studio starter template',
+      message: 'Initial commit from Forge starter template',
       author: AUTHOR,
       committer: AUTHOR,
     });

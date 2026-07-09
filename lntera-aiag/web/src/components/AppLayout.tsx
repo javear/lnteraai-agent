@@ -213,14 +213,14 @@ function SidebarContent({
               <BookOpen />
               {t('nav.knowledge')}
             </NavLink>
-            {/* Always shown, even on native/mobile where Studio can't actually run (it needs a
+            {/* Always shown, even on native/mobile where Forge can't actually run (it needs a
                 desktop-sized screen for its own sandbox) — Studio.tsx's own `narrow` check already
                 shows a friendly "open on desktop" nudge instead of a broken page. Hiding the menu
-                item entirely just made Studio undiscoverable on those platforms with no explanation
+                item entirely just made Forge undiscoverable on those platforms with no explanation
                 at all, which is worse. */}
-            <NavLink to="/studio" onClick={onNavigate} className={navItemClass}>
+            <NavLink to="/forge" onClick={onNavigate} className={navItemClass}>
               <Wrench />
-              Studio
+              {t('nav.forge')}
             </NavLink>
           </div>
 

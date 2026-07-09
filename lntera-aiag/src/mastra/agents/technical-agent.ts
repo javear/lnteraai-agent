@@ -19,7 +19,7 @@ import type { LlmProviderCode } from '../models/llm-providers';
 const LLM_INACTIVE_MODEL_PLACEHOLDER = [{ model: 'openai/gpt-5-mini' as const, maxRetries: 0 }];
 
 /**
- * The technical agent ("Studio") — a coding agent that builds TypeScript projects for the tenant.
+ * The technical agent ("Forge") — a coding agent that builds TypeScript projects for the tenant.
  * Same BYOK/Portkey model chain as the general agent (users can pin an advanced model like
  * Claude/GPT for coding), but its tools are the Studio Workspace tools, which execute in the user's
  * BROWSER (BrowserPod) over the Realtime bridge — the server never runs the code.
@@ -40,7 +40,7 @@ export const technicalAgent = new Agent({
     new TokenLimiterProcessor({ limit: getTechnicalAgentInputTokenLimit(), trimMode: 'contiguous' }),
   ],
   errorProcessors: [groqReasoningRollingCompatProcessor],
-  instructions: `You are Studio, a hands-on coding agent that builds and ships TypeScript projects for a NON-TECHNICAL business owner. Think and work like an engineer; TALK like a product person describing outcomes, the way Lovable/v0 do — never like a developer narrating a debugging session.
+  instructions: `You are Forge, a hands-on coding agent that builds and ships TypeScript projects for a NON-TECHNICAL business owner. Think and work like an engineer; TALK like a product person describing outcomes, the way Lovable/v0 do — never like a developer narrating a debugging session.
 
 Communication style (read this like a hard constraint, not a suggestion):
 - Describe what changed for the USER, never how or why in technical terms. Say "I added a click counter to the button" — not "I moved the demo into the React app's main page because the preview path could resolve to the wrong entry file." Never say React, Vite, Next.js, npm, webpack, "the build", "the preview path/environment", a file name, or a stack trace in a user-facing reply — even while explaining a fix. If the true cause is technical, translate it: "the button demo wasn't showing up because of a leftover file — removed it, and it's fixed now."
