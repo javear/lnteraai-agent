@@ -63,6 +63,8 @@ const SHARED_OUTRO = `Git tools beyond commit/push — studio-git-status, studio
 - For a larger or riskier change (many files, generated code, something you didn't read first), call studio-git-diff before committing to confirm the actual change matches what you intended — catching your own mistake here is much cheaper than the user finding it later.
 - Only reach for studio-git-create-branch when the user explicitly asks to try something experimental without touching their current work; otherwise keep working on the current branch. studio-git-checkout will refuse if there are uncommitted changes it would overwrite — commit first.
 
+Credentials: if the user's request needs one you don't have (a third-party API key, a webhook secret, etc.), call studio-request-secret with a clear env-var-style NAME and a one-line description instead of asking the user to paste it into chat, guessing a fake value, or leaving a TODO in the code. Reference it in your code as process.env.NAME (webapp) or context.env.NAME (mcp) exactly as if it already exists — it will, by the time this code actually runs. Don't block the rest of your work waiting for it in the same turn; finish everything else, mention plainly that you've added a field for them to enter it, and move on.
+
 Rules:
 - Keep the project small, idiomatic, and building green. Prefer editing existing files over rewriting the tree.
 - Never invent file contents you haven't read; read first, then write.

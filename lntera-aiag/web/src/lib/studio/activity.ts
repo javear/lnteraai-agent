@@ -44,8 +44,24 @@ export interface ThoughtActivity {
   startedAt: number;
   durationMs: number | null;
 }
+/** An in-chat request for the user to supply a credential (studio-request-secret). `status` flips to
+ *  'saved' when the user submits the inline form — a UI-driven transition, not a tool-result one, since
+ *  the tool call itself has no side effect (see studioRequestSecretTool). */
+export interface SecretRequestActivity {
+  kind: 'secret-request';
+  id: string;
+  name: string;
+  description: string;
+  status: 'pending' | 'saved';
+}
 
-export type StudioActivity = FileActivity | CommandActivity | GitActivity | ReadActivity | ThoughtActivity;
+export type StudioActivity =
+  | FileActivity
+  | CommandActivity
+  | GitActivity
+  | ReadActivity
+  | ThoughtActivity
+  | SecretRequestActivity;
 
 function str(v: unknown): string | undefined {
   return typeof v === 'string' && v ? v : undefined;
@@ -99,6 +115,8 @@ export function activityFromToolCall(info: ToolCallInfo): StudioActivity | null 
       return { kind: 'read', id, label: 'Checked the live preview' };
     case 'studio-deploy-preview':
       return { kind: 'git', id, toolCallId: info.toolCallId, label: 'Deploying preview…', running: true };
+    case 'studio-request-secret':
+      return { kind: 'secret-request', id, name: str(a?.name) ?? 'SECRET', description: str(a?.description) ?? '', status: 'pending' };
     default:
       return null;
   }

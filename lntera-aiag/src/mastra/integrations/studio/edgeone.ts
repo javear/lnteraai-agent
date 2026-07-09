@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getEdgeOneToken } from './config';
+import { logErrorBrief } from '../../logger/compact-error';
 
 /**
  * Deploy a built site (base64 zip) to EdgeOne Pages and return the assigned public URL.
@@ -38,6 +39,44 @@ export async function deployToEdgeOne(input: {
     const url = extractUrl(stdout);
     if (!url) throw new Error(`Could not parse a deploy URL from EdgeOne output:\n${stdout.slice(0, 500)}`);
     return { url };
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+/**
+ * Push tenant-supplied secrets into an EdgeOne Makers project's env store, so the deployed function
+ * can read them via `context.env.KEY`. Unlike `deploy` (which takes `-n`/`-e` directly), the `env set`
+ * subcommand has NO project or environment flag at all — confirmed via `edgeone makers env set --help`
+ * — it only acts on whatever project `edgeone makers link` last established in the current working
+ * dir. So this always links first, in the same fresh tmp dir/HOME `deployToEdgeOne` uses (for the same
+ * writable-cwd reason), then sets each var there. `env set` also has no per-environment flag, so a
+ * project's env vars appear to be shared across production and preview — there is no way to scope them
+ * separately with this CLI.
+ *
+ * Best-effort per secret: a failure here means the tenant's build/deploy already succeeded but one
+ * secret didn't make it to EdgeOne — logged and skipped rather than failing the whole deploy over it,
+ * since the alternative (the agent's code referencing an env var that silently isn't set) is a lesser
+ * failure than losing a working deploy.
+ */
+export async function setEdgeOneEnvVars(input: { projectName: string; values: Record<string, string> }): Promise<void> {
+  const entries = Object.entries(input.values);
+  if (entries.length === 0) return;
+  const token = getEdgeOneToken();
+  if (!token) return; // deploy itself already no-ops without a token; nothing to do here either
+
+  const dir = await mkdtemp(join(tmpdir(), 'studio-env-'));
+  try {
+    await runEdgeone(['makers', 'link', '-n', input.projectName, '-t', token], { redact: [token], cwd: dir });
+    for (const [key, value] of entries) {
+      try {
+        await runEdgeone(['makers', 'env', 'set', key, value, '-t', token], { redact: [token, value], cwd: dir });
+      } catch (err) {
+        logErrorBrief(`[studio] failed to set EdgeOne env var for project=${input.projectName} key=${key}`, err);
+      }
+    }
+  } catch (err) {
+    logErrorBrief(`[studio] failed to link EdgeOne project=${input.projectName} for env vars`, err);
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => undefined);
   }

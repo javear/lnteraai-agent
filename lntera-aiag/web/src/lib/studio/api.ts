@@ -125,6 +125,47 @@ export async function connectMcpProject(api: Api, id: string): Promise<StudioPro
   return project;
 }
 
+export interface StudioProjectSecret {
+  name: string;
+  description: string | null;
+  created_at: string;
+}
+
+/** List a project's configured secrets — names/descriptions only, never values. */
+export async function listProjectSecrets(api: Api, id: string): Promise<StudioProjectSecret[]> {
+  const { secrets } = await json<{ secrets: StudioProjectSecret[] }>(
+    await api(`/svc/v1/studio/projects/${id}/secrets`),
+    'Failed to load secrets.',
+  );
+  return secrets;
+}
+
+/** Register or update a secret for this project. The value is never returned. */
+export async function upsertProjectSecret(
+  api: Api,
+  id: string,
+  input: { name: string; value: string; description?: string },
+): Promise<void> {
+  await json(
+    await api(`/svc/v1/studio/projects/${id}/secrets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
+    'Failed to save the secret.',
+  );
+}
+
+/** Resolve every configured secret to its plaintext value — feeds the sandbox's env directly
+ *  (see BrowserPodProvider.setEnv). Never persist this beyond the current sandbox session. */
+export async function getProjectSecretValues(api: Api, id: string): Promise<Record<string, string>> {
+  const { values } = await json<{ values: Record<string, string> }>(
+    await api(`/svc/v1/studio/projects/${id}/secrets/values`),
+    'Failed to load secret values.',
+  );
+  return values;
+}
+
 /** One tool as reported by the MCP server's own tools/list. */
 export interface McpToolDef {
   name: string;
