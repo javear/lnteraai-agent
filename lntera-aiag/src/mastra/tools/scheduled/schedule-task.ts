@@ -30,6 +30,7 @@ export const scheduleTaskTool = createTool({
     'Schedule the agent to do something LATER and notify the user at that time. Use when the user asks you to do/send/check/remind something at a future time ("send me a tax recap by 10am tomorrow", "check my TikTok orders at 4pm", "in 2 hours summarize today\'s sales"). One scheduled task per tenant: if one is already pending a new request is COMBINED into it (set action="replace" to overwrite instead). `action`: set (default) | replace | cancel | status. `prompt`: what to do at run time, phrased as an instruction to yourself. `when`: the time in the user\'s words ("10am tomorrow", "4pm", "in 2 hours", "Friday 9am") — omit only when combining and keeping the same time, or for cancel/status. Optional `timezone` (IANA).',
   requestContextSchema: z.object({
     [TENANT_MASTER_ID_KEY]: z.string().uuid().describe('UUID of the active tenant_master row.'),
+    timezone: z.string().optional().describe("The user's local IANA timezone, if the client sent one."),
   }),
   inputSchema,
   inputExamples: [
