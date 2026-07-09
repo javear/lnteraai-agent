@@ -265,3 +265,15 @@ export interface TenantProject {
   created_at: string;
   updated_at: string;
 }
+
+/** A row of `tenant_project_secrets` — one tenant-supplied credential for a Forge project (e.g. a
+ *  third-party API key), named by env-var convention. `secret_ref` is the only way to the plaintext. */
+export interface TenantProjectSecret {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string | null;
+  secret_ref: VaultSecretRefValue;
+  created_at: string;
+  updated_at: string;
+}

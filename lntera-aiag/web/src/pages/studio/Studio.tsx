@@ -8,6 +8,7 @@ import {
   createProject,
   deleteProject,
   deployProject,
+  getProjectSecretValues,
   getStudioMessages,
   initProject,
   listProjects,
@@ -471,10 +472,14 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
       // backend's git-proxy — never the pod's own (restricted) network stack. Git is still
       // best-effort: if it fails, the sandbox stays fully usable (chat/write/build/preview); only
       // cross-browser persistence is off.
-      const [, initResult] = await Promise.all([
+      const [, initResult, secretValues] = await Promise.all([
         bootWithRetry(provider),
         initProject(api, project.id).catch((e: unknown) => (e instanceof Error ? e : new Error(String(e)))),
+        // Best-effort: a project with no secrets (the common case) or a failed fetch just means an
+        // empty env — never blocks boot over it.
+        getProjectSecretValues(api, project.id).catch(() => ({}) as Record<string, string>),
       ]);
+      provider.setEnv(secretValues);
       let cloned = false;
       if (initResult instanceof Error) {
         setGitWarning(initResult.message);
@@ -710,6 +715,20 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
     }
   }
 
+  /** Re-fetch this project's secret values and push them into the live sandbox — called after a
+   *  studio-request-secret card is submitted, so the current session picks it up without a reload. */
+  async function refreshSecretEnv() {
+    const provider = providerRef.current;
+    if (!provider) return;
+    try {
+      const values = await getProjectSecretValues(api, project.id);
+      provider.setEnv(values);
+    } catch {
+      // Best-effort — the secret is already saved server-side either way; a failed refresh here just
+      // means the CURRENT sandbox session doesn't see it yet (the next reopen will).
+    }
+  }
+
   async function publish() {
     const provider = providerRef.current;
     if (!provider || publishing) return;
@@ -837,7 +856,9 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
                 </p>
               </div>
             ) : (
-              messages.map((m) => <StudioMessageBubble key={m.id} message={m} />)
+              messages.map((m) => (
+                <StudioMessageBubble key={m.id} message={m} api={api} projectId={project.id} onSecretSaved={() => void refreshSecretEnv()} />
+              ))
             )}
           </div>
           <div className="px-2 pb-2">

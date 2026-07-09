@@ -5,9 +5,10 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { requireTenantContext, TENANT_MASTER_ID_KEY } from '../shared/marketplace-auth';
 import { getTenantProject, updateTenantProject } from '../shared/tenant-projects';
+import { resolveTenantProjectSecretValues, SECRET_NAME_RE } from '../shared/tenant-project-secrets';
 import { PROJECT_KINDS, isProjectKind, type ProjectKind } from '../shared/types';
 import { getStudioBridge } from './browser-bridge';
-import { deployToEdgeOne } from './edgeone';
+import { deployToEdgeOne, setEdgeOneEnvVars } from './edgeone';
 import { repoNameFor } from './gitea';
 import { STUDIO_PROJECT_ID_KEY, STUDIO_SESSION_ID_KEY } from './protocol';
 
@@ -395,9 +396,12 @@ export const studioDeployPreviewTool = createTool({
 
     const { zipBase64 } = await getStudioBridge().call(tenantId, sessionId, { op: 'buildZip', dir: '.' });
     const projectName = repoNameFor(project.id);
+    // Best-effort: a Vault hiccup resolving secrets must not fail an otherwise-successful deploy.
+    const secretValues = await resolveTenantProjectSecretValues(project.id).catch(() => ({}) as Record<string, string>);
     try {
       const { url } = await deployToEdgeOne({ projectName, zipBase64, env: 'preview' });
       await updateTenantProject(tenantId, project.id, { preview_url: url });
+      await setEdgeOneEnvVars({ projectName, values: secretValues });
       return { ok: true as const, url };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -412,8 +416,33 @@ export const studioDeployPreviewTool = createTool({
       await updateTenantProject(tenantId, project.id, { mcp_url: prod.url, status: 'deployed' });
       const { url } = await deployToEdgeOne({ projectName, zipBase64, env: 'preview' });
       await updateTenantProject(tenantId, project.id, { preview_url: url });
+      await setEdgeOneEnvVars({ projectName, values: secretValues });
       return { ok: true as const, url };
     }
+  },
+});
+
+export const studioRequestSecretTool = createTool({
+  id: 'studio-request-secret',
+  strict: false,
+  description:
+    'Ask the user to supply a credential you need (a third-party API key, a webhook secret, etc.) — shows an inline form in the chat for them to enter it. Use a clear env-var-style NAME (e.g. SHOPEE_API_KEY) and a one-line description of what it\'s for. No side effect beyond showing the form; it does not wait for the user to fill it in.',
+  requestContextSchema,
+  inputSchema: z.object({
+    name: z
+      .string()
+      .min(1)
+      .max(100)
+      .regex(SECRET_NAME_RE, 'Must look like an env var: uppercase letters, digits, underscores, starting with a letter.')
+      .describe('Env-var-style name, e.g. SHOPEE_API_KEY.'),
+    description: z.string().min(1).max(500).describe("One line explaining what this credential is for."),
+  }),
+  outputSchema: z.object({ ok: z.literal(true) }),
+  execute: async () => {
+    // No side effect — the chat UI renders the request form directly from this tool CALL event (see
+    // activityFromToolCall in lib/studio/activity.ts), same as every other Studio activity kind. The
+    // form's own submit goes straight to studio-upsert-secret's route, not through this tool.
+    return { ok: true as const };
   },
 });
 
@@ -442,4 +471,5 @@ export const studioTools = {
   [studioGitCheckoutTool.id]: studioGitCheckoutTool,
   [studioCheckPreviewTool.id]: studioCheckPreviewTool,
   [studioDeployPreviewTool.id]: studioDeployPreviewTool,
+  [studioRequestSecretTool.id]: studioRequestSecretTool,
 };

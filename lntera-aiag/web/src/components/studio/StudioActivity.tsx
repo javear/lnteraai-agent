@@ -10,12 +10,17 @@ import {
   FileX,
   FolderPlus,
   GitCommitHorizontal,
+  KeyRound,
   LoaderCircle,
   Search,
   Terminal,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { CommandActivity, StudioActivity, ThoughtActivity } from '@/lib/studio/activity';
+import { Button } from '@/ui';
+import { upsertProjectSecret } from '@/lib/studio/api';
+import type { CommandActivity, SecretRequestActivity, StudioActivity, ThoughtActivity } from '@/lib/studio/activity';
+
+type Api = (path: string, init?: RequestInit) => Promise<Response>;
 
 function FileRow({ op, path }: { op: 'write' | 'delete' | 'mkdir'; path: string }) {
   const Icon = op === 'delete' ? FileX : op === 'mkdir' ? FolderPlus : path ? FilePen : FilePlus;
@@ -91,6 +96,80 @@ function CommandCard({ activity }: { activity: CommandActivity }) {
   );
 }
 
+function SecretRequestCard({
+  activity,
+  api,
+  projectId,
+  onSaved,
+}: {
+  activity: SecretRequestActivity;
+  api?: Api;
+  projectId?: string;
+  onSaved?: () => void;
+}) {
+  const [value, setValue] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    if (!api || !projectId || !value.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await upsertProjectSecret(api, projectId, {
+        name: activity.name,
+        value: value.trim(),
+        description: activity.description || undefined,
+      });
+      setSaved(true);
+      onSaved?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (saved) {
+    return (
+      <div className="flex items-center gap-2 overflow-hidden rounded-lg border bg-muted/30 px-2.5 py-1.5 text-[13px]">
+        <CircleCheck className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+        <span className="font-mono text-foreground/90">{activity.name}</span>
+        <span className="text-muted-foreground">saved</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-lg border bg-muted/30 p-2.5">
+      <div className="flex items-center gap-2 text-[13px]">
+        <KeyRound className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+        <span className="font-mono text-foreground/90">{activity.name}</span>
+      </div>
+      {activity.description ? <p className="mt-1 text-[12px] text-muted-foreground">{activity.description}</p> : null}
+      <div className="mt-2 flex gap-2">
+        <input
+          type="password"
+          autoComplete="off"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="Paste the value…"
+          disabled={!api || !projectId}
+          className="min-w-0 flex-1 rounded-md border bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+        />
+        <Button variant="secondary" disabled={!api || !projectId || !value.trim() || saving} onClick={() => void submit()}>
+          {saving ? 'Saving…' : 'Save'}
+        </Button>
+      </div>
+      {error ? <p className="mt-1.5 text-[12px] text-destructive">{error}</p> : null}
+      {!api || !projectId ? (
+        <p className="mt-1.5 text-[12px] text-muted-foreground">Open this project to enter the value.</p>
+      ) : null}
+    </div>
+  );
+}
+
 function ThoughtRow({ activity }: { activity: ThoughtActivity }) {
   const [open, setOpen] = useState(false);
   const secs = activity.durationMs != null ? Math.max(1, Math.round(activity.durationMs / 1000)) : null;
@@ -114,7 +193,17 @@ function ThoughtRow({ activity }: { activity: ThoughtActivity }) {
   );
 }
 
-function StudioActivityTimelineImpl({ activity }: { activity: StudioActivity[] }) {
+function StudioActivityTimelineImpl({
+  activity,
+  api,
+  projectId,
+  onSecretSaved,
+}: {
+  activity: StudioActivity[];
+  api?: Api;
+  projectId?: string;
+  onSecretSaved?: () => void;
+}) {
   if (activity.length === 0) return null;
   return (
     <div className="mb-2 flex flex-col gap-1.5">
@@ -130,6 +219,8 @@ function StudioActivityTimelineImpl({ activity }: { activity: StudioActivity[] }
             return <CommandCard key={a.id} activity={a} />;
           case 'thought':
             return <ThoughtRow key={a.id} activity={a} />;
+          case 'secret-request':
+            return <SecretRequestCard key={a.id} activity={a} api={api} projectId={projectId} onSaved={onSecretSaved} />;
         }
       })}
     </div>

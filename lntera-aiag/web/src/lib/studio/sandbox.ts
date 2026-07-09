@@ -30,6 +30,10 @@ export interface SandboxProvider {
     opts?: { cwd?: string; onOutput?: (chunk: string, stream: 'stdout' | 'stderr') => void },
   ): Promise<{ exitCode: number; stdout: string; stderr: string }>;
 
+  /** Set the env vars (tenant-supplied secrets) every subsequent exec()/startDevServer() call gets —
+   *  replaces any previous set. Local state only; takes effect on the NEXT command, not retroactively. */
+  setEnv(vars: Record<string, string>): void;
+
   /**
    * Network op, idempotent — clones on first call; on subsequent calls (e.g. re-opening the project
    * in an already-hydrated browser), fetches and fast-forwards the local branch if the remote has
@@ -117,6 +121,9 @@ export class BrowserPodProvider implements SandboxProvider {
   // Git runs entirely outside the pod (plain page JS against IndexedDB) — see git.ts for why.
   private readonly git: GitRepo;
 
+  // Tenant-supplied secrets (see setEnv), threaded into every exec()/startDevServer() call's `env`.
+  private envVars: Record<string, string> = {};
+
   // Dev server: a SEPARATE terminal from `worker` because it never exits — running it on the
   // shared worker would permanently wedge exec()'s serialized sentinel-based completion tracking.
   private devTerminal: Terminal | null = null;
@@ -194,6 +201,15 @@ export class BrowserPodProvider implements SandboxProvider {
     return this.pod;
   }
 
+  setEnv(vars: Record<string, string>): void {
+    this.envVars = vars;
+  }
+
+  /** `KEY=VALUE` strings for BrowserPod's `run()` `env` option, from the currently-set secrets. */
+  private envArgs(): string[] {
+    return Object.entries(this.envVars).map(([k, v]) => `${k}=${v}`);
+  }
+
   subscribeOutput(cb: (chunk: string) => void): () => void {
     this.outputSubs.add(cb);
     return () => this.outputSubs.delete(cb);
@@ -258,7 +274,7 @@ export class BrowserPodProvider implements SandboxProvider {
     this.devOutputTail = '';
     this.setDevState({ status: 'starting', exitCode: null });
     try {
-      const started = pod.run('bash', ['-lc', script], { terminal: this.devTerminal, echo: false }) as unknown;
+      const started = pod.run('bash', ['-lc', script], { terminal: this.devTerminal, echo: false, env: this.envArgs() }) as unknown;
       if (started && typeof (started as { catch?: unknown }).catch === 'function') {
         (started as Promise<unknown>).catch((err) => {
           this.setDevState({ status: 'exited', exitCode: -1 }, err instanceof Error ? err.message : String(err));
@@ -406,7 +422,7 @@ export class BrowserPodProvider implements SandboxProvider {
       // we can't .catch() it — completion is detected via the sentinel in onOutput. Guard for both a
       // sync return and a possible thenable, and catch a synchronous start failure.
       try {
-        const started = pod.run('bash', ['-lc', script], { terminal: this.worker!, echo: false }) as unknown;
+        const started = pod.run('bash', ['-lc', script], { terminal: this.worker!, echo: false, env: this.envArgs() }) as unknown;
         if (started && typeof (started as { catch?: unknown }).catch === 'function') {
           (started as Promise<unknown>).catch(failStart);
         }

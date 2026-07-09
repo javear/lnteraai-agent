@@ -10,9 +10,14 @@ import {
 } from '../../../integrations/shared/tenant-projects';
 import { PROJECT_KINDS } from '../../../integrations/shared/types';
 import { createIntegrationVaultSecret } from '../../../integrations/shared/vault';
+import {
+  listTenantProjectSecrets,
+  resolveTenantProjectSecretValues,
+  upsertTenantProjectSecret,
+} from '../../../integrations/shared/tenant-project-secrets';
 import { getGiteaConfig, signGitProxyToken, verifyGitProxyToken } from '../../../integrations/studio/config';
 import { createGiteaRepo, repoNameFor } from '../../../integrations/studio/gitea';
-import { deployToEdgeOne } from '../../../integrations/studio/edgeone';
+import { deployToEdgeOne, setEdgeOneEnvVars } from '../../../integrations/studio/edgeone';
 import { getStudioBridge } from '../../../integrations/studio/browser-bridge';
 import { seedProjectTemplate } from '../../../integrations/studio/template-seed';
 import type { StudioResultEnvelope } from '../../../integrations/studio/protocol';
@@ -339,8 +344,9 @@ export const studioDeployProjectRoute = registerApiRoute(`${OPEN_API_PREFIX}/stu
     }
 
     try {
+      const projectName = repoNameFor(project.id);
       const { url } = await deployToEdgeOne({
-        projectName: repoNameFor(project.id),
+        projectName,
         zipBase64: body.zipBase64,
         env: 'production',
       });
@@ -350,6 +356,10 @@ export const studioDeployProjectRoute = registerApiRoute(`${OPEN_API_PREFIX}/stu
           ? { mcp_url: url, status: 'deployed' as const }
           : { deploy_url: url, status: 'deployed' as const };
       const updated = await updateTenantProject(auth.tenantId, project.id, patch);
+      // Best-effort: the deploy above already succeeded — a Vault hiccup resolving secrets (or
+      // pushing them to EdgeOne) must not overwrite that with a false "deploy failed" below.
+      const secretValues = await resolveTenantProjectSecretValues(project.id).catch(() => ({}) as Record<string, string>);
+      await setEdgeOneEnvVars({ projectName, values: secretValues });
       return c.json({ project: updated, url });
     } catch (err) {
       await updateTenantProject(auth.tenantId, project.id, { status: 'error' }).catch(() => undefined);
@@ -467,6 +477,104 @@ export const studioConnectProjectRoute = registerApiRoute(`${OPEN_API_PREFIX}/st
     } catch (err) {
       return openApiJsonError(c, 400, 'connect_failed', err instanceof Error ? err.message : 'Connect failed.');
     }
+  },
+});
+
+/** GET /svc/v1/studio/projects/:id/secrets — list a project's configured secrets (names/descriptions
+ *  only, never values) for the "configured secrets" UI. */
+export const studioListSecretsRoute = registerApiRoute(`${OPEN_API_PREFIX}/studio/projects/:id/secrets`, {
+  method: 'GET',
+  requiresAuth: false,
+  openapi: {
+    summary: "List a project's configured secret names (no values)",
+    tags: ['Studio'],
+    parameters: [authHeaderParam],
+    responses: { 200: { description: '{ secrets }' }, 401: { description: 'Unauthorized' }, 404: { description: 'Not found' } },
+  },
+  handler: async (c: StudioContext) => {
+    const auth = await resolveTenantFromBearer(c);
+    if (auth instanceof Response) return auth;
+
+    const id = c.req.param('id') ?? '';
+    const project = await getTenantProject(auth.tenantId, id);
+    if (!project) return openApiJsonError(c, 404, 'not_found', 'Project not found.');
+
+    const rows = await listTenantProjectSecrets(project.id);
+    return c.json({
+      secrets: rows.map((r) => ({ name: r.name, description: r.description, created_at: r.created_at })),
+    });
+  },
+});
+
+const upsertSecretBody = z
+  .object({
+    name: z.string().min(1).max(100),
+    value: z.string().min(1),
+    description: z.string().max(500).optional(),
+  })
+  .strict();
+
+/** POST /svc/v1/studio/projects/:id/secrets — register (or update) a tenant-supplied secret for this
+ *  project. Only the name/description round-trip back — the value goes straight into Vault. */
+export const studioUpsertSecretRoute = registerApiRoute(`${OPEN_API_PREFIX}/studio/projects/:id/secrets`, {
+  method: 'POST',
+  requiresAuth: false,
+  openapi: {
+    summary: 'Register or update a secret for this project',
+    tags: ['Studio'],
+    parameters: [authHeaderParam],
+    responses: { 200: { description: '{ name, description }' }, 400: { description: 'Invalid body' }, 401: { description: 'Unauthorized' }, 404: { description: 'Not found' } },
+  },
+  handler: async (c: StudioContext) => {
+    const auth = await resolveTenantFromBearer(c);
+    if (auth instanceof Response) return auth;
+
+    const id = c.req.param('id') ?? '';
+    const project = await getTenantProject(auth.tenantId, id);
+    if (!project) return openApiJsonError(c, 404, 'not_found', 'Project not found.');
+
+    let body;
+    try {
+      body = upsertSecretBody.parse(await c.req.json());
+    } catch (err) {
+      const msg = err instanceof z.ZodError ? err.issues.map((i) => i.message).join('; ') : String(err);
+      return openApiJsonError(c, 400, 'invalid_body', msg);
+    }
+
+    try {
+      const saved = await upsertTenantProjectSecret(project.id, body);
+      return c.json({ name: saved.name, description: saved.description });
+    } catch (err) {
+      return openApiJsonError(c, 400, 'save_failed', err instanceof Error ? err.message : 'Could not save the secret.');
+    }
+  },
+});
+
+/**
+ * GET /svc/v1/studio/projects/:id/secrets/values — resolve every configured secret to its plaintext
+ * value. The ONE point where a secret's plaintext leaves the backend: the tenant's own authenticated
+ * browser tab, to inject into their own project's dev sandbox (see BrowserPodProvider.setEnv). Never
+ * logged, never cached server-side beyond this request.
+ */
+export const studioSecretValuesRoute = registerApiRoute(`${OPEN_API_PREFIX}/studio/projects/:id/secrets/values`, {
+  method: 'GET',
+  requiresAuth: false,
+  openapi: {
+    summary: "Resolve a project's secrets to their plaintext values (for the dev sandbox)",
+    tags: ['Studio'],
+    parameters: [authHeaderParam],
+    responses: { 200: { description: '{ values }' }, 401: { description: 'Unauthorized' }, 404: { description: 'Not found' } },
+  },
+  handler: async (c: StudioContext) => {
+    const auth = await resolveTenantFromBearer(c);
+    if (auth instanceof Response) return auth;
+
+    const id = c.req.param('id') ?? '';
+    const project = await getTenantProject(auth.tenantId, id);
+    if (!project) return openApiJsonError(c, 404, 'not_found', 'Project not found.');
+
+    const values = await resolveTenantProjectSecretValues(project.id);
+    return c.json({ values });
   },
 });
 
@@ -668,6 +776,9 @@ export const studioRoutes = [
   studioInitProjectRoute,
   studioDeployProjectRoute,
   studioConnectProjectRoute,
+  studioListSecretsRoute,
+  studioUpsertSecretRoute,
+  studioSecretValuesRoute,
   studioMcpCallRoute,
   studioCommandStreamRoute,
   studioCommandResultRoute,

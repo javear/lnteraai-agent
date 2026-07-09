@@ -7,6 +7,8 @@ import { ThinkingIndicator } from '../chat/Thinking';
 import { StudioActivityTimeline } from './StudioActivity';
 import type { StudioActivity } from '@/lib/studio/activity';
 
+type Api = (path: string, init?: RequestInit) => Promise<Response>;
+
 /** A Studio chat turn — like the business ChatMessage but carrying the inline activity timeline. */
 export interface StudioChatMessage {
   id: string;
@@ -21,7 +23,20 @@ export interface StudioChatMessage {
   activity: StudioActivity[];
 }
 
-function StudioMessageBubbleImpl({ message }: { message: StudioChatMessage }) {
+function StudioMessageBubbleImpl({
+  message,
+  api,
+  projectId,
+  onSecretSaved,
+}: {
+  message: StudioChatMessage;
+  /** Needed only for a live turn's studio-request-secret card to submit the secret it collects.
+   *  Omitted for read-only history renders (secret-request activity is never rehydrated anyway — see
+   *  the comment on the history-load effect in Studio.tsx). */
+  api?: Api;
+  projectId?: string;
+  onSecretSaved?: () => void;
+}) {
   if (message.role === 'user') {
     return (
       <div className="flex animate-fade-in flex-col items-end">
@@ -40,7 +55,7 @@ function StudioMessageBubbleImpl({ message }: { message: StudioChatMessage }) {
     <div className="flex animate-fade-in gap-3">
       <Avatar label="AI" />
       <div className="min-w-0 flex-1 pt-0.5">
-        <StudioActivityTimeline activity={message.activity} />
+        <StudioActivityTimeline activity={message.activity} api={api} projectId={projectId} onSecretSaved={onSecretSaved} />
         {body ? <Markdown>{body}</Markdown> : null}
         {showDots ? <ThinkingIndicator /> : null}
         {message.model && body ? (
