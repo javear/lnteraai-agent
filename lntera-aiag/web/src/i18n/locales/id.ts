@@ -28,6 +28,7 @@ export const id: Record<string, string> = {
   'nav.chat': 'Obrolan',
   'nav.integrations': 'Integrasi',
   'nav.knowledge': 'Pengetahuan',
+  'nav.forge': 'Forge',
   'nav.navigation': 'Navigasi',
   'nav.openMenu': 'Buka menu',
   'nav.theme': 'Tema',

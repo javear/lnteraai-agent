@@ -1,4 +1,4 @@
-# Studio starter (MCP server)
+# Forge starter (MCP server)
 
 A minimal Model Context Protocol server deployed as a Tencent EdgeOne Edge Function — a single HTTP
 endpoint (`edge-functions/index.ts`) implementing the MCP JSON-RPC methods (`initialize`,

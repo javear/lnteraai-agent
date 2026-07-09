@@ -32,20 +32,21 @@ const Knowledge = lazy(() => import('./pages/Knowledge'));
 // Marketing landing — web only. Gated on the BUILD mode (not the runtime IS_NATIVE) so Rollup
 // dead-code-eliminates the dynamic import: the chunk never ships in the native (Capacitor) bundle.
 const Landing = import.meta.env.MODE === 'native' ? null : lazy(() => import('./pages/Landing'));
-// Studio (technical-agent builder) — web/desktop only; the native bundle omits the chunk. `/studio`
-// is ALWAYS registered as a route (see below) so tapping the nav item on native shows this explicit
-// "open on desktop" notice instead of silently falling through to the "*" redirect to chat — the
-// same message Studio.tsx's own narrow-viewport check shows, but that check never runs on native
-// since the whole component (and this branch) is tree-shaken out of the native bundle.
-const Studio = import.meta.env.MODE === 'native' ? null : lazy(() => import('./pages/studio/Studio'));
+// Forge (technical-agent builder, user-facing name — internal files/routes keep the "studio" name
+// for now, only display text + the URL path are rebranded) — web/desktop only; the native bundle
+// omits the chunk. `/forge` is ALWAYS registered as a route (see below) so tapping the nav item on
+// native shows this explicit "open on desktop" notice instead of silently falling through to the "*"
+// redirect to chat — the same message Studio.tsx's own narrow-viewport check shows, but that check
+// never runs on native since the whole component (and this branch) is tree-shaken out of the native bundle.
+const Forge = import.meta.env.MODE === 'native' ? null : lazy(() => import('./pages/studio/Studio'));
 
-function StudioUnavailableOnNative() {
+function ForgeUnavailableOnNative() {
   return (
     <div className="mx-auto max-w-md px-6 py-16 text-center">
-      <h1 className="text-xl font-semibold">Studio is desktop-only</h1>
+      <h1 className="text-xl font-semibold">Forge is desktop-only</h1>
       <p className="mt-2 text-sm text-muted-foreground">
         The builder runs your project inside a browser and needs a larger screen. Open lntera.ai on a
-        desktop browser to use Studio.
+        desktop browser to use Forge.
       </p>
     </div>
   );
@@ -211,14 +212,14 @@ function Boot() {
             }
           />
           <Route
-            path="/studio"
+            path="/forge"
             element={
-              Studio ? (
+              Forge ? (
                 <Suspense fallback={<PageRouteSkeleton />}>
-                  <Studio />
+                  <Forge />
                 </Suspense>
               ) : (
-                <StudioUnavailableOnNative />
+                <ForgeUnavailableOnNative />
               )
             }
           />

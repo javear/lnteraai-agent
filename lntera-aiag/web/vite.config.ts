@@ -138,10 +138,10 @@ export default defineConfig(({ mode }) => {
             /^\/oauth\//,
             /^\/auth\//,
             /^\/webhooks\//,
-            // Studio MUST load from the network so it gets the server's COOP/COEP headers (needed for
+            // Forge MUST load from the network so it gets the server's COOP/COEP headers (needed for
             // BrowserPod's cross-origin isolation). If the SW served the precached index.html here, the
             // document would have no isolation headers and the sandbox couldn't start.
-            /^\/(app\/)?studio(\/|$)/,
+            /^\/(app\/)?forge(\/|$)/,
           ],
           runtimeCaching: [
             {

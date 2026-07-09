@@ -79,11 +79,11 @@ function buildMonolithRoutes() {
     }
   };
 
-  // Cross-origin isolation ONLY on the Studio document (so BrowserPod's SharedArrayBuffer works)
+  // Cross-origin isolation ONLY on the Forge document (so BrowserPod's SharedArrayBuffer works)
   // — the rest of the SPA is served without COEP so third-party embeds (OneSignal/analytics) are
   // unaffected. Studio.tsx reloads itself if it's reached via client-nav without isolation.
   const applyStudioIsolation = (c: HtmlCtx): void => {
-    if (!/^\/app\/studio(\/|$)/.test(c.req.path)) return;
+    if (!/^\/app\/forge(\/|$)/.test(c.req.path)) return;
     c.header('Cross-Origin-Opener-Policy', 'same-origin');
     c.header('Cross-Origin-Embedder-Policy', 'credentialless');
   };
