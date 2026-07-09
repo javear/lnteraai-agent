@@ -5,6 +5,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { requireTenantContext, TENANT_MASTER_ID_KEY } from '../shared/marketplace-auth';
 import { getTenantProject, updateTenantProject } from '../shared/tenant-projects';
+import { PROJECT_KINDS, isProjectKind, type ProjectKind } from '../shared/types';
 import { getStudioBridge } from './browser-bridge';
 import { deployToEdgeOne } from './edgeone';
 import { repoNameFor } from './gitea';
@@ -32,10 +33,45 @@ function requireStudioProjectId(context: ToolContext): string {
   return raw.trim();
 }
 
+/** Read the open project's kind from requestContext, if the client sent one (best-effort — some
+ *  guards below simply skip when it's absent rather than failing the whole tool call over it). */
+function readProjectKind(context: ToolContext): ProjectKind | null {
+  const raw = context?.requestContext?.get('projectKind');
+  return typeof raw === 'string' && isProjectKind(raw) ? raw : null;
+}
+
+/** The one file per kind that makes the project deployable at all — EdgeOne routes
+ *  edge-functions/index.ts to the site root for "mcp"; Next.js's Pages Router needs both of these
+ *  for "webapp". Deleting either silently breaks the project in a way that's hard for a non-technical
+ *  user to diagnose, so it's blocked outright rather than left to the agent's judgment. */
+const KIND_CRITICAL_PATHS: Record<ProjectKind, string[]> = {
+  mcp: ['edge-functions/index.ts'],
+  webapp: ['src/pages/_app.tsx', 'src/pages/index.tsx'],
+};
+
+function normalizeProjectPath(path: string): string {
+  return path.replace(/^\.?\/+/, '');
+}
+
+/** Throws if deleting `path` would remove the current project kind's entry point. No-ops when the
+ *  kind is unknown (best-effort — see readProjectKind) rather than blocking every delete over it. */
+function assertNotKindCriticalDelete(context: ToolContext, path: string): void {
+  const kind = readProjectKind(context);
+  if (!kind) return;
+  const normalized = normalizeProjectPath(path);
+  if (KIND_CRITICAL_PATHS[kind].includes(normalized)) {
+    throw new Error(
+      `Refusing to delete "${path}" — it's the file that makes this "${kind}" project deployable. ` +
+        'Edit its contents instead of removing it.',
+    );
+  }
+}
+
 const requestContextSchema = z.object({
   [TENANT_MASTER_ID_KEY]: z.string().uuid().describe('UUID of the active tenant_master row.'),
   [STUDIO_SESSION_ID_KEY]: z.string().min(1).describe('Active Studio browser session id.'),
   [STUDIO_PROJECT_ID_KEY]: z.string().min(1).describe('The open Studio project id.').optional(),
+  projectKind: z.enum(PROJECT_KINDS).describe('The kind of the open Studio project.').optional(),
 });
 
 /**
@@ -115,6 +151,7 @@ export const studioDeleteFileTool = createTool({
   inputSchema: z.object({ path: z.string().min(1) }),
   outputSchema: z.object({ ok: z.literal(true) }),
   execute: async (input, context) => {
+    assertNotKindCriticalDelete(context, input.path);
     const tenantId = requireTenantContext(context);
     const sessionId = requireStudioSession(context);
     await getStudioBridge().call(tenantId, sessionId, { op: 'deleteFile', path: input.path });
@@ -320,6 +357,12 @@ export const studioCheckPreviewTool = createTool({
     outputTail: z.string(),
   }),
   execute: async (input, context) => {
+    const kind = readProjectKind(context);
+    if (kind === 'mcp') {
+      throw new Error(
+        'studio-check-preview is only for webapp projects — this is an mcp project, which has no dev server. Use studio-deploy-preview instead.',
+      );
+    }
     const tenantId = requireTenantContext(context);
     const sessionId = requireStudioSession(context);
     const result = await getStudioBridge().call(tenantId, sessionId, {
@@ -344,6 +387,11 @@ export const studioDeployPreviewTool = createTool({
     const projectId = requireStudioProjectId(context);
     const project = await getTenantProject(tenantId, projectId);
     if (!project) throw new Error('Project not found.');
+    if (project.kind !== 'mcp') {
+      throw new Error(
+        'studio-deploy-preview is only for mcp projects — this is a webapp project. Use studio-check-preview instead.',
+      );
+    }
 
     const { zipBase64 } = await getStudioBridge().call(tenantId, sessionId, { op: 'buildZip', dir: '.' });
     const projectName = repoNameFor(project.id);
