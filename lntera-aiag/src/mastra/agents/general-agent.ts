@@ -157,7 +157,11 @@ async function resolvePreloadedTools(args: { requestContext?: { get?: (k: string
  * reachable; full schemas load on demand. Instantiated once (holds the BM25 index + thread state).
  */
 const toolSearchProcessor = new ToolSearchProcessor({
-  tools: ALL_TOOLS,
+  // Each tool's own (often narrower) requestContextSchema makes its inferred Tool<> generic
+  // incompatible with ToolSearchProcessor's wider constructor type by TS's contravariance rules for
+  // the `execute` context param — a compile-time-only mismatch (every tool's requestContextSchema is
+  // non-strict, so extra/undeclared context keys are always readable at runtime regardless).
+  tools: ALL_TOOLS as any,
   search: { topK: 8, minScore: 0 },
   filter: isToolAllowedForRequest,
 });
