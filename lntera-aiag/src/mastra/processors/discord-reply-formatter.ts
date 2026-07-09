@@ -207,7 +207,7 @@ function parsePotentialJson(raw: string): unknown {
  * Tiny repair pass for common LLM JSON mistakes. This is intentionally conservative:
  * if repair still does not parse + validate, callers fall back to safe text.
  */
-function repairCommonJsonIssues(raw: string): string {
+export function repairCommonJsonIssues(raw: string): string {
   let out = raw.trim();
 
   // Strip markdown fence language if a caller passed the full fence content.
@@ -216,9 +216,12 @@ function repairCommonJsonIssues(raw: string): string {
   // Quote unquoted object keys: { ops: [...] } -> { "ops": [...] }
   out = out.replace(/([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*:)/g, '$1"$2"$3');
 
-  // Convert single-quoted strings to double-quoted strings.
+  // Convert single-quoted strings to double-quoted strings. Escape backslashes BEFORE quotes — the
+  // capturing group already allows escaped chars through verbatim (e.g. \', \n), so a raw backslash
+  // reaching the new double-quoted form unescaped would either produce an invalid JSON escape or let
+  // the following character be misread as an escape target, corrupting the string boundary.
   out = out.replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, (_match, body: string) => {
-    return `"${body.replace(/"/g, '\\"')}"`;
+    return `"${body.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
   });
 
   // Remove trailing commas before object/array close.

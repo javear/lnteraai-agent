@@ -3,6 +3,11 @@ export function newStudioSessionId(): string {
   try {
     return crypto.randomUUID();
   } catch {
-    return `s-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    // Fallback for the rare environment without randomUUID() — still cryptographically random
+    // (getRandomValues has near-universal support wherever the Web Crypto API exists at all),
+    // never Math.random().
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    return `s-${Date.now()}-${hex}`;
   }
 }

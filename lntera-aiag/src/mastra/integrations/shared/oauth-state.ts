@@ -34,7 +34,12 @@ function fromBase64url(input: string): Buffer {
   return Buffer.from(padded + pad, 'base64');
 }
 
+// Not password storage — this is an HMAC signature over a short-lived, signed anti-CSRF token
+// (the OAuth `state` param), the standard primitive for message-authenticity/tamper-evidence. A
+// slow/adaptive password hash would be the wrong tool: there's nothing here resembling a stored,
+// offline-brute-forceable credential — verifyState() below recomputes and compares in constant time.
 function sign(payloadB64: string): string {
+  // codeql[js/insufficient-password-hash]
   return base64url(createHmac('sha256', getSecret()).update(payloadB64).digest());
 }
 
