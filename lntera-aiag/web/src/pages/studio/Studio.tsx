@@ -93,19 +93,22 @@ export default function Studio() {
 
   // BrowserPod needs cross-origin isolation (SharedArrayBuffer). The server sends COOP/COEP only on the
   // /forge document, so if we arrived via client-side nav from a non-isolated page, hard-reload once to
-  // fetch the isolated document. 'failed' means the headers aren't being served (deployment gap).
+  // fetch the isolated document. 'failed' means the headers aren't being served (deployment gap). Skipped
+  // entirely on narrow screens: the reduced mobile view (below) never boots the sandbox, so isolation is
+  // irrelevant there and would otherwise force a pointless reload on every mobile visit.
   const [coi] = useState<'ok' | 'reloading' | 'failed'>(() => {
-    if (typeof window === 'undefined' || window.crossOriginIsolated) return 'ok';
+    if (typeof window === 'undefined' || window.crossOriginIsolated || window.innerWidth < 1024) return 'ok';
     return sessionStorage.getItem('studio-coi-reload') ? 'failed' : 'reloading';
   });
   useEffect(() => {
+    if (narrow) return;
     if (coi === 'ok') {
       sessionStorage.removeItem('studio-coi-reload');
     } else if (coi === 'reloading') {
       sessionStorage.setItem('studio-coi-reload', '1');
       window.location.reload();
     }
-  }, [coi]);
+  }, [coi, narrow]);
 
   useEffect(() => {
     const onResize = () => setNarrow(window.innerWidth < 1024);
@@ -124,40 +127,31 @@ export default function Studio() {
 
   useEffect(() => reload(), [reload]);
 
-  if (narrow) {
-    return (
-      <div className="mx-auto max-w-md px-6 py-16 text-center">
-        <h1 className="text-xl font-semibold">Forge is desktop-only</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          The builder runs your project inside this browser and needs a larger screen. Open Forge on a
-          desktop browser to continue.
-        </p>
-      </div>
-    );
-  }
-
-  if (coi === 'reloading') {
-    return <div className="px-6 py-16 text-center text-sm text-muted-foreground">Preparing Forge…</div>;
-  }
-  if (coi === 'failed') {
-    return (
-      <div className="mx-auto max-w-md px-6 py-16 text-center">
-        <h1 className="text-xl font-semibold">Forge can't start here</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          The in-browser sandbox needs cross-origin isolation, which requires the <code>/forge</code> page
-          to be served with COOP/COEP headers. If you're seeing this in production, those headers aren't
-          being sent yet.
-        </p>
-      </div>
-    );
-  }
-
   if (selected) {
+    if (narrow) {
+      return <MobileWorkspace project={selected} onBack={() => { setSelected(null); reload(); }} />;
+    }
+    if (coi === 'reloading') {
+      return <div className="px-6 py-16 text-center text-sm text-muted-foreground">Preparing Forge…</div>;
+    }
+    if (coi === 'failed') {
+      return (
+        <div className="mx-auto max-w-md px-6 py-16 text-center">
+          <h1 className="text-xl font-semibold">Forge can't start here</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            The in-browser sandbox needs cross-origin isolation, which requires the <code>/forge</code> page
+            to be served with COOP/COEP headers. If you're seeing this in production, those headers aren't
+            being sent yet.
+          </p>
+        </div>
+      );
+    }
     return <Workspace key={selected.id} project={selected} onBack={() => { setSelected(null); reload(); }} />;
   }
 
   return (
     <ProjectList
+      narrow={narrow}
       projects={projects}
       onOpen={setSelected}
       onCreate={async (name, kind) => {
@@ -188,12 +182,14 @@ function ProjectList({
   onCreate,
   onDelete,
   hasSession,
+  narrow,
 }: {
   projects: StudioProject[] | null;
   onOpen: (p: StudioProject) => void;
   onCreate: (name: string, kind: StudioProjectKind) => void;
   onDelete: (p: StudioProject) => void;
   hasSession: boolean;
+  narrow: boolean;
 }) {
   const [name, setName] = useState('');
   const [kind, setKind] = useState<StudioProjectKind>('webapp');
@@ -205,6 +201,12 @@ function ProjectList({
         Describe what you want and the technical agent builds it — a web app for your business, or an MCP
         extension for your assistant. Everything runs in your browser.
       </p>
+      {narrow ? (
+        <Alert tone="neutral">
+          You're on a smaller screen — you can browse projects, check links, and try connected extensions
+          here. Open Forge on a desktop browser to edit code, use the terminal, or publish.
+        </Alert>
+      ) : null}
 
       <Card className="mt-6">
         <div className="text-sm font-semibold">New project</div>
@@ -273,6 +275,90 @@ function ProjectList({
             </Card>
           ))
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Reduced project view for narrow screens — everything that doesn't need the in-browser sandbox: the
+ * toolbar, deployed/preview links, an MCP tester where applicable, and read-only chat history. No
+ * Composer, no send() — sending a message would need the sandbox to actually execute the agent's tool
+ * calls, which BrowserPod can't run at this viewport (see the `narrow` branch in the parent Studio()).
+ */
+function MobileWorkspace({ project, onBack }: { project: StudioProject; onBack: () => void }) {
+  const { api } = useAuth();
+  const [messages, setMessages] = useState<StudioChatMessage[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getStudioMessages(api, project.id)
+      .then(({ messages: history }) => {
+        if (!cancelled) setMessages(history.map((m) => ({ ...m, activity: [] })));
+      })
+      .catch(() => {
+        if (!cancelled) setMessages([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, project.id]);
+
+  const liveUrl = project.deploy_url ?? project.mcp_url ?? null;
+
+  return (
+    <div className="flex min-h-[calc(100vh-3.5rem)] flex-col">
+      <div className="flex items-center gap-3 border-b px-4 py-2">
+        <Button variant="ghost" onClick={onBack}>
+          ← Projects
+        </Button>
+        <span className="font-medium">{project.name}</span>
+        <Badge tone="neutral">{project.kind === 'mcp' ? 'MCP' : 'Web app'}</Badge>
+        <Badge tone={project.status === 'connected' || project.status === 'deployed' ? 'success' : 'neutral'}>
+          {project.status}
+        </Badge>
+      </div>
+
+      <div className="flex flex-col gap-1.5 border-b px-4 py-3 text-sm">
+        {project.kind === 'mcp' && project.preview_url ? (
+          <a href={project.preview_url} target="_blank" rel="noreferrer" className="text-muted-foreground underline">
+            Preview ↗
+          </a>
+        ) : null}
+        {liveUrl ? (
+          <a href={liveUrl} target="_blank" rel="noreferrer" className="underline">
+            {project.kind === 'mcp' ? 'MCP endpoint' : 'Live site'} ↗
+          </a>
+        ) : null}
+        {!project.preview_url && !liveUrl ? (
+          <span className="text-muted-foreground">Nothing published yet.</span>
+        ) : null}
+      </div>
+
+      {project.kind === 'mcp' && project.preview_url ? (
+        <div className="border-b p-4">
+          <McpTester key={project.preview_url} api={api} projectId={project.id} target="preview" />
+        </div>
+      ) : null}
+      {project.kind === 'mcp' && project.mcp_url && project.status === 'connected' ? (
+        <div className="border-b p-4">
+          <McpTester key={project.mcp_url} api={api} projectId={project.id} target="production" />
+        </div>
+      ) : null}
+
+      <div className="flex-1 space-y-5 overflow-y-auto px-4 py-5">
+        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Conversation</div>
+        {messages === null ? (
+          <div className="text-sm text-muted-foreground">Loading…</div>
+        ) : messages.length === 0 ? (
+          <div className="text-sm text-muted-foreground">No messages yet.</div>
+        ) : (
+          messages.map((m) => <StudioMessageBubble key={m.id} message={m} />)
+        )}
+      </div>
+
+      <div className="border-t bg-muted/30 px-4 py-4 text-center text-sm text-muted-foreground">
+        Open Forge on a desktop browser to edit code, use the terminal, or publish.
       </div>
     </div>
   );
