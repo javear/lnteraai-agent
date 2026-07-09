@@ -39,7 +39,8 @@ function fromBase64url(input: string): Buffer {
 // slow/adaptive password hash would be the wrong tool: there's nothing here resembling a stored,
 // offline-brute-forceable credential — verifyState() below recomputes and compares in constant time.
 function sign(payloadB64: string): string {
-  return base64url(createHmac('sha256', getSecret()).update(payloadB64).digest()); // codeql[js/insufficient-password-hash]
+  // codeql[js/insufficient-password-hash]
+  return base64url(createHmac('sha256', getSecret()).update(payloadB64).digest());
 }
 
 export function createState(
