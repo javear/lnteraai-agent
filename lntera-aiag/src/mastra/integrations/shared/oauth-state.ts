@@ -38,8 +38,9 @@ function fromBase64url(input: string): Buffer {
 // (the OAuth `state` param), the standard primitive for message-authenticity/tamper-evidence. A
 // slow/adaptive password hash would be the wrong tool: there's nothing here resembling a stored,
 // offline-brute-forceable credential — verifyState() below recomputes and compares in constant time.
+// CodeQL's js/insufficient-password-hash flags this (source/sink pattern-matching, no semantic
+// understanding) — dismissed as a false positive on the Security tab with this same explanation.
 function sign(payloadB64: string): string {
-  // codeql[js/insufficient-password-hash]
   return base64url(createHmac('sha256', getSecret()).update(payloadB64).digest());
 }
 
