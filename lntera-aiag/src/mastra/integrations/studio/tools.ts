@@ -10,7 +10,9 @@ import { PROJECT_KINDS, isProjectKind, type ProjectKind } from '../shared/types'
 import { getStudioBridge } from './browser-bridge';
 import { deployToEdgeOne, setEdgeOneEnvVars } from './edgeone';
 import { repoNameFor } from './gitea';
+import { uploadPreviewBuild } from './preview-builds';
 import { STUDIO_PROJECT_ID_KEY, STUDIO_SESSION_ID_KEY } from './protocol';
+import { inngest } from '../../inngest/client';
 
 type ToolContext = Parameters<typeof requireTenantContext>[0];
 
@@ -378,26 +380,40 @@ export const studioDeployPreviewTool = createTool({
   id: 'studio-deploy-preview',
   strict: false,
   description:
-    'For "mcp" projects only. Deploy the current code to a persistent preview URL — separate from the production URL, which only ever changes when the user clicks Publish. Use this as your verification step after a green build: it proves the server actually deploys and runs, not just that it type-checks, and it gives the user a real link reflecting your latest work with no publish needed. Redeploys the SAME preview URL every time — safe to call repeatedly.',
+    'Deploy the current code to a persistent preview URL — separate from the production URL, which only ever changes when the user clicks Publish. Use this as your verification step after a green build: it proves the server/site actually deploys and runs, not just that it type-checks, and it gives the user a real link reflecting your latest work with no publish needed. Redeploys the SAME preview URL every time — safe to call repeatedly. For "mcp" projects this deploys and returns the live URL immediately. For "webapp" projects the build+deploy runs in the background (it takes longer) — this returns right away with queued:true and the PREVIOUS preview URL if one already exists; tell the user their preview is updating and will be ready shortly, never that it is already live.',
   requestContextSchema,
   inputSchema: z.object({}),
-  outputSchema: z.object({ ok: z.literal(true), url: z.string() }),
+  outputSchema: z.object({ ok: z.literal(true), queued: z.boolean().optional(), url: z.string().optional() }),
   execute: async (input, context) => {
     const tenantId = requireTenantContext(context);
     const sessionId = requireStudioSession(context);
     const projectId = requireStudioProjectId(context);
     const project = await getTenantProject(tenantId, projectId);
     if (!project) throw new Error('Project not found.');
-    if (project.kind !== 'mcp') {
-      throw new Error(
-        'studio-deploy-preview is only for mcp projects — this is a webapp project. Use studio-check-preview instead.',
-      );
-    }
 
-    const { zipBase64 } = await getStudioBridge().call(tenantId, sessionId, { op: 'buildZip', dir: '.' });
     const projectName = repoNameFor(project.id);
     // Best-effort: a Vault hiccup resolving secrets must not fail an otherwise-successful deploy.
     const secretValues = await resolveTenantProjectSecretValues(project.id).catch(() => ({}) as Record<string, string>);
+
+    if (project.kind === 'webapp') {
+      // Slower than mcp's zero-build zip-and-ship (needs a real `next build`), so this ships the built
+      // zip to durable storage and hands the actual EdgeOne deploy to deploy-studio-preview (an Inngest
+      // job with retries) instead of blocking this tool call — see inngest/functions/deploy-studio-preview.ts.
+      const build = await getStudioBridge().call(tenantId, sessionId, {
+        op: 'execCommand',
+        command: 'npm',
+        args: ['run', 'build'],
+      });
+      if (build.exitCode !== 0) {
+        throw new Error(`Build failed (exit ${build.exitCode}) — fix the error before deploying a preview:\n${build.stderr || build.stdout}`);
+      }
+      const { zipBase64 } = await getStudioBridge().call(tenantId, sessionId, { op: 'buildZip', dir: 'out' });
+      await uploadPreviewBuild(project.id, Buffer.from(zipBase64, 'base64'));
+      await inngest.send({ name: 'studio/preview.build-ready', data: { tenantId, projectId: project.id, projectName } });
+      return { ok: true as const, queued: true, url: project.preview_url ?? undefined };
+    }
+
+    const { zipBase64 } = await getStudioBridge().call(tenantId, sessionId, { op: 'buildZip', dir: '.' });
     try {
       const { url } = await deployToEdgeOne({ projectName, zipBase64, env: 'preview' });
       await updateTenantProject(tenantId, project.id, { preview_url: url });
