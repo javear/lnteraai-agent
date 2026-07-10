@@ -14,6 +14,7 @@ import { runScheduledTaskFn } from './functions/run-scheduled-task';
 import { scheduledTaskSweepFn } from './functions/sweep-scheduled-tasks';
 import { ingestDocumentFn } from './functions/ingest-document';
 import { knowledgeEvictionSweepFn } from './functions/sweep-knowledge-eviction';
+import { deployStudioPreviewFn } from './functions/deploy-studio-preview';
 
 export const INNGEST_SERVE_PATH = '/inngest';
 
@@ -30,6 +31,7 @@ const inngestHandler = serve({
     scheduledTaskSweepFn,
     ingestDocumentFn,
     knowledgeEvictionSweepFn,
+    deployStudioPreviewFn,
   ],
   servePath: INNGEST_SERVE_PATH,
   ...(serveOrigin ? { serveOrigin } : {}),

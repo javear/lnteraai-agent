@@ -321,7 +321,7 @@ function MobileWorkspace({ project, onBack }: { project: StudioProject; onBack: 
       </div>
 
       <div className="flex flex-col gap-1.5 border-b px-4 py-3 text-sm">
-        {project.kind === 'mcp' && project.preview_url ? (
+        {project.preview_url ? (
           <a href={project.preview_url} target="_blank" rel="noreferrer" className="text-muted-foreground underline">
             Preview ↗
           </a>
@@ -808,7 +808,7 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
           {status === 'booting' ? 'Starting sandbox…' : status === 'error' ? 'Sandbox error' : 'Ready'}
         </span>
         <div className="ml-auto flex items-center gap-2">
-          {proj.kind === 'mcp' && proj.preview_url ? (
+          {proj.preview_url ? (
             <a href={proj.preview_url} target="_blank" rel="noreferrer" className="text-xs text-muted-foreground underline">
               Preview ↗
             </a>
