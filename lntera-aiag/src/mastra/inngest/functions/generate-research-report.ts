@@ -20,14 +20,21 @@ import {
   markResearchReportFailed,
   type ResearchReportContent,
 } from '../../integrations/research/reports-repo';
+import { buildReportEmail } from '../../integrations/research/report-email';
+import { getAuthUserEmail } from '../../integrations/shared/tenant-users';
+import { sendEmail } from '../../integrations/email/resend-client';
 import { deliverTenantWebNotification } from '../../active-mode/web-delivery';
 import { stripReasoning } from '../../integrations/shared/strip-reasoning';
+import { logErrorBrief } from '../../logger/compact-error';
 
 interface GenerateReportEventData {
   tenantId: string;
   reportId: string;
   topic: string;
   instructions: string | null;
+  /** The auth user who asked — the "report ready" EMAIL goes only to them (the in-app notification
+   *  below is still tenant-wide, matching every other Active Agent notification). */
+  authUserId: string | null;
 }
 
 const MAX_WEB_RESULTS = 6;
@@ -44,7 +51,7 @@ export const generateResearchReportFn = inngest.createFunction(
     triggers: [{ event: 'research/report.requested' }],
   },
   async ({ event, step }) => {
-    const { tenantId, reportId, topic, instructions } = event.data as GenerateReportEventData;
+    const { tenantId, reportId, topic, instructions, authUserId } = event.data as GenerateReportEventData;
 
     try {
       const knowledgeChunks = await step.run('search-knowledge', async () => {
@@ -88,6 +95,21 @@ export const generateResearchReportFn = inngest.createFunction(
           actions: [{ id: 'view', label: 'View report', kind: 'link', href: `/reports/${reportId}`, style: 'primary' }],
         });
       });
+
+      // Best-effort, ONLY to the requester (not every user on the tenant) — unlike the in-app
+      // notification above, which is tenant-wide like every other Active Agent notification.
+      if (authUserId) {
+        await step.run('email-requester', async () => {
+          try {
+            const email = await getAuthUserEmail(authUserId);
+            if (!email) return;
+            const { subject, html, text } = buildReportEmail({ reportId, topic, content });
+            await sendEmail({ to: email, subject, html, text });
+          } catch (err) {
+            logErrorBrief(`[research] report-ready email failed report=${reportId}`, err);
+          }
+        });
+      }
 
       return { ok: true as const, reportId };
     } catch (err) {

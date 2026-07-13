@@ -34,6 +34,9 @@ export interface ResearchReportContent {
 export interface ResearchReport {
   id: string;
   tenantId: string;
+  /** The auth user who asked for this report — null if unknown (e.g. a pre-existing row from before
+   *  this column existed). Used to email ONLY the requester, not every user on the tenant workspace. */
+  authUserId: string | null;
   topic: string;
   status: ResearchReportStatus;
   content: ResearchReportContent | null;
@@ -55,6 +58,7 @@ export interface ResearchReportSummary {
 interface ResearchReportRow {
   id: string;
   tenant_id: string;
+  auth_user_id: string | null;
   topic: string;
   status: ResearchReportStatus;
   content: ResearchReportContent | null;
@@ -69,6 +73,7 @@ function fromRow(row: ResearchReportRow): ResearchReport {
   return {
     id: row.id,
     tenantId: row.tenant_id,
+    authUserId: row.auth_user_id,
     topic: row.topic,
     status: row.status,
     content: row.content,
@@ -80,10 +85,14 @@ function fromRow(row: ResearchReportRow): ResearchReport {
   };
 }
 
-export async function createResearchReport(tenantId: string, topic: string): Promise<ResearchReport> {
+export async function createResearchReport(
+  tenantId: string,
+  topic: string,
+  authUserId?: string | null,
+): Promise<ResearchReport> {
   const { data, error } = await getSupabase()
     .from(TABLE)
-    .insert({ tenant_id: tenantId, topic, status: 'generating' })
+    .insert({ tenant_id: tenantId, topic, status: 'generating', auth_user_id: authUserId ?? null })
     .select('*')
     .single();
   if (error || !data) throw new Error(`Failed to create research report: ${error?.message ?? 'unknown error'}`);
