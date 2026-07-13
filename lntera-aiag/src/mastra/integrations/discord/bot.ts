@@ -1,4 +1,4 @@
-import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
+import { Client, Events, GatewayIntentBits, Options, Partials } from 'discord.js';
 import { discordTenantIntegrationConfigSchema } from '../shared/types';
 import { listTenantIntegrationsByCode } from '../shared/tenant-integrations';
 import { resolveIntegrationVaultSecret } from '../shared/vault';
@@ -15,6 +15,24 @@ import { buildTenantToChannels, clearDiscordRuntime, setDiscordRuntime } from '.
 export type DiscordBotsHandle = {
   shutdown: () => Promise<void>;
 };
+
+/**
+ * discord.js caches every message/user/channel it ever sees by default, with NO limit — a persistent
+ * Gateway client left running for hours in a memory-capped container (Railway) grows unbounded and
+ * eventually OOMs. This app only needs a handful of very recent messages (edit-tracking) and doesn't
+ * use presence/typing/voice at all, so cap or zero out everything else per discord.js's own
+ * optimization guidance (https://discordjs.guide/popular-topics/cache-management).
+ */
+const DISCORD_CACHE_LIMITS = Options.cacheWithLimits({
+  ...Options.DefaultMakeCacheSettings,
+  MessageManager: 50,
+  UserManager: 200,
+  GuildMemberManager: 0, // no GuildMembers intent requested — nothing to cache here anyway
+  PresenceManager: 0,
+  VoiceStateManager: 0,
+  StageInstanceManager: 0,
+  ThreadMemberManager: 0,
+});
 
 /**
  * One shared Discord application: single Gateway session via `DISCORD_BOT_TOKEN`.
@@ -73,6 +91,7 @@ async function startSingleAppDiscordBots(platformToken: string): Promise<Discord
     // Single-member REST lookups (`guild.members.fetch(userId)`) work without the
     // privileged GuildMembers intent, so we deliberately stay off the privileged list.
     partials: [Partials.Channel, Partials.Message],
+    makeCache: DISCORD_CACHE_LIMITS,
   });
 
   client.once(Events.ClientReady, (c) => {
@@ -158,6 +177,7 @@ async function startLegacyVaultDiscordBots(): Promise<DiscordBotsHandle> {
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
       ],
+      makeCache: DISCORD_CACHE_LIMITS,
     });
 
     const tenantId = row.tenant_id;
