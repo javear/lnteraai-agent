@@ -33,7 +33,16 @@ const INJECTION_RULES: RegexRule[] = [
   },
   {
     name: 'jailbreak',
-    pattern: /\b(?:DAN|jailbreak|do anything now)\b/gi,
+    pattern: /\b(?:jailbreak|do anything now)\b/gi,
+    replacement: '[FILTERED]',
+  },
+  {
+    // Separate, case-SENSITIVE rule for the "DAN" jailbreak acronym (always written all-caps in the
+    // original meme) — matching it case-insensitively also caught the Indonesian word "dan" ("and"),
+    // one of the most common words in Bahasa Indonesia, blocking ordinary Indonesian-language messages
+    // outright (this product explicitly supports Indonesian — see web/src/i18n/locales/id.ts).
+    name: 'jailbreak-dan-acronym',
+    pattern: /\bDAN\b/g,
     replacement: '[FILTERED]',
   },
   {
