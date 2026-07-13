@@ -4,6 +4,7 @@ import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
 import { resolveActiveTenantProviders } from '../portkey/resolve-tenant-model';
 import { buildAvailablePortkeyLlmChain } from '../portkey/portkey-llm-chain';
+import { withTimeout } from '../shared/with-timeout';
 
 const extractionSchema = z.object({
   entities: z
@@ -58,9 +59,12 @@ export async function extractEntitiesAndRelationships(tenantId: string, text: st
     model: chain,
   });
 
-  const result = await extractor.generate([{ role: 'user', content: text }], {
-    structuredOutput: { schema: extractionSchema },
-  });
+  // A stalled provider otherwise hangs this request indefinitely — see with-timeout.ts.
+  const result = await withTimeout(
+    extractor.generate([{ role: 'user', content: text }], { structuredOutput: { schema: extractionSchema } }),
+    90_000,
+    'Entity extraction',
+  );
 
   return result.object ?? { entities: [], relationships: [] };
 }
