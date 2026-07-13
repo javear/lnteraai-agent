@@ -21,6 +21,16 @@ interface IngestDocumentEventData {
   documentId: string;
 }
 
+// A large document (up to the ~10MB/tenant cap) can chunk into thousands of pieces. One Inngest STEP
+// per chunk means every subsequent step invocation has to replay/resend every prior step's memoized
+// result — for a several-thousand-chunk document that's a request payload (and replay cost) that
+// grows without bound, and was the real cause of repeated "Application failed to respond" 502s /
+// container memory pressure during ingestion (timeouts on the LLM calls themselves, added separately,
+// don't help this — the problem is step COUNT, not any single call hanging). Processing chunks in
+// fixed-size batches per step keeps both the per-step payload size and the LLM-call wall-clock time
+// bounded regardless of document size.
+const CHUNK_BATCH_SIZE = 8;
+
 export const ingestDocumentFn = inngest.createFunction(
   {
     id: 'ingest-knowledge-document',
@@ -57,22 +67,27 @@ export const ingestDocumentFn = inngest.createFunction(
         return { chunkCount: 0 };
       }
 
-      const embeddings = await step.run('embed', () => embedTexts(chunks));
-
       const toIngest: ChunkToIngest[] = [];
-      for (let i = 0; i < chunks.length; i++) {
-        const extracted = await step.run(`extract-${i}`, () =>
-          extractEntitiesAndRelationships(tenantId, chunks[i]),
-        );
-        toIngest.push({
-          id: randomUUID(),
-          text: chunks[i],
-          embedding: embeddings[i],
-          documentId,
-          sourceType: doc.source_type,
-          chunkIndex: i,
-          extracted,
+      for (let batchStart = 0; batchStart < chunks.length; batchStart += CHUNK_BATCH_SIZE) {
+        const batchChunks = chunks.slice(batchStart, batchStart + CHUNK_BATCH_SIZE);
+        const batchResults = await step.run(`process-batch-${batchStart}`, async () => {
+          const batchEmbeddings = await embedTexts(batchChunks);
+          const results: ChunkToIngest[] = [];
+          for (let j = 0; j < batchChunks.length; j++) {
+            const extracted = await extractEntitiesAndRelationships(tenantId, batchChunks[j]);
+            results.push({
+              id: randomUUID(),
+              text: batchChunks[j],
+              embedding: batchEmbeddings[j],
+              documentId,
+              sourceType: doc.source_type,
+              chunkIndex: batchStart + j,
+              extracted,
+            });
+          }
+          return results;
         });
+        toIngest.push(...batchResults);
       }
 
       await step.run('write-graph', () => ingestChunks(tenantId, toIngest));
