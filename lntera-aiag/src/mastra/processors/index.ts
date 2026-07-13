@@ -4,6 +4,7 @@ export {
 } from './groq-reasoning-rolling-compat';
 export { groqOnboardGateProcessor } from './groq-onboard-gate';
 export { discordMemoryRecallProcessor, filterDiscordMemoryMessages } from './discord-memory-recall';
+export { knowledgePreRetrievalProcessor } from './knowledge-pre-retrieval';
 export {
   markGroqModelRateLimited,
   isGroqModelRateLimited,

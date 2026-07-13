@@ -55,6 +55,7 @@ import {
   createRegexInputGuardProcessor,
   createRegexOutputGuardProcessor,
   discordMarkdownSanitizeProcessor,
+  knowledgePreRetrievalProcessor,
 } from '../processors';
 import { getAgentInputTokenLimit, getAgentLastMessages, getWorkingMemoryConfig } from './agent-memory-config';
 import { isRegexFilterEnabled } from './agent-regex-filter-config';
@@ -208,6 +209,9 @@ export const generalAgent = new Agent({
     groqOnboardGateProcessor,
     ...(isRegexFilterEnabled() ? [createRegexInputGuardProcessor()] : []),
     discordMemoryRecallProcessor,
+    // Automatic RAG grounding — runs once per turn (not per step), before the token budget is
+    // enforced, so injected context counts toward it and can be trimmed like anything else.
+    knowledgePreRetrievalProcessor,
     // Inject search_tools/load_tool (+ thread-loaded tools) before the rolling/token steps so the
     // token estimate and model chain see the reduced toolset.
     toolSearchProcessor,
