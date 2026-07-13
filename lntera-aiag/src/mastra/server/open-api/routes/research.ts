@@ -129,7 +129,10 @@ export const researchPublicReportRoute = registerApiRoute(`${OPEN_API_PREFIX}/re
     const slug = c.req.param('slug') ?? '';
     const report = await getPublicResearchReport(slug);
     if (!report) return openApiJsonError(c, 404, 'not_found', 'Report not found.');
-    return c.json({ report });
+    // Strip fields an anonymous viewer has no business seeing (the owning tenant's id, the sharing
+    // slug itself, internal error detail) — only the report's own content is meant to be public here.
+    const { tenantId: _tenantId, publicSlug: _publicSlug, errorMessage: _errorMessage, ...publicFields } = report;
+    return c.json({ report: publicFields });
   },
 });
 

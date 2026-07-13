@@ -38,15 +38,17 @@ export interface ResearchReportContent {
 
 export interface ResearchReport {
   id: string;
-  tenantId: string;
   topic: string;
   status: ResearchReportStatus;
   content: ResearchReportContent | null;
-  errorMessage: string | null;
   isPublic: boolean;
-  publicSlug: string | null;
   createdAt: string;
   updatedAt: string;
+  // Present on the authenticated read (list/get/share); the public (/r/:slug) read strips these —
+  // an anonymous viewer has no business seeing the owning tenant's id, the slug, or error detail.
+  tenantId?: string;
+  errorMessage?: string | null;
+  publicSlug?: string | null;
 }
 
 type Api = (path: string, init?: RequestInit) => Promise<Response>;
