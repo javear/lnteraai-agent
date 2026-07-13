@@ -9,6 +9,7 @@ import { resolveActiveTenantProviders } from '../portkey/resolve-tenant-model';
 import { buildAvailablePortkeyLlmChain } from '../portkey/portkey-llm-chain';
 import { buildProviderPool } from '../../models/llm-model-chain';
 import type { LlmProviderCode } from '../../models/llm-providers';
+import { withTimeout } from '../shared/with-timeout';
 
 // buildAvailablePortkeyLlmChain's `chainOrder` takes actual MODEL codes (e.g. "gemini/gemini-2.0-
 // flash"), not bare provider codes — confirmed live: passing provider codes directly resolves to an
@@ -49,15 +50,20 @@ export async function extractImageText(tenantId: string, buffer: Buffer, mimeTyp
     model: chain,
   });
 
-  const result = await vision.generate([
-    {
-      role: 'user',
-      content: [
-        { type: 'text', text: IMAGE_PROMPT },
-        { type: 'image', image: buffer.toString('base64'), mediaType: mimeType },
-      ],
-    },
-  ]);
+  // A stalled provider otherwise hangs this request indefinitely — see with-timeout.ts.
+  const result = await withTimeout(
+    vision.generate([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: IMAGE_PROMPT },
+          { type: 'image', image: buffer.toString('base64'), mediaType: mimeType },
+        ],
+      },
+    ]),
+    90_000,
+    'Image OCR',
+  );
 
   const text = result.text?.trim();
   if (!text) {

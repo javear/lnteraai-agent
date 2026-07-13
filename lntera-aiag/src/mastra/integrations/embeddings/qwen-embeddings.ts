@@ -73,6 +73,8 @@ async function embedBatch(input: string[]): Promise<number[][]> {
     method: 'POST',
     headers,
     body: JSON.stringify({ model: EMBEDDING_MODEL, input, dimensions }),
+    // A stalled provider otherwise hangs this request indefinitely — see with-timeout.ts.
+    signal: AbortSignal.timeout(60_000),
   });
   const text = await res.text();
   if (!res.ok) {
