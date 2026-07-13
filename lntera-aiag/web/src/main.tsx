@@ -29,6 +29,9 @@ const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const Chat = lazy(() => import('./pages/Chat'));
 const Integrations = lazy(() => import('./pages/Integrations'));
 const Knowledge = lazy(() => import('./pages/Knowledge'));
+const Reports = lazy(() => import('./pages/Reports'));
+const ReportView = lazy(() => import('./pages/ReportView'));
+const PublicReport = lazy(() => import('./pages/PublicReport'));
 // Marketing landing — web only. Gated on the BUILD mode (not the runtime IS_NATIVE) so Rollup
 // dead-code-eliminates the dynamic import: the chunk never ships in the native (Capacitor) bundle.
 const Landing = import.meta.env.MODE === 'native' ? null : lazy(() => import('./pages/Landing'));
@@ -178,6 +181,16 @@ function Boot() {
             </Suspense>
           }
         />
+        {/* Public, unauthenticated report view — no AppLayout chrome, no auth gate. The share slug
+            itself is the access control (enforced server-side); this route just renders it. */}
+        <Route
+          path="/r/:slug"
+          element={
+            <Suspense fallback={<BootScreen />}>
+              <PublicReport />
+            </Suspense>
+          }
+        />
         <Route element={<AppGate />}>
           <Route
             path="/"
@@ -208,6 +221,22 @@ function Boot() {
             element={
               <Suspense fallback={<PageRouteSkeleton />}>
                 <Knowledge />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/reports"
+            element={
+              <Suspense fallback={<PageRouteSkeleton />}>
+                <Reports />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/reports/:id"
+            element={
+              <Suspense fallback={<PageRouteSkeleton />}>
+                <ReportView />
               </Suspense>
             }
           />

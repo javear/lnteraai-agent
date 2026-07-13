@@ -29,6 +29,7 @@ export const en: Record<string, string> = {
   'nav.chat': 'Chat',
   'nav.integrations': 'Integrations',
   'nav.knowledge': 'Knowledge',
+  'nav.reports': 'Reports',
   'nav.forge': 'Forge',
   'nav.navigation': 'Navigation',
   'nav.openMenu': 'Open menu',

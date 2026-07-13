@@ -3,11 +3,13 @@
 type Api = (path: string, init?: RequestInit) => Promise<Response>;
 
 export interface ChartSpec {
-  type: 'bar' | 'line' | 'donut';
+  type: 'bar' | 'line' | 'donut' | 'forecast';
   title: string;
   unit?: string;
   labels: string[];
   series: Array<{ name?: string; data: number[] }>;
+  /** For type 'forecast': the index in `labels`/`data` where projected (vs. historical) values begin. */
+  forecastFromIndex?: number;
 }
 
 export interface InsightProviderInfo {

@@ -53,6 +53,15 @@ export default function InsightChartImpl({ spec }: { spec: ChartSpec }) {
     return row;
   });
 
+  // Forecast: one series split into a solid "Historical" line and a dashed "Forecast" continuation.
+  // Both rows carry the boundary index's value so the two lines visually connect with no gap.
+  const forecastIdx = spec.forecastFromIndex ?? spec.labels.length;
+  const forecastRows = spec.labels.map((label, i) => ({
+    name: label,
+    Historical: i <= forecastIdx ? (spec.series[0]?.data[i] ?? 0) : null,
+    Forecast: i >= forecastIdx ? (spec.series[0]?.data[i] ?? 0) : null,
+  }));
+
   return (
     <figure className="rounded-xl border bg-card p-4 shadow-sm">
       <figcaption className="mb-3 text-sm font-medium text-foreground">{spec.title}</figcaption>
@@ -76,6 +85,24 @@ export default function InsightChartImpl({ spec }: { spec: ChartSpec }) {
             <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => [`${v}${spec.unit ? ` ${spec.unit}` : ''}`]} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
           </PieChart>
+        ) : spec.type === 'forecast' ? (
+          <LineChart data={forecastRows} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+            <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="name" tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: 'hsl(var(--border))' }} />
+            <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} width={40} allowDecimals={false} />
+            <Tooltip contentStyle={TOOLTIP_STYLE} />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Line type="monotone" dataKey="Historical" stroke={SERIES_COLORS[0]} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+            <Line
+              type="monotone"
+              dataKey="Forecast"
+              stroke={SERIES_COLORS[0]}
+              strokeWidth={2}
+              strokeDasharray="6 4"
+              dot={false}
+              activeDot={{ r: 4 }}
+            />
+          </LineChart>
         ) : spec.type === 'line' ? (
           <LineChart data={rows} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
             <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />

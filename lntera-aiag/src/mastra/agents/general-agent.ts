@@ -41,6 +41,9 @@ import { scheduleTaskTool } from '../tools/scheduled/schedule-task';
 import { setLanguageTool } from '../tools/language/set-language';
 import { searchKnowledgeTool } from '../tools/knowledge/search-knowledge';
 import { saveKnowledgeTool } from '../tools/knowledge/save-knowledge';
+import { webSearchTool } from '../tools/research/web-search';
+import { scrapeUrlTool } from '../tools/research/scrape-url';
+import { generateResearchReportTool } from '../tools/research/generate-report';
 import { normalizeLanguage, languageLabel } from '../integrations/shared/language-prefs';
 import { TENANT_MASTER_ID_KEY } from '../integrations/shared/marketplace-auth';
 import { AUTH_USER_ID_KEY } from '../server/auth/tenant-context-middleware';
@@ -107,6 +110,9 @@ const ALL_TOOLS = {
   [setLanguageTool.id]: setLanguageTool,
   [searchKnowledgeTool.id]: searchKnowledgeTool,
   [saveKnowledgeTool.id]: saveKnowledgeTool,
+  [webSearchTool.id]: webSearchTool,
+  [scrapeUrlTool.id]: scrapeUrlTool,
+  [generateResearchReportTool.id]: generateResearchReportTool,
 };
 
 /**
