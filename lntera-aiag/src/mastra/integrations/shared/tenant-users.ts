@@ -51,6 +51,14 @@ export async function getTenantUserForAuthUser(
   return { tenantId: (data as { tenant_id: Uuid }).tenant_id, role: (data as { role: string }).role };
 }
 
+/** The auth user's CURRENT email straight from Supabase Auth (not the possibly-stale copy captured
+ *  on `tenant_users.email` at provisioning time). Returns null if the user can't be found. */
+export async function getAuthUserEmail(authUserId: string): Promise<string | null> {
+  const { data, error } = await getSupabase().auth.admin.getUserById(authUserId);
+  if (error) throw new Error(`Failed to look up auth user ${authUserId}: ${error.message}`);
+  return data.user?.email ?? null;
+}
+
 /** `allowed_tools` for a (tenant, role slug), or null when the role row doesn't exist. */
 export async function getRoleAllowedTools(
   tenantId: Uuid,
