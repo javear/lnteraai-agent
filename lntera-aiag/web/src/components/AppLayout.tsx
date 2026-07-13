@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type TouchEvent } from 'react';
 import { NavLink, Outlet, useLocation, useMatch, useNavigate, useOutletContext } from 'react-router-dom';
-import { Bell, BookOpen, ChevronsUpDown, LogOut, Menu, Plug, Sparkles, SquarePen, Trash2, WifiOff, Wrench } from 'lucide-react';
+import { Bell, BookOpen, ChevronsUpDown, FileSearch, LogOut, Menu, Plug, Sparkles, SquarePen, Trash2, WifiOff, Wrench } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../auth';
 import { fetchIntegrationStatus, type AppOutletContext, type IntegrationStatus } from '../lib/integrations';
@@ -212,6 +212,10 @@ function SidebarContent({
             <NavLink to="/knowledge" onClick={onNavigate} className={navItemClass}>
               <BookOpen />
               {t('nav.knowledge')}
+            </NavLink>
+            <NavLink to="/reports" onClick={onNavigate} className={navItemClass}>
+              <FileSearch />
+              {t('nav.reports')}
             </NavLink>
             {/* Always shown, even on native/mobile where Forge can't actually run (it needs a
                 desktop-sized screen for its own sandbox) — Studio.tsx's own `narrow` check already

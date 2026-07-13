@@ -6,7 +6,8 @@ import type { NormalizedProduct } from '../integrations/shared/products';
 
 /** A chart the web renders (Recharts). Kept minimal + serializable so it rides the notification payload. */
 export interface ChartSpec {
-  type: 'bar' | 'line' | 'donut';
+  /** 'forecast' is history + a visually distinct projected continuation — see `forecastFromIndex`. */
+  type: 'bar' | 'line' | 'donut' | 'forecast';
   title: string;
   /** Optional value unit for tooltips/labels, e.g. 'orders', '%', 'units', 'MYR'. */
   unit?: string;
@@ -14,6 +15,8 @@ export interface ChartSpec {
   labels: string[];
   /** One or more series; donut uses a single series whose data aligns to `labels`. */
   series: Array<{ name?: string; data: number[] }>;
+  /** For type 'forecast': the index in `labels`/`data` where projected (vs. historical) values begin. */
+  forecastFromIndex?: number;
 }
 
 export type InsightStatus = 'ok' | 'partial' | 'no_data' | 'error';

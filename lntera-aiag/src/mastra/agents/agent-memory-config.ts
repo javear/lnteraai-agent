@@ -72,6 +72,15 @@ export function getTechnicalAgentInputTokenLimit(): number {
   return Number.isFinite(n) && n > 0 ? n : 32_000;
 }
 
+/** The research-report agent gets its own large budget too — one synthesis call digests internal
+ *  knowledge-graph chunks, web search excerpts, AND extracted full-page content all at once. */
+export function getResearchAgentInputTokenLimit(): number {
+  const raw = process.env.RESEARCH_AGENT_INPUT_TOKEN_LIMIT?.trim();
+  if (!raw) return 32_000;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : 32_000;
+}
+
 /** More retained thread history so an iterative debugging session ("do it" / "you stopped again" /
  *  "check the terminal") doesn't lose the original task or earlier fixes after a handful of turns. */
 export function getTechnicalAgentLastMessages(): number {
