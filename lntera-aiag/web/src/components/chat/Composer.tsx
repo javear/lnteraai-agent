@@ -7,7 +7,7 @@ import { useOnlineStatus } from '@/lib/pwa';
 import { useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import type { PinnableModel } from '@/lib/integrations';
-import { ALLOWED_KNOWLEDGE_EXTENSIONS, MAX_KNOWLEDGE_UPLOAD_BYTES, formatBytes, isAllowedKnowledgeFile } from '@/lib/knowledge';
+import { ALLOWED_KNOWLEDGE_EXTENSIONS, formatBytes, validateKnowledgeFile } from '@/lib/knowledge';
 
 export function Composer({
   value,
@@ -50,12 +50,9 @@ export function Composer({
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file || !onAttach) return;
-    if (!isAllowedKnowledgeFile(file.name)) {
-      toast.error(`Unsupported file type. Supported: ${ALLOWED_KNOWLEDGE_EXTENSIONS.join(', ')}`);
-      return;
-    }
-    if (file.size > MAX_KNOWLEDGE_UPLOAD_BYTES) {
-      toast.error('File is larger than the 10MB knowledge base limit.');
+    const error = validateKnowledgeFile(file);
+    if (error) {
+      toast.error(error);
       return;
     }
     onAttach(file);

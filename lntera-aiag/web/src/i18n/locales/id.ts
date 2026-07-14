@@ -177,6 +177,8 @@ export const id: Record<string, string> = {
   'chat.error.start': 'Tidak bisa memulai obrolan baru. Periksa koneksi Anda dan coba lagi.',
   'chat.uploadingDocument': 'Mengunggah dokumen…',
   'chat.error.sendFailed': 'Gagal mengirim — coba lagi.',
+  'chat.dropFile.title': 'Jatuhkan dokumen Anda di sini',
+  'chat.dropFile.subtitle': 'Menambahkannya ke basis pengetahuan Anda',
   'chat.loadingOlder': 'Memuat pesan lama…',
   // Status berpikir — diputar saat agen bekerja. Dipisah dengan tanda |.
   'thinking.words':

@@ -49,6 +49,18 @@ export function isAllowedKnowledgeFile(filename: string): boolean {
   return ALLOWED_KNOWLEDGE_EXTENSIONS.includes(ext);
 }
 
+/** Shared by the composer's file picker AND drag-and-drop — one place for "can this be attached."
+ *  Returns a user-facing error message, or null if the file is fine to attach. */
+export function validateKnowledgeFile(file: File): string | null {
+  if (!isAllowedKnowledgeFile(file.name)) {
+    return `Unsupported file type. Supported: ${ALLOWED_KNOWLEDGE_EXTENSIONS.join(', ')}`;
+  }
+  if (file.size > MAX_KNOWLEDGE_UPLOAD_BYTES) {
+    return 'File is larger than the 10MB knowledge base limit.';
+  }
+  return null;
+}
+
 export function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
