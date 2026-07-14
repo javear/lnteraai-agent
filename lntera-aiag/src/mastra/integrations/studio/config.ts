@@ -2,14 +2,16 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { getMastraPublicBaseUrl } from '../portkey/config';
 
 /**
- * Gitea connection (server env). Returns null when not configured. `owner` is optional — repos are
- * created under the token's own user (`/user/repos`), so only base URL + token are required.
+ * GitHub connection (server env). Returns null when not configured. Repos are created under
+ * `GITHUB_ORG` (an organization, unlike Gitea's token-owner-scoped repos) via a fine-grained PAT with
+ * the "Administration: Read and write" repository permission (repository access "All repositories" —
+ * a not-yet-created repo can't be individually selected).
  */
-export function getGiteaConfig(): { baseUrl: string; token: string; owner: string } | null {
-  const baseUrl = process.env.GITEA_BASE_URL?.trim().replace(/\/+$/, '');
-  const token = process.env.GITEA_TOKEN?.trim();
-  if (!baseUrl || !token) return null;
-  return { baseUrl, token, owner: process.env.GITEA_OWNER?.trim() ?? '' };
+export function getGithubConfig(): { token: string; org: string } | null {
+  const token = process.env.GITHUB_TOKEN?.trim();
+  const org = process.env.GITHUB_ORG?.trim();
+  if (!token || !org) return null;
+  return { token, org };
 }
 
 /** EdgeOne Pages deploy token (server env). */

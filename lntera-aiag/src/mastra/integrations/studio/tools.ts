@@ -9,7 +9,7 @@ import { resolveTenantProjectSecretValues, SECRET_NAME_RE } from '../shared/tena
 import { PROJECT_KINDS, isProjectKind, type ProjectKind } from '../shared/types';
 import { getStudioBridge } from './browser-bridge';
 import { deployToEdgeOne, setEdgeOneEnvVars } from './edgeone';
-import { repoNameFor } from './gitea';
+import { repoNameFor } from './github';
 import { uploadPreviewBuild } from './preview-builds';
 import { STUDIO_PROJECT_ID_KEY, STUDIO_SESSION_ID_KEY } from './protocol';
 import { inngest } from '../../inngest/client';
@@ -223,7 +223,7 @@ export const studioGitCommitTool = createTool({
 export const studioGitPushTool = createTool({
   id: 'studio-git-push',
   strict: false,
-  description: 'Push committed changes to the project\'s Gitea remote (saves work across browsers).',
+  description: 'Push committed changes to the project\'s GitHub remote (saves work across browsers).',
   requestContextSchema,
   inputSchema: z.object({}),
   outputSchema: z.object({ ok: z.literal(true) }),

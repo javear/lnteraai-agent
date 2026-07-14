@@ -1,4 +1,4 @@
-// Seeds a freshly-created Studio project's Gitea repo with a starter template, scoped by project
+// Seeds a freshly-created Studio project's GitHub repo with a starter template, scoped by project
 // kind, as the very first real commit — so the technical agent extends an existing, working project
 // instead of scaffolding one from scratch every time (which was unreliable: no way to know in advance
 // which build tools work inside the BrowserPod Wasm sandbox, and every agent had to rediscover the
@@ -19,7 +19,8 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import * as git from 'isomorphic-git';
 import http from 'isomorphic-git/http/node';
-import { getGiteaConfig } from './config';
+import { getGithubConfig } from './config';
+import { gitBasicAuthHeader } from './github';
 import { WEBAPP_TEMPLATE_FILES, MCP_TEMPLATE_FILES } from './template-manifest';
 import type { ProjectKind } from '../shared/types';
 
@@ -31,24 +32,24 @@ function templateFilesFor(kind: ProjectKind): Record<string, string> {
 
 /**
  * Clone the repo, write the `kind`-scoped starter template over it, and push a single "Initial
- * commit" — but ONLY if the repo is still in Gitea's bare auto-init state (README only). This makes
+ * commit" — but ONLY if the repo is still in GitHub's bare auto-init state (README only). This makes
  * the call idempotent/self-healing: it's safe to call again on every `init` (e.g. the tenant
- * reopening the project after a first attempt silently failed, such as a transient Gitea/proxy
+ * reopening the project after a first attempt silently failed, such as a transient GitHub/proxy
  * timeout) without ever clobbering real content — the tenant's own commits, or a previous
  * successful seed, always short-circuit this to a no-op.
  */
 export async function seedProjectTemplate(args: { kind: ProjectKind; repoFullName: string }): Promise<void> {
-  const cfg = getGiteaConfig();
-  if (!cfg) throw new Error('Gitea is not configured.');
+  const cfg = getGithubConfig();
+  if (!cfg) throw new Error('GitHub is not configured.');
   const files = templateFilesFor(args.kind);
-  const url = `${cfg.baseUrl}/${args.repoFullName}.git`;
-  const headers = { Authorization: `token ${cfg.token}` };
+  const url = `https://github.com/${args.repoFullName}.git`;
+  const headers = { Authorization: gitBasicAuthHeader(cfg.token) };
 
   const dir = await mkdtemp(join(tmpdir(), 'studio-seed-'));
   try {
     await git.clone({ fs, http, dir, url, headers, singleBranch: true });
 
-    // Gitea's auto-init only ever creates a README — any other file (ours from a prior seed, or the
+    // GitHub's auto-init only ever creates a README — any other file (ours from a prior seed, or the
     // tenant's/agent's own work) means there's real content here that must not be overwritten.
     const hasRealContent = fs
       .readdirSync(dir)
