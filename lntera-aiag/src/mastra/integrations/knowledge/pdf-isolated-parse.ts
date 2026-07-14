@@ -15,7 +15,11 @@
 // pressure. A wall-clock timeout is a second, independent containment layer for CPU-bound (not just
 // memory-bound) runaway parsing. Either failure mode surfaces as a normal thrown error — the caller
 // (parsers.ts -> ingest-document.ts) already turns that into a clean, visible `status:'failed'`
-// document instead of a container crash.
+// document instead of a container crash. The ceiling itself is derived from the container's real
+// cgroup memory limit (see readContainerMemLimitKb) rather than a fixed guess — the child shares the
+// SAME container memory budget as the main app process, so a limit picked in isolation can still lose
+// the race to the OS's own OOM-killer, which looks identical to our own kill from the outside (a bare
+// SIGKILL, no stderr) but happens before our poll interval gets a chance to catch it first.
 import { execFile } from 'node:child_process';
 import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
@@ -31,9 +35,36 @@ import { join } from 'node:path';
 import { getDocumentProxy as _unpdfDepRef } from 'unpdf';
 void _unpdfDepRef;
 
-const MAX_RSS_KB = Number(process.env.PDF_PARSE_MAX_RSS_KB) || 800_000; // ~800MB resident, tunable
+/** Reads the container's actual cgroup memory limit (v2, then v1) in KB. A fixed guess for MAX_RSS_KB
+ *  is unsafe because the child shares the SAME container memory budget as the main app process — a
+ *  ceiling that looks safe for the child alone can still leave the OS's own OOM-killer (not our RSS
+ *  watch) to SIGKILL it first if the container's real total limit is tighter than assumed. Returns
+ *  null on non-Linux/no-cgroup (local dev) or an unbounded cgroup (huge sentinel value = "no limit"). */
+function readContainerMemLimitKb(): number | null {
+  for (const path of ['/sys/fs/cgroup/memory.max', '/sys/fs/cgroup/memory/memory.limit_in_bytes']) {
+    try {
+      const raw = readFileSync(path, 'utf8').trim();
+      if (raw === 'max') continue;
+      const bytes = Number(raw);
+      if (Number.isFinite(bytes) && bytes > 0 && bytes < 1024 ** 4) return Math.floor(bytes / 1024);
+    } catch {
+      // try the next cgroup version's path
+    }
+  }
+  return null;
+}
+
+const MAX_RSS_KB = (() => {
+  const override = Number(process.env.PDF_PARSE_MAX_RSS_KB);
+  if (override > 0) return override;
+  const containerLimitKb = readContainerMemLimitKb();
+  // Leave the majority of the container's memory for the main app process, which keeps running
+  // throughout — the child is only one of potentially several concurrent ingestion jobs.
+  if (containerLimitKb) return Math.max(200_000, Math.min(800_000, Math.floor(containerLimitKb * 0.4)));
+  return 400_000; // conservative fallback when the limit can't be determined
+})();
 const PARSE_TIMEOUT_MS = 90_000;
-const RSS_POLL_INTERVAL_MS = 500;
+const RSS_POLL_INTERVAL_MS = 200;
 /** Reject above this many pages BEFORE paying for full extraction — a fast, friendly failure for the
  *  obviously-too-large case instead of a multi-minute parse that only then hits a limit. */
 export const MAX_PDF_PAGES = 300;
@@ -97,6 +128,14 @@ export async function extractPdfTextIsolated(buffer: Buffer): Promise<string> {
           if (err.killed || err.signal === 'SIGTERM') return reject(new Error(`PDF parsing timed out after ${PARSE_TIMEOUT_MS}ms.`));
           const tooManyPages = /PDF_TOO_MANY_PAGES:(\d+)/.exec(stderr ?? '');
           if (tooManyPages) return reject(new Error(`This PDF has ${tooManyPages[1]} pages, over the ${MAX_PDF_PAGES}-page limit — split it into smaller files.`));
+          // A bare SIGKILL with no stderr and no other explanation is the exact signature of the
+          // container's OWN OOM-killer stepping in ahead of our RSS poll (confirmed empirically: an
+          // externally-sent SIGKILL always produces `killed: false`, since Node/Bun only sets `killed`
+          // when IT called .kill() — an OS-level kill looks identical to this from here) rather than an
+          // actual parsing/logic error, which would instead throw a normal JS exception with a message.
+          if (!stderr && err.signal === 'SIGKILL') {
+            return reject(new Error('PDF parsing used too much memory and was stopped by the system before we could catch it — try a smaller or simpler file.'));
+          }
           return reject(new Error(`PDF parsing failed: ${(stderr || err.message).slice(0, 500)}`));
         },
       );
