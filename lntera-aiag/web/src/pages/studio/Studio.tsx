@@ -466,7 +466,7 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
     });
 
     (async () => {
-      // Boot the pod (a WASM VM — the slow part) and provision the Gitea repo/token concurrently;
+      // Boot the pod (a WASM VM — the slow part) and provision the GitHub repo/token concurrently;
       // neither depends on the other. Git itself runs as plain page JS against IndexedDB (see
       // lib/studio/git.ts), NOT inside the pod, so it only ever needs a same-origin fetch to our own
       // backend's git-proxy — never the pod's own (restricted) network stack. Git is still

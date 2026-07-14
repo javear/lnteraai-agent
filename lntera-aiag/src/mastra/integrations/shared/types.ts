@@ -252,13 +252,12 @@ export interface TenantProject {
   tenant_id: Uuid;
   name: string;
   kind: ProjectKind;
-  gitea_repo: string | null;
+  git_repo_url: string | null;
   deploy_url: string | null;
   mcp_url: string | null;
   /** Persistent "development" deploy URL the agent redeploys to on its own — separate from deploy_url/
    *  mcp_url, which only change via the user's explicit Publish action. */
   preview_url: string | null;
-  gitea_secret_ref: VaultSecretRefValue | null;
   mcp_secret_ref: VaultSecretRefValue | null;
   status: ProjectStatus;
   config: Record<string, unknown>;

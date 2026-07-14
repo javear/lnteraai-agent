@@ -15,8 +15,8 @@ import {
   resolveTenantProjectSecretValues,
   upsertTenantProjectSecret,
 } from '../../../integrations/shared/tenant-project-secrets';
-import { getGiteaConfig, signGitProxyToken, verifyGitProxyToken } from '../../../integrations/studio/config';
-import { createGiteaRepo, repoNameFor } from '../../../integrations/studio/gitea';
+import { getGithubConfig, signGitProxyToken, verifyGitProxyToken } from '../../../integrations/studio/config';
+import { createGithubRepo, deleteGithubRepoBestEffort, gitBasicAuthHeader, repoNameFor } from '../../../integrations/studio/github';
 import { deployToEdgeOne, setEdgeOneEnvVars } from '../../../integrations/studio/edgeone';
 import { getStudioBridge } from '../../../integrations/studio/browser-bridge';
 import { seedProjectTemplate } from '../../../integrations/studio/template-seed';
@@ -267,16 +267,19 @@ export const studioDeleteProjectRoute = registerApiRoute(`${OPEN_API_PREFIX}/stu
     if (auth instanceof Response) return auth;
     const id = c.req.param('id') ?? '';
     const removed = await deleteTenantProject(auth.tenantId, id);
+    // Best-effort — never blocks the tenant's own delete on a GitHub-side hiccup (already deleted,
+    // permissions, etc.); repoNameFor is a pure function of the id, so no extra lookup is needed.
+    if (removed) void deleteGithubRepoBestEffort(repoNameFor(id)).catch(() => undefined);
     return c.json({ ok: removed });
   },
 });
 
-/** POST /svc/v1/studio/projects/:id/init — create the Gitea repo; return a proxied clone URL. */
+/** POST /svc/v1/studio/projects/:id/init — create the GitHub repo; return a proxied clone URL. */
 export const studioInitProjectRoute = registerApiRoute(`${OPEN_API_PREFIX}/studio/projects/:id/init`, {
   method: 'POST',
   requiresAuth: false,
   openapi: {
-    summary: 'Provision a project git repo (Gitea) and return a proxied clone URL',
+    summary: 'Provision a project git repo (GitHub) and return a proxied clone URL',
     tags: ['Studio'],
     parameters: [authHeaderParam],
     responses: { 200: { description: '{ project, gitPath }' }, 400: { description: 'Not configured' }, 401: { description: 'Unauthorized' }, 404: { description: 'Not found' } },
@@ -284,28 +287,28 @@ export const studioInitProjectRoute = registerApiRoute(`${OPEN_API_PREFIX}/studi
   handler: async (c: StudioContext) => {
     const auth = await resolveTenantFromBearer(c);
     if (auth instanceof Response) return auth;
-    if (!getGiteaConfig()) return openApiJsonError(c, 400, 'not_configured', 'Gitea is not configured on the server.');
+    if (!getGithubConfig()) return openApiJsonError(c, 400, 'not_configured', 'GitHub is not configured on the server.');
 
     const id = c.req.param('id') ?? '';
     const project = await getTenantProject(auth.tenantId, id);
     if (!project) return openApiJsonError(c, 404, 'not_found', 'Project not found.');
 
     try {
-      const repo = await createGiteaRepo(repoNameFor(project.id));
+      const repo = await createGithubRepo(repoNameFor(project.id));
       // Attempt the starter-template seed on EVERY init, not just first creation: seedProjectTemplate
-      // is self-guarding (it no-ops unless the repo is still in Gitea's bare auto-init state), so this
+      // is self-guarding (it no-ops unless the repo is still in GitHub's bare auto-init state), so this
       // can never clobber the tenant's own work — but it DOES self-heal a project whose first seed
-      // attempt silently failed (e.g. a transient Gitea/proxy timeout), which previously left the
+      // attempt silently failed (e.g. a transient GitHub/proxy timeout), which previously left the
       // tenant with a permanently empty repo the technical agent's own instructions forbid scaffolding
       // into. Best-effort either way: a failure here still leaves a usable (if empty) repo.
       await seedProjectTemplate({ kind: project.kind, repoFullName: repo.fullName }).catch((err) => {
         logErrorBrief(`[studio] template seed failed (project=${project.id})`, err);
       });
-      const updated = await updateTenantProject(auth.tenantId, project.id, { gitea_repo: repo.cloneUrl });
+      const updated = await updateTenantProject(auth.tenantId, project.id, { git_repo_url: repo.cloneUrl });
       const token = signGitProxyToken({ projectId: project.id, repo: repo.fullName, exp: Date.now() + GIT_PROXY_TTL_MS });
       // Return a PATH only. The browser prefixes its own origin (the whitelisted frontend, e.g.
       // lntera.ai) so the pod's git reaches an allow-listed domain; the frontend (Vercel) rewrites
-      // /svc/v1/studio/git/* to this backend, which injects the Gitea token. BrowserPod blocks pod
+      // /svc/v1/studio/git/* to this backend, which injects GitHub auth. BrowserPod blocks pod
       // egress to non-whitelisted domains, so the pod can't hit the backend host directly.
       const gitPath = `${OPEN_API_PREFIX}/studio/git/${token}/git`;
       return c.json({ project: updated, gitPath });
@@ -712,28 +715,29 @@ export const studioCommandResultRoute = registerApiRoute(`${OPEN_API_PREFIX}/stu
 
 /**
  * Git smart-HTTP proxy. The browser pod clones/pushes to `…/studio/git/:token/git/…`; we verify the
- * repo-scoped token and forward to Gitea Cloud with the server's credentials injected — so the
- * tenant's git works without ever seeing our Gitea token. Registered for GET (info/refs) and POST
- * (upload-pack / receive-pack).
+ * repo-scoped token and forward to github.com with the server's credentials injected — so the
+ * tenant's git works without ever seeing our GitHub token. Registered for GET (info/refs) and POST
+ * (upload-pack / receive-pack). Git-over-HTTPS auth is HTTP Basic (token as password) — a DIFFERENT
+ * scheme from the REST API's Bearer header (see github.ts's gitBasicAuthHeader).
  */
 async function gitProxyHandler(c: GitProxyContext): Promise<Response> {
   const token = c.req.param('token') ?? '';
   const claim = verifyGitProxyToken(token);
   if (!claim) return openApiJsonError(c, 401, 'invalid_token', 'Invalid or expired git token.');
-  const cfg = getGiteaConfig();
-  if (!cfg) return openApiJsonError(c, 400, 'not_configured', 'Gitea is not configured.');
+  const cfg = getGithubConfig();
+  if (!cfg) return openApiJsonError(c, 400, 'not_configured', 'GitHub is not configured.');
 
   const url = new URL(c.req.url);
   const marker = `/studio/git/${token}/git`;
   const rest = url.pathname.slice(url.pathname.indexOf(marker) + marker.length); // e.g. "/info/refs"
-  const target = `${cfg.baseUrl}/${claim.repo}.git${rest}${url.search}`;
+  const target = `https://github.com/${claim.repo}.git${rest}${url.search}`;
 
   const fwd = new Headers();
   for (const h of ['content-type', 'accept', 'git-protocol', 'user-agent']) {
     const v = c.req.header(h);
     if (v) fwd.set(h, v);
   }
-  fwd.set('Authorization', `token ${cfg.token}`);
+  fwd.set('Authorization', gitBasicAuthHeader(cfg.token));
 
   const init: RequestInit & { duplex?: 'half' } = {
     method: c.req.method,

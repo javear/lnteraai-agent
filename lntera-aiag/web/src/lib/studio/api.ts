@@ -9,7 +9,7 @@ export interface StudioProject {
   id: string;
   name: string;
   kind: StudioProjectKind;
-  gitea_repo: string | null;
+  git_repo_url: string | null;
   deploy_url: string | null;
   mcp_url: string | null;
   /** Persistent "development" deploy URL the agent redeploys to on its own — separate from mcp_url,
@@ -65,7 +65,7 @@ export async function deleteProject(api: Api, id: string): Promise<void> {
 }
 
 /**
- * Provision the Gitea repo + token; returns a git PATH (e.g. /svc/v1/studio/git/<token>/git). The
+ * Provision the GitHub repo + token; returns a git PATH (e.g. /svc/v1/studio/git/<token>/git). The
  * caller prefixes the current frontend origin (which BrowserPod allow-lists), and the frontend proxies
  * that path to the backend git-proxy — so the pod never needs egress to the backend host.
  */
