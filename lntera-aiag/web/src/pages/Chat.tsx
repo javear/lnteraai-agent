@@ -377,29 +377,41 @@ export default function Chat() {
     setInput('');
     setAttachedFile(null);
 
-    // Upload first — if it fails, surface the error and don't send a half-broken turn.
-    let attachments: { name: string; size: number }[] | undefined;
+    const startedAt = new Date().toISOString();
+    const userMsgId = newId();
+    const aiId = newId();
+    nearBottomRef.current = true;
+
+    // Show the user's own message right away — including a pending "uploading" state while an
+    // attached file's upload round trip is in flight — so sending never looks like nothing happened.
+    // The upload (and, after it, the assistant placeholder + actual chat stream) happens AFTER this is
+    // already visible, not before.
+    setMessages((m) => [
+      ...m,
+      {
+        id: userMsgId,
+        role: 'user',
+        content,
+        attachments: file ? [{ name: file.name, size: file.size }] : undefined,
+        createdAt: startedAt,
+        pending: !!file,
+      },
+    ]);
+
     let wireContent = content;
     if (file) {
       try {
         await uploadKnowledgeDocument(api, file);
-        attachments = [{ name: file.name, size: file.size }];
         wireContent = `${content ? `${content}\n\n` : ''}[Attached document: ${file.name}]`;
+        setMessages((m) => m.map((x) => (x.id === userMsgId ? { ...x, pending: false } : x)));
       } catch (err) {
+        setMessages((m) => m.map((x) => (x.id === userMsgId ? { ...x, pending: false, failed: true } : x)));
         setError(err instanceof Error ? err.message : 'Could not upload that document.');
         return;
       }
     }
 
-    const startedAt = new Date().toISOString();
-    const userMsgId = newId();
-    const aiId = newId();
-    nearBottomRef.current = true;
-    setMessages((m) => [
-      ...m,
-      { id: userMsgId, role: 'user', content, attachments, createdAt: startedAt },
-      { id: aiId, role: 'assistant', content: '', pending: true, tool: null, createdAt: startedAt },
-    ]);
+    setMessages((m) => [...m, { id: aiId, role: 'assistant', content: '', pending: true, tool: null, createdAt: startedAt }]);
     setStreaming(true);
     stopRef.current = false;
 

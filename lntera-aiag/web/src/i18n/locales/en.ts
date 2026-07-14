@@ -176,6 +176,8 @@ export const en: Record<string, string> = {
   'chat.empty.subtitle': 'Ask about orders, products, fulfillment, and your connected shops.',
   'chat.noResponse': 'I didn’t get a response — please try again.',
   'chat.error.start': 'Could not start a new chat. Check your connection and try again.',
+  'chat.uploadingDocument': 'Uploading document…',
+  'chat.error.sendFailed': 'Failed to send — try again.',
   'chat.loadingOlder': 'Loading older messages…',
   // Thinking / generation status — cycled while the agent works (Claude-Code-style). Pipe-separated.
   'thinking.words':

@@ -175,6 +175,8 @@ export const id: Record<string, string> = {
   'chat.empty.subtitle': 'Tanya soal pesanan, produk, pemrosesan, dan toko yang terhubung.',
   'chat.noResponse': 'Saya tidak menerima respons — silakan coba lagi.',
   'chat.error.start': 'Tidak bisa memulai obrolan baru. Periksa koneksi Anda dan coba lagi.',
+  'chat.uploadingDocument': 'Mengunggah dokumen…',
+  'chat.error.sendFailed': 'Gagal mengirim — coba lagi.',
   'chat.loadingOlder': 'Memuat pesan lama…',
   // Status berpikir — diputar saat agen bekerja. Dipisah dengan tanda |.
   'thinking.words':
