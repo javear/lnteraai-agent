@@ -54,15 +54,22 @@ function readContainerMemLimitKb(): number | null {
   return null;
 }
 
-const MAX_RSS_KB = (() => {
+/** Computes the child's memory ceiling FRESH on every call (not a load-time constant) from the main
+ *  process's ACTUAL current RSS — a static fraction of the container total (the previous approach)
+ *  was too conservative whenever the main app was using much less than its "assumed" share, and too
+ *  generous whenever it was using more; reading live usage adapts either way. Reserves headroom for
+ *  the main process to keep growing while this parse runs (it's still serving other requests
+ *  concurrently) and for the overshoot our poll interval can miss between checks. */
+function computeMaxRssKb(): number {
   const override = Number(process.env.PDF_PARSE_MAX_RSS_KB);
   if (override > 0) return override;
   const containerLimitKb = readContainerMemLimitKb();
-  // Leave the majority of the container's memory for the main app process, which keeps running
-  // throughout — the child is only one of potentially several concurrent ingestion jobs.
-  if (containerLimitKb) return Math.max(200_000, Math.min(800_000, Math.floor(containerLimitKb * 0.4)));
-  return 400_000; // conservative fallback when the limit can't be determined
-})();
+  if (!containerLimitKb) return 400_000; // local dev / no cgroup limit readable
+  const mainRssKb = readRssKb(process.pid) ?? Math.floor(containerLimitKb * 0.3);
+  const reserveKb = Math.max(150_000, Math.floor(containerLimitKb * 0.15));
+  const availableKb = containerLimitKb - mainRssKb - reserveKb;
+  return Math.max(250_000, availableKb);
+}
 const PARSE_TIMEOUT_MS = 90_000;
 const RSS_POLL_INTERVAL_MS = 200;
 /** Reject above this many pages BEFORE paying for full extraction — a fast, friendly failure for the
@@ -109,6 +116,7 @@ export async function extractPdfTextIsolated(buffer: Buffer): Promise<string> {
   const inPath = join(dir, 'in.pdf');
   const outPath = join(dir, 'out.txt');
   const scriptPath = join(dir, 'worker.mjs');
+  const maxRssKb = computeMaxRssKb();
 
   try {
     await writeFile(inPath, buffer);
@@ -124,7 +132,7 @@ export async function extractPdfTextIsolated(buffer: Buffer): Promise<string> {
         (err, _stdout, stderr) => {
           clearInterval(rssWatch);
           if (!err) return resolve();
-          if (killedForMemory) return reject(new Error(`PDF parsing exceeded ${Math.round(MAX_RSS_KB / 1000)}MB resident memory and was stopped.`));
+          if (killedForMemory) return reject(new Error(`PDF parsing exceeded ${Math.round(maxRssKb / 1000)}MB resident memory and was stopped.`));
           if (err.killed || err.signal === 'SIGTERM') return reject(new Error(`PDF parsing timed out after ${PARSE_TIMEOUT_MS}ms.`));
           const tooManyPages = /PDF_TOO_MANY_PAGES:(\d+)/.exec(stderr ?? '');
           if (tooManyPages) return reject(new Error(`This PDF has ${tooManyPages[1]} pages, over the ${MAX_PDF_PAGES}-page limit — split it into smaller files.`));
@@ -143,7 +151,7 @@ export async function extractPdfTextIsolated(buffer: Buffer): Promise<string> {
       const rssWatch = setInterval(() => {
         if (!child.pid) return;
         const rssKb = readRssKb(child.pid);
-        if (rssKb !== null && rssKb > MAX_RSS_KB) {
+        if (rssKb !== null && rssKb > maxRssKb) {
           killedForMemory = true;
           child.kill('SIGKILL');
         }
