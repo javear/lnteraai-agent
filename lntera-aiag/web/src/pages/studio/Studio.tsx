@@ -64,14 +64,19 @@ async function resolveDevServerArgs(provider: SandboxProvider): Promise<string[]
 /**
  * BrowserPod's per-project persistent storage (cached node_modules/build state, keyed by project id
  * — see the `storageKey` passed to BrowserPodProvider) can only be held by one tab at a time; its SDK
- * exposes no explicit dispose/close call to release it proactively, so a reload sometimes races the
- * previous tab's teardown and boot() fails with a "device already opened" error even though nothing
- * is actually still using it. Retrying after a short wait clears it in practice — a genuinely
- * different active tab keeps failing every attempt, so this still surfaces as a real error rather
- * than looping forever.
+ * (confirmed directly against its type definitions — see `BrowserPod` in
+ * `@leaningtech/browserpod/index.d.ts`) exposes NO dispose/close/release call at all, so there is no
+ * proactive way for us to release it ahead of a reload. A reload destroys the whole page/JS realm
+ * with no chance for any of our own cleanup to run, so it sometimes races the previous tab's own
+ * (internal-to-BrowserPod, opaque to us) teardown, and boot() fails with a "device already opened"
+ * error even though nothing is actually still using it. Retrying after a wait clears it in practice
+ * once the old realm's storage handle actually closes — a genuinely different LIVE tab keeps failing
+ * every attempt, so this still surfaces as a real error (via the "Try again" button) rather than
+ * looping forever. The window here is intentionally generous (up to ~42s across 7 attempts) since a
+ * slower device/heavier previous session can genuinely take longer than a few seconds to let go.
  */
 async function bootWithRetry(provider: SandboxProvider): Promise<void> {
-  const maxAttempts = 3;
+  const maxAttempts = 7;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       await provider.boot();
@@ -80,7 +85,7 @@ async function bootWithRetry(provider: SandboxProvider): Promise<void> {
       const msg = e instanceof Error ? e.message : String(e);
       const isStaleLock = /already opened|another tab/i.test(msg);
       if (!isStaleLock || attempt === maxAttempts) throw e;
-      await new Promise((r) => setTimeout(r, 1500 * attempt));
+      await new Promise((r) => setTimeout(r, 2000 * attempt));
     }
   }
 }
@@ -381,6 +386,11 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
   const providerRef = useRef<SandboxProvider | null>(null);
   const [status, setStatus] = useState<'booting' | 'ready' | 'error'>('booting');
   const [bootError, setBootError] = useState<string | null>(null);
+  // Bumped by the "Try again" button to force the boot effect (below) to fully re-run — its own
+  // cleanup disposes the failed provider first, then a fresh bootWithRetry gets a full new attempt
+  // budget. Most useful for the stale-lock race (see bootWithRetry's comment): a reload sometimes
+  // needs longer than any fixed retry budget for BrowserPod's previous-tab storage lock to clear.
+  const [bootAttempt, setBootAttempt] = useState(0);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [devServer, setDevServer] = useState<{ status: 'idle' | 'starting' | 'exited'; exitCode: number | null }>({
     status: 'idle',
@@ -454,6 +464,8 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
 
   // Boot the sandbox, wire the bridge, and bring the repo into the pod (clone if empty).
   useEffect(() => {
+    setStatus('booting');
+    setBootError(null);
     const provider = new BrowserPodProvider({ storageKey: project.id });
     providerRef.current = provider;
     const stopBridge = runStudioBridge({ api, sessionId, provider });
@@ -517,7 +529,7 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
       void provider.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project.id]);
+  }, [project.id, bootAttempt]);
 
   async function send(text: string) {
     const content = text.trim();
@@ -832,7 +844,14 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
 
       {bootError ? (
         <div className="px-4 pt-3">
-          <Alert tone="error">{bootError}</Alert>
+          <Alert tone="error">
+            <div className="flex items-center justify-between gap-3">
+              <span>{bootError}</span>
+              <Button variant="secondary" onClick={() => setBootAttempt((n) => n + 1)}>
+                Try again
+              </Button>
+            </div>
+          </Alert>
         </div>
       ) : null}
       {gitWarning ? (
