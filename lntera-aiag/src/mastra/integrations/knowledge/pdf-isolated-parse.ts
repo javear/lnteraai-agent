@@ -82,8 +82,17 @@ function buildWorkerSource(unpdfEntryUrl: string): string {
   // sibling .mjs meant to be spawned as its own process wouldn't reliably survive the build. Importing
   // unpdf via its ABSOLUTE resolved path (not a bare "unpdf" specifier) means this generated file works
   // regardless of which directory it's written to at runtime — no node_modules-resolution dependency.
-  return `import { readFileSync, writeFileSync } from 'node:fs';
-import { getDocumentProxy, extractText } from ${JSON.stringify(unpdfEntryUrl)};
+  //
+  // Deliberately NOT unpdf's own extractText(): read its source (node_modules/unpdf/dist/index.mjs) —
+  // it calls Promise.all(pages.map(getPageText)), i.e. every page is fetched/rendered CONCURRENTLY and
+  // NEVER released, so PDF.js keeps every page's decoded fonts/images/content streams resident at once
+  // for the whole document. That's the actual driver of memory blowing well past what a document's
+  // page count would suggest, especially for font/image-heavy multi-page PDFs. Instead: walk pages
+  // ONE AT A TIME, call page.cleanup() to release that page's resources before moving to the next (so
+  // peak memory stays roughly constant regardless of total page count), and append straight to the
+  // output file per page instead of building one giant in-memory string.
+  return `import { readFileSync, writeFileSync, appendFileSync } from 'node:fs';
+import { getDocumentProxy } from ${JSON.stringify(unpdfEntryUrl)};
 
 const [, , inPath, outPath, maxPagesRaw] = process.argv;
 const maxPages = Number(maxPagesRaw) || 0;
@@ -93,8 +102,14 @@ if (maxPages && doc.numPages > maxPages) {
   process.stderr.write('PDF_TOO_MANY_PAGES:' + doc.numPages);
   process.exit(2);
 }
-const { text } = await extractText(doc, { mergePages: true });
-writeFileSync(outPath, text, 'utf8');
+writeFileSync(outPath, '', 'utf8');
+for (let i = 1; i <= doc.numPages; i++) {
+  const page = await doc.getPage(i);
+  const content = await page.getTextContent();
+  const pageText = content.items.filter((item) => item.str != null).map((item) => item.str + (item.hasEOL ? '\\n' : '')).join('');
+  appendFileSync(outPath, (i > 1 ? '\\n' : '') + pageText.replace(/\\s+/g, ' '), 'utf8');
+  page.cleanup();
+}
 `;
 }
 
