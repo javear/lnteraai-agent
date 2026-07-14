@@ -18,8 +18,11 @@ export interface ChatMessage {
   content: string;
   /** ISO timestamp when persisted (absent for in-flight optimistic turns). */
   createdAt?: string;
-  /** Assistant turn opened but no text yet (show typing dots). */
+  /** Assistant turn opened but no text yet (show typing dots); for a user turn, an attached
+   *  document is still uploading — the message is already visible, just not sent yet. */
   pending?: boolean;
+  /** A user turn's document upload failed — message stays visible with an inline retry hint. */
+  failed?: boolean;
   /** Tool the agent is currently invoking, shown as a subtle activity line. */
   tool?: string | null;
   /** Live reasoning ("thinking") text while streaming — ephemeral, never persisted to content. */
@@ -81,11 +84,22 @@ function MessageBubbleImpl({ message }: { message: ChatMessage }) {
       <div className="flex animate-fade-in flex-col items-end gap-1.5">
         {hasAttachments ? <AttachmentChips attachments={message.attachments!} /> : null}
         {message.content ? (
-          <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-[15px] leading-relaxed text-primary-foreground [overflow-wrap:anywhere]">
+          <div
+            className={`max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-[15px] leading-relaxed text-primary-foreground [overflow-wrap:anywhere] ${message.pending ? 'opacity-60' : ''}`}
+          >
             {message.content}
           </div>
         ) : null}
-        {timeLabel ? <div className="mt-1 px-1 text-[11px] text-muted-foreground/70">{timeLabel}</div> : null}
+        {message.pending ? (
+          <div className="mt-1 flex items-center gap-1.5 px-1 text-[11px] text-muted-foreground/70">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+            {t('chat.uploadingDocument')}
+          </div>
+        ) : message.failed ? (
+          <div className="mt-1 px-1 text-[11px] text-destructive">{t('chat.error.sendFailed')}</div>
+        ) : timeLabel ? (
+          <div className="mt-1 px-1 text-[11px] text-muted-foreground/70">{timeLabel}</div>
+        ) : null}
       </div>
     );
   }
