@@ -2,7 +2,12 @@ import { BrowserPod, type Terminal, type TextFile } from '@leaningtech/browserpo
 import { zipSync } from 'fflate';
 import { GitRepo, type GitLogEntry, type GitStatusEntry, type GitSyncStatus } from './git';
 import { hydratePodFromGit, syncPodToGit } from './git-sync';
-import type { StudioTreeEntry } from './protocol';
+import { STUDIO_RPC_TIMEOUT_MS, type StudioTreeEntry } from './protocol';
+
+// Must fire strictly before the server's own STUDIO_RPC_TIMEOUT_MS wait on the same call — otherwise
+// the two races unpredictably, and the agent sometimes sees the server's generic "Studio op timed
+// out" instead of this tool's specific, more actionable "Command timed out: <command>".
+const EXEC_TIMEOUT_MS = STUDIO_RPC_TIMEOUT_MS - 10_000;
 
 /** Lifecycle of the background dev-server process (see `startDevServer`). */
 export interface DevServerUpdate {
@@ -404,7 +409,7 @@ export class BrowserPodProvider implements SandboxProvider {
       const timer = setTimeout(() => {
         if (this.active) this.active = null;
         reject(new Error(`Command timed out: ${command}`));
-      }, 120_000);
+      }, EXEC_TIMEOUT_MS);
       this.active = {
         buf: '',
         onOutput: opts?.onOutput,
