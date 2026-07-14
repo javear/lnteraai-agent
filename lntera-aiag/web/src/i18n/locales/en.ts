@@ -178,6 +178,8 @@ export const en: Record<string, string> = {
   'chat.error.start': 'Could not start a new chat. Check your connection and try again.',
   'chat.uploadingDocument': 'Uploading document…',
   'chat.error.sendFailed': 'Failed to send — try again.',
+  'chat.dropFile.title': 'Drop your document here',
+  'chat.dropFile.subtitle': 'Adds it to your knowledge base',
   'chat.loadingOlder': 'Loading older messages…',
   // Thinking / generation status — cycled while the agent works (Claude-Code-style). Pipe-separated.
   'thinking.words':

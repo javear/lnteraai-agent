@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Loader2, Sparkles } from 'lucide-react';
+import { Loader2, Sparkles, UploadCloud } from 'lucide-react';
 import { useAuth } from '../auth';
 import { useApp } from '../components/AppLayout';
 import { useMastra } from '../lib/mastra';
 import { parseSuggestions, streamChat } from '../lib/chat';
 import { stripReasoning } from '../lib/reasoning';
 import { apiErrorMessage, fetchPinnableModels, isAnyLlmActive, type PinnableModel } from '../lib/integrations';
-import { uploadKnowledgeDocument } from '../lib/knowledge';
+import { uploadKnowledgeDocument, validateKnowledgeFile } from '../lib/knowledge';
 import { useChats } from '../lib/chat-store';
 import { useNotifications, type TenantNotification } from '../lib/notifications';
 import { generateTitle, getMessages, type HistoryMessage } from '../lib/threads';
@@ -64,6 +64,7 @@ export default function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -77,6 +78,10 @@ export default function Chat() {
 
   const stopRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // dragenter/dragleave fire for every child element a drag passes over, not just the outer
+  // container — counting depth (rather than a plain boolean) is the standard way to avoid the
+  // drop-zone overlay flickering off while the cursor crosses a message bubble mid-drag.
+  const dragDepthRef = useRef(0);
   const historyForRef = useRef<string | undefined>(undefined); // which thread's history is loaded
   const nearBottomRef = useRef(true);
   const hasMoreRef = useRef(false);
@@ -369,6 +374,41 @@ export default function Chat() {
     }
   }
 
+  // Drag-and-drop a document anywhere over the chat — not just via the composer's paperclip button.
+  function handleDragEnter(e: DragEvent<HTMLDivElement>) {
+    if (!e.dataTransfer.types.includes('Files') || streaming || !online) return;
+    e.preventDefault();
+    dragDepthRef.current += 1;
+    setIsDraggingFile(true);
+  }
+  function handleDragOver(e: DragEvent<HTMLDivElement>) {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  }
+  function handleDragLeave() {
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setIsDraggingFile(false);
+  }
+  function handleDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    dragDepthRef.current = 0;
+    setIsDraggingFile(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file || streaming || !online) return;
+    if (attachedFile) {
+      setError('Remove the current attachment before adding another.');
+      return;
+    }
+    const validationError = validateKnowledgeFile(file);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    setError(null);
+    setAttachedFile(file);
+  }
+
   async function send(text: string, file?: File | null) {
     const content = text.trim();
     if ((!content && !file) || streaming) return;
@@ -619,7 +659,22 @@ export default function Chat() {
   const showEmpty = !loadingHistory && messages.length === 0;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div
+      className="relative flex min-h-0 flex-1 flex-col"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDraggingFile ? (
+        <div className="pointer-events-none absolute inset-0 z-20 flex animate-fade-in items-center justify-center bg-background/90 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-primary px-8 py-6 text-center">
+            <UploadCloud className="h-8 w-8 text-primary" />
+            <p className="text-[15px] font-medium">{t('chat.dropFile.title')}</p>
+            <p className="text-[13px] text-muted-foreground">{t('chat.dropFile.subtitle')}</p>
+          </div>
+        </div>
+      ) : null}
       <div ref={scrollRef} onScroll={handleScroll} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="mx-auto max-w-3xl px-4 py-6 sm:py-8">
           {loadingOlder ? (
