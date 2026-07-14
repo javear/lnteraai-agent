@@ -1,7 +1,7 @@
 // Extract plain text from an uploaded knowledge document. Runs server-side (Inngest job), not in the
-// BrowserPod sandbox — native/Wasm PDF.js internals (via unpdf) are fine here.
+// BrowserPod sandbox.
 import ExcelJS from 'exceljs';
-import { extractText, getDocumentProxy } from 'unpdf';
+import { extractPdfTextIsolated } from './pdf-isolated-parse';
 
 const SPREADSHEET_MIME_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -13,9 +13,7 @@ export async function extractDocumentText(buffer: Buffer, mimeType: string, file
   const mime = mimeType.toLowerCase();
 
   if (mime === 'application/pdf' || filename.toLowerCase().endsWith('.pdf')) {
-    const doc = await getDocumentProxy(new Uint8Array(buffer));
-    const { text } = await extractText(doc, { mergePages: true });
-    return text;
+    return extractPdfTextIsolated(buffer);
   }
 
   if (SPREADSHEET_MIME_TYPES.has(mime) || /\.(xlsx|xls)$/i.test(filename)) {
