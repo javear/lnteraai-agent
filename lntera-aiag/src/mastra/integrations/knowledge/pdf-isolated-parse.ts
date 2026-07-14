@@ -21,6 +21,15 @@ import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+// Referenced but never called — required so Mastra's build-time dependency analyzer (which only
+// registers a package as a real production dependency if it sees a non-tree-shaken usage) ships
+// `unpdf` into the deployed node_modules. It does NOT trace import.meta.resolve('unpdf') below (a
+// plain method call, not module-loading syntax), and a bare `import 'unpdf'` with no referenced
+// binding gets tree-shaken away too since unpdf declares "sideEffects": false in its package.json —
+// verified empirically: only a referenced named import survives and makes `unpdf` show up in the
+// built package.json's dependencies. Without this, import.meta.resolve('unpdf') throws in production.
+import { getDocumentProxy as _unpdfDepRef } from 'unpdf';
+void _unpdfDepRef;
 
 const MAX_RSS_KB = Number(process.env.PDF_PARSE_MAX_RSS_KB) || 800_000; // ~800MB resident, tunable
 const PARSE_TIMEOUT_MS = 90_000;
