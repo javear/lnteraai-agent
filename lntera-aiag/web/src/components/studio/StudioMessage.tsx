@@ -35,7 +35,7 @@ function StudioMessageBubbleImpl({
    *  the comment on the history-load effect in Studio.tsx). */
   api?: Api;
   projectId?: string;
-  onSecretSaved?: () => void;
+  onSecretSaved?: (name: string) => void;
 }) {
   if (message.role === 'user') {
     return (

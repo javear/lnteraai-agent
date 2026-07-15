@@ -105,7 +105,7 @@ function SecretRequestCard({
   activity: SecretRequestActivity;
   api?: Api;
   projectId?: string;
-  onSaved?: () => void;
+  onSaved?: (name: string) => void;
 }) {
   const [value, setValue] = useState('');
   const [saving, setSaving] = useState(false);
@@ -123,7 +123,7 @@ function SecretRequestCard({
         description: activity.description || undefined,
       });
       setSaved(true);
-      onSaved?.();
+      onSaved?.(activity.name);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -202,7 +202,7 @@ function StudioActivityTimelineImpl({
   activity: StudioActivity[];
   api?: Api;
   projectId?: string;
-  onSecretSaved?: () => void;
+  onSecretSaved?: (name: string) => void;
 }) {
   if (activity.length === 0) return null;
   return (
