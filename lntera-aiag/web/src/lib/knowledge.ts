@@ -1,6 +1,7 @@
 // Shared client for the tenant knowledge base — used by the chat composer's attach flow and the
 // /knowledge page, so the upload/validation logic lives in exactly one place.
 import { apiErrorMessage } from './integrations';
+import { extractPdfTextInBrowser } from './pdf-extract';
 
 export const ALLOWED_KNOWLEDGE_EXTENSIONS = ['.pdf', '.xlsx', '.xls', '.txt', '.md', '.csv', '.jpg', '.jpeg', '.png', '.webp'];
 export const MAX_KNOWLEDGE_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -81,12 +82,29 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+function isPdfFile(file: File): boolean {
+  return file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+}
+
 export async function uploadKnowledgeDocument(api: Api, file: File): Promise<KnowledgeDocument> {
-  const fileBase64 = await fileToBase64(file);
+  // Extract a PDF's text on the user's OWN device, in parallel with the base64 encode, before ever
+  // uploading — the server's own PDF parser is resource-capped (see pdf-isolated-parse.ts) because it
+  // shares the same constrained container as the rest of the app; the user's device doesn't have that
+  // problem, and this is exactly what a browser's PDF.js is designed for. If extraction fails for any
+  // reason, fall through silently — the server still parses the raw file as a fallback either way.
+  const [fileBase64, extractedText] = await Promise.all([
+    fileToBase64(file),
+    isPdfFile(file) ? extractPdfTextInBrowser(file).catch(() => undefined) : Promise.resolve(undefined),
+  ]);
   const res = await api('/svc/v1/knowledge/documents', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filename: file.name, mimeType: file.type || 'application/octet-stream', fileBase64 }),
+    body: JSON.stringify({
+      filename: file.name,
+      mimeType: file.type || 'application/octet-stream',
+      fileBase64,
+      ...(extractedText ? { extractedText } : {}),
+    }),
   });
   if (!res.ok) throw new Error(await apiErrorMessage(res, 'Upload failed.'));
   const data = (await res.json()) as { document: KnowledgeDocument };

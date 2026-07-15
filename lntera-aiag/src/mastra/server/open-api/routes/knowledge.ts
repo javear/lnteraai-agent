@@ -7,6 +7,7 @@ import {
   createKnowledgeDocument,
   deleteKnowledgeDocumentRow,
   deleteKnowledgeFile,
+  extractedTextPathFor,
   getKnowledgeDocument,
   listKnowledgeDocuments,
   storagePathFor,
@@ -31,6 +32,9 @@ const authHeaderParam = {
 // memory before the (much smaller) quota check gets to reject it. 14MB base64 ≈ ~10.5MB decoded,
 // comfortably above the whole-tenant 10MB cap so a single valid upload is never blocked by this.
 const MAX_BASE64_LENGTH = 14 * 1024 * 1024;
+// Plain text extracted client-side from a PDF (see pdf-extract.ts) — far smaller than the source
+// file; 4MB of text is already generous for the largest document this cap system allows.
+const MAX_EXTRACTED_TEXT_LENGTH = 4 * 1024 * 1024;
 
 const ALLOWED_EXTENSIONS = /\.(pdf|xlsx|xls|txt|md|csv|jpg|jpeg|png|webp)$/i;
 
@@ -39,6 +43,9 @@ const uploadBody = z
     filename: z.string().min(1).max(200),
     mimeType: z.string().min(1).max(200),
     fileBase64: z.string().min(1).max(MAX_BASE64_LENGTH),
+    // When present (PDFs only), the browser already extracted this document's text — the ingest
+    // pipeline uses it directly instead of re-parsing the raw file on the server.
+    extractedText: z.string().max(MAX_EXTRACTED_TEXT_LENGTH).optional(),
   })
   .strict();
 
@@ -121,6 +128,13 @@ export const knowledgeUploadDocumentRoute = registerApiRoute(`${OPEN_API_PREFIX}
         storage_path: storagePath,
         source_type: 'document',
       });
+      if (body.extractedText) {
+        // Best-effort — if this write fails, the ingest pipeline just falls back to parsing the raw
+        // file on the server (the pre-existing, slower path), so it's never worth failing the upload.
+        await uploadKnowledgeFile(extractedTextPathFor(auth.tenantId, document.id), Buffer.from(body.extractedText, 'utf8'), 'text/plain').catch(
+          () => undefined,
+        );
+      }
       await recordUsageDelta(auth.tenantId, buffer.length);
       await inngest.send({ name: 'knowledge/document.uploaded', data: { tenantId: auth.tenantId, documentId: document.id } });
       return c.json({ document });
@@ -151,6 +165,7 @@ export const knowledgeDeleteDocumentRoute = registerApiRoute(`${OPEN_API_PREFIX}
 
     await deleteDocumentFromGraph(auth.tenantId, document.id).catch(() => undefined);
     await deleteKnowledgeFile(document.storage_path).catch(() => undefined);
+    await deleteKnowledgeFile(extractedTextPathFor(auth.tenantId, document.id)).catch(() => undefined);
     await deleteKnowledgeDocumentRow(auth.tenantId, document.id);
     await recordUsageDelta(auth.tenantId, -document.byte_size);
     return c.json({ ok: true });

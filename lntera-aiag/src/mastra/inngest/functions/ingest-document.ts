@@ -10,6 +10,7 @@ import {
   downloadKnowledgeFile,
   uploadKnowledgeFile,
   deleteKnowledgeFile,
+  extractedTextPathFor,
 } from '../../integrations/knowledge/documents-repo';
 import { extractDocumentText } from '../../integrations/knowledge/parsers';
 import { extractImageText } from '../../integrations/knowledge/image-ocr';
@@ -66,15 +67,25 @@ export const ingestDocumentFn = inngest.createFunction(
 
     try {
       const parsed = await step.run('parse', async () => {
-        const buffer = await downloadKnowledgeFile(doc.storage_path);
-        // Images have no text to parse — describe/OCR them via a vision-capable model instead, then
-        // feed the result into the same chunk/embed/extract pipeline as any other document. PDF
-        // extraction runs in an isolated child process (see pdf-isolated-parse.ts) — unlike every
-        // other format, it can blow past what the file's byte size suggests and previously crashed
-        // the whole container.
-        const text = doc.mime_type.startsWith('image/')
-          ? await extractImageText(tenantId, buffer, doc.mime_type)
-          : await extractDocumentText(buffer, doc.mime_type, doc.filename);
+        // A PDF's text may already have been extracted client-side, in the user's own browser, at
+        // upload time (see pdf-extract.ts / the upload route) — when that companion file exists, skip
+        // downloading + re-parsing the raw PDF on the server entirely. This is the primary path now;
+        // falling through to server-side parsing below is the fallback for older documents uploaded
+        // before this existed, non-PDF files, or if the client-side extraction failed for any reason.
+        let text: string;
+        try {
+          text = (await downloadKnowledgeFile(extractedTextPathFor(tenantId, documentId))).toString('utf8');
+        } catch {
+          const buffer = await downloadKnowledgeFile(doc.storage_path);
+          // Images have no text to parse — describe/OCR them via a vision-capable model instead, then
+          // feed the result into the same chunk/embed/extract pipeline as any other document. PDF
+          // extraction runs in an isolated child process (see pdf-isolated-parse.ts) — unlike every
+          // other format, it can blow past what the file's byte size suggests and previously crashed
+          // the whole container.
+          text = doc.mime_type.startsWith('image/')
+            ? await extractImageText(tenantId, buffer, doc.mime_type)
+            : await extractDocumentText(buffer, doc.mime_type, doc.filename);
+        }
 
         const chunks = chunkText(text);
         if (chunks.length === 0) return { chunkCount: 0 };

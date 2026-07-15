@@ -59,7 +59,8 @@
     "recharts": "^3.8.1",
     "remark-gfm": "^4.0.1",
     "sonner": "^2.0.7",
-    "tailwind-merge": "^2.6.1"
+    "tailwind-merge": "^2.6.1",
+    "unpdf": "^1.6.2"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.2.1",
