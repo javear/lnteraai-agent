@@ -24,6 +24,13 @@ export function storagePathFor(tenantId: string, documentId: string, filename: s
   return `${tenantId}/${documentId}/${filename}`;
 }
 
+/** Where a client-side-extracted PDF's plain text is stashed (see knowledge.ts's upload route and
+ *  pdf-extract.ts on the web side) — lets the ingest pipeline skip the server's own, resource-capped
+ *  PDF parser entirely when the browser already did the work. */
+export function extractedTextPathFor(tenantId: string, documentId: string): string {
+  return `${tenantId}/${documentId}/extracted.txt`;
+}
+
 export async function createKnowledgeDocument(input: {
   tenant_id: string;
   filename: string;

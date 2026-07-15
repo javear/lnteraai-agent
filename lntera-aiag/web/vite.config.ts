@@ -56,6 +56,10 @@ export default defineConfig(({ mode }) => {
     base,
     server: { headers: crossOriginIsolationHeaders },
     preview: { headers: crossOriginIsolationHeaders },
+    // The PDF-extraction worker (pdf-extract-worker.ts) dynamically imports its own PDF.js bundle
+    // (via unpdf) — Vite's default worker output ('iife') can't code-split, so a dynamic import
+    // inside a worker fails the build unless the worker itself is emitted as an ES module.
+    worker: { format: 'es' },
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -127,10 +131,12 @@ export default defineConfig(({ mode }) => {
         },
         workbox: {
           globPatterns: ['index.html', '**/*.{js,css,svg,woff,woff2}'],
-          // The Lottie WASM (~1.7MB) is cached on first use rather than precached, to keep the
-          // install lean. See the CacheFirst rule below; it stays available offline thereafter.
-          // The OneSignal worker is its own service worker (scope /app/onesignal/) — never precache it.
-          globIgnores: ['**/*.map', '**/*.wasm', '**/OneSignalSDKWorker.js'],
+          // The Lottie WASM (~1.7MB) and the PDF.js engine (~1.6MB, lazy-loaded only when a user
+          // actually attaches a PDF — see pdf-extract.ts) are cached on first use rather than
+          // precached, to keep the install lean. See the CacheFirst rules below; both stay available
+          // offline thereafter. The OneSignal worker is its own service worker (scope /app/onesignal/)
+          // — never precache it.
+          globIgnores: ['**/*.map', '**/*.wasm', '**/pdfjs-*.js', '**/OneSignalSDKWorker.js'],
           navigateFallback: `${base}index.html`,
           navigateFallbackDenylist: [
             /^\/svc\/v1\//,
@@ -189,6 +195,17 @@ export default defineConfig(({ mode }) => {
               options: {
                 cacheName: 'lntera-wasm',
                 expiration: { maxEntries: 4, maxAgeSeconds: 60 * 60 * 24 * 30 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+            {
+              // PDF.js engine (unpdf), lazy-loaded only when a user attaches a PDF — cache once on
+              // first use rather than precache, same reasoning as the Lottie WASM above.
+              urlPattern: ({ url }) => /\/pdfjs-[^/]*\.js$/.test(url.pathname),
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'lntera-pdfjs',
+                expiration: { maxEntries: 2, maxAgeSeconds: 60 * 60 * 24 * 30 },
                 cacheableResponse: { statuses: [0, 200] },
               },
             },
