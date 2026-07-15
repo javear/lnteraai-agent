@@ -8,6 +8,13 @@
 // Walks pages sequentially with page.cleanup() after each one (not unpdf's own extractText(), which
 // processes every page concurrently via Promise.all and never releases anything — see the matching
 // comment in pdf-isolated-parse.ts for why that matters for peak memory).
+//
+// maxImageSize: 0 tells PDF.js to skip decoding EVERY embedded image (it checks width*height against
+// this cap before touching any pixel data, and just omits the image with a warning if over) — for
+// text-heavy documents mixed with large scanned/photo images, decoding those images is what actually
+// drove memory into the hundreds of MB even after every other optimization (isolated process, tighter
+// ceilings, sequential per-page processing). getTextContent() never needs decoded image pixels: text
+// position/content comes entirely from its own operators, independent of any image draw calls.
 import { getDocumentProxy } from 'unpdf';
 
 export interface PdfExtractRequest {
@@ -19,7 +26,7 @@ export type PdfExtractResponse = { ok: true; text: string } | { ok: false; error
 
 self.onmessage = async (e: MessageEvent<PdfExtractRequest>) => {
   try {
-    const doc = await getDocumentProxy(new Uint8Array(e.data.buffer));
+    const doc = await getDocumentProxy(new Uint8Array(e.data.buffer), { maxImageSize: 0 });
     if (e.data.maxPages && doc.numPages > e.data.maxPages) {
       throw new Error(`This PDF has ${doc.numPages} pages, over the ${e.data.maxPages}-page limit — split it into smaller files.`);
     }
