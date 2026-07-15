@@ -10,6 +10,18 @@ import type { PdfExtractRequest, PdfExtractResponse } from './pdf-extract-worker
 const MAX_PDF_PAGES = 300;
 const EXTRACT_TIMEOUT_MS = 60_000;
 
+// A real production failure showed up as a completely blank reason ("...falling back to server
+// parsing: ") — traced to a caught value that WAS `instanceof Error` but had an empty `.message`
+// (e.g. some DOMExceptions, like a File read failing after its underlying handle became invalid).
+// Every rejection from this function must carry SOMETHING readable, or the diagnostics added
+// specifically to unblock this investigation are worthless the next time it happens.
+function nonEmptyMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message) return err.message;
+  const asString = String(err);
+  if (asString && asString !== '[object Object]') return asString;
+  return fallback;
+}
+
 /** Resolves with the extracted plain text, or rejects with a user-facing error message. Callers
  *  should treat a rejection as "couldn't extract client-side" and decide whether to fall back to
  *  letting the server attempt its own (slower, resource-limited) parse. */
@@ -25,7 +37,7 @@ export function extractPdfTextInBrowser(file: File): Promise<string> {
       clearTimeout(timer);
       worker.terminate();
       if (e.data.ok) resolve(e.data.text);
-      else reject(new Error(e.data.error));
+      else reject(new Error(e.data.error || 'Worker reported failure with no error detail.'));
     };
     worker.onerror = (e: ErrorEvent) => {
       clearTimeout(timer);
@@ -43,7 +55,7 @@ export function extractPdfTextInBrowser(file: File): Promise<string> {
       .catch((err) => {
         clearTimeout(timer);
         worker.terminate();
-        reject(err instanceof Error ? err : new Error(String(err)));
+        reject(new Error(nonEmptyMessage(err, 'Could not read this file from disk.')));
       });
   });
 }
