@@ -83,12 +83,23 @@ const requestContextSchema = z.object({
  * verbose `npm install`/build dump can otherwise burn a big chunk of the technical agent's turn
  * budget by itself, in the tool result of just ONE call. Keeps head + tail — installs are noisy up
  * front, but a build failure's actual error is almost always at the end.
+ *
+ * File reads and diffs get a MUCH more generous cap than exec output: a real production failure
+ * ("TokenLimiterProcessor: No messages fit within the remaining token budget") traced back to
+ * studio-read-file/studio-git-diff returning arbitrarily large content with NO cap at all — a single
+ * large file or diff could alone exceed the technical agent's entire ~32k-token turn budget, and
+ * TokenLimiterProcessor's `trimMode: 'contiguous'` throws outright when even the most recent message
+ * doesn't fit rather than silently dropping it. Exec output is capped tight because it's rarely worth
+ * reading in full; file/diff content is capped loose because the agent genuinely needs to see most of
+ * a normal-sized file to edit it correctly — the cap exists purely to bound the pathological case
+ * (a lockfile, a minified bundle, a huge generated diff), not to routinely truncate real source files.
  */
-const MAX_EXEC_OUTPUT_CHARS = 6000;
-function truncateForAgent(text: string): string {
-  if (text.length <= MAX_EXEC_OUTPUT_CHARS) return text;
-  const headLen = 1500;
-  const tailLen = MAX_EXEC_OUTPUT_CHARS - headLen;
+export const MAX_EXEC_OUTPUT_CHARS = 6000;
+export const MAX_FILE_CONTENT_CHARS = 20_000;
+export function truncateForAgent(text: string, maxChars: number = MAX_EXEC_OUTPUT_CHARS): string {
+  if (text.length <= maxChars) return text;
+  const headLen = Math.min(1500, Math.floor(maxChars / 4));
+  const tailLen = maxChars - headLen;
   const omitted = text.length - headLen - tailLen;
   return `${text.slice(0, headLen)}\n\n[... ${omitted} characters omitted ...]\n\n${text.slice(-tailLen)}`;
 }
@@ -119,14 +130,16 @@ export const studioWriteFileTool = createTool({
 export const studioReadFileTool = createTool({
   id: 'studio-read-file',
   strict: false,
-  description: 'Read a file\'s contents from the project workspace.',
+  description:
+    "Read a file's contents from the project workspace. Very large files (e.g. lockfiles, minified bundles) are truncated (head + tail) to stay within your turn budget.",
   requestContextSchema,
   inputSchema: z.object({ path: z.string().min(1) }),
   outputSchema: z.object({ content: z.string() }),
   execute: async (input, context) => {
     const tenantId = requireTenantContext(context);
     const sessionId = requireStudioSession(context);
-    return getStudioBridge().call(tenantId, sessionId, { op: 'readFile', path: input.path });
+    const result = await getStudioBridge().call(tenantId, sessionId, { op: 'readFile', path: input.path });
+    return { content: truncateForAgent(result.content, MAX_FILE_CONTENT_CHARS) };
   },
 });
 
@@ -256,14 +269,15 @@ export const studioGitDiffTool = createTool({
   id: 'studio-git-diff',
   strict: false,
   description:
-    'Get a unified diff of uncommitted changes, optionally scoped to one file. Local only — no network. Use it to verify your edits actually match what you intended before committing, or to answer "what did you change".',
+    'Get a unified diff of uncommitted changes, optionally scoped to one file. Local only — no network. Use it to verify your edits actually match what you intended before committing, or to answer "what did you change". A very large diff is truncated (head + tail) to stay within your turn budget.',
   requestContextSchema,
   inputSchema: z.object({ path: z.string().optional().describe('Limit the diff to one file.') }),
   outputSchema: z.object({ diff: z.string() }),
   execute: async (input, context) => {
     const tenantId = requireTenantContext(context);
     const sessionId = requireStudioSession(context);
-    return getStudioBridge().call(tenantId, sessionId, { op: 'gitDiff', path: input.path });
+    const result = await getStudioBridge().call(tenantId, sessionId, { op: 'gitDiff', path: input.path });
+    return { diff: truncateForAgent(result.diff, MAX_FILE_CONTENT_CHARS) };
   },
 });
 
