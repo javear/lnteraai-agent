@@ -4,6 +4,13 @@
 // function. Must live at edge-functions/index.ts (project root, not a subfolder) so it serves at "/",
 // matching the bare project URL this server is called at. Replace EXAMPLE_TOOL with a real one; add
 // more the same way.
+//
+// Env vars / secrets (e.g. a third-party API key requested via studio-request-secret): EdgeOne edge
+// functions are NOT Node.js — there is no `process` global at all (referencing `process.env` throws
+// "process is not defined" at runtime, confirmed live in production). Secrets are delivered as the
+// `env` property of the SAME single argument object onRequest receives alongside `request` — read them
+// as `env.NAME`, never `process.env.NAME` and never a `context`/`globalThis` lookup. Thread `env` down
+// into any tool handler that needs it (see ToolDefinition/TOOLS below).
 
 interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -12,11 +19,15 @@ interface JsonRpcRequest {
   params?: Record<string, unknown>;
 }
 
+/** What EdgeOne actually passes to onRequest — `env` holds every var set via `edgeone makers env set`
+ *  (or the Forge "request a secret" flow), keyed by name. Absent/undefined if none are set. */
+type EdgeOneEnv = Record<string, string | undefined>;
+
 interface ToolDefinition {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
-  handler: (args: Record<string, unknown>) => Promise<string> | string;
+  handler: (args: Record<string, unknown>, env: EdgeOneEnv) => Promise<string> | string;
 }
 
 const TOOLS: ToolDefinition[] = [
@@ -53,7 +64,7 @@ function jsonRpcError(id: JsonRpcRequest['id'], code: number, message: string): 
   });
 }
 
-export async function onRequest({ request }: { request: Request }): Promise<Response> {
+export async function onRequest({ request, env }: { request: Request; env?: EdgeOneEnv }): Promise<Response> {
   if (request.method !== 'POST') {
     return new Response('Method not allowed — POST JSON-RPC requests only.', { status: 405 });
   }
@@ -91,7 +102,7 @@ export async function onRequest({ request }: { request: Request }): Promise<Resp
       const tool = TOOLS.find((t) => t.name === toolName);
       if (!tool) return jsonRpcError(body.id, -32602, `Unknown tool: ${String(toolName)}`);
       try {
-        const text = await tool.handler(toolArgs);
+        const text = await tool.handler(toolArgs, env ?? {});
         return jsonRpcResult(body.id, { content: [{ type: 'text', text }] });
       } catch (err) {
         return jsonRpcResult(body.id, {

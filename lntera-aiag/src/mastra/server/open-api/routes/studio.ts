@@ -768,6 +768,13 @@ async function gitProxyHandler(c: GitProxyContext): Promise<Response> {
   }
 
   const upstream = await fetch(target, init);
+  if (upstream.status === 401 || upstream.status === 403) {
+    // Distinguishes "GitHub itself rejected the server's own PAT" from our own token check above
+    // (verifyGitProxyToken already logs its own rejections) — from the browser's side, both failure
+    // modes look identical (isomorphic-git's generic "HTTP Error: 401"), which cost real diagnostic
+    // time in production before this log line existed.
+    console.warn(`[studio] git-proxy upstream rejected repo=${claim.repo} method=${c.req.method} path=${rest} status=${upstream.status}`);
+  }
   const respHeaders = new Headers();
   for (const h of ['content-type', 'cache-control', 'expires', 'pragma']) {
     const v = upstream.headers.get(h);

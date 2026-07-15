@@ -452,6 +452,73 @@ export const studioDeployPreviewTool = createTool({
   },
 });
 
+/**
+ * Lets the agent verify an "mcp" project's deployed tool actually WORKS — not just that it builds and
+ * deploys. Confirmed live in production: an agent declared a Tavily-backed tool "should use Tavily
+ * successfully" purely from a clean build + deploy, without ever calling the tool itself — the tool
+ * was actually broken (an env-var access bug), and the user had to discover this themselves via the
+ * MCP Tester. `npm run build` only proves the code type-checks; `studio-deploy-preview` only proves it
+ * deploys. Neither exercises the tool's actual runtime logic (a secret being read correctly, a
+ * third-party API call succeeding, the JSON-RPC response shape). Reuses the same call path as the
+ * Studio UI's own "MCP Tester" panel.
+ */
+export const studioMcpCallTool = createTool({
+  id: 'studio-mcp-call',
+  strict: false,
+  description:
+    "Call one of THIS project's own deployed MCP tools directly (JSON-RPC tools/call against the preview deployment) — the only real way to verify a tool works end-to-end. ALWAYS use this to verify anything that reads a secret, calls a third-party API, or has non-trivial logic, before telling the user it works — a clean build + deploy only proves the code runs, not that it does the right thing.",
+  requestContextSchema,
+  inputSchema: z.object({
+    name: z.string().min(1).describe('The MCP tool name to call, exactly as it appears in your TOOLS array (or tools/list).'),
+    // Groq: prefer empty object + passthrough (see search-products.ts) over z.record — some stacks
+    // reject z.record's generated JSON schema.
+    arguments: z.object({}).passthrough().optional().describe("The tool's arguments, if it takes any."),
+  }),
+  outputSchema: z.object({
+    ok: z.boolean(),
+    response: z.unknown().optional(),
+    error: z.string().optional(),
+  }),
+  execute: async (input, context) => {
+    const tenantId = requireTenantContext(context);
+    const projectId = requireStudioProjectId(context);
+    const project = await getTenantProject(tenantId, projectId);
+    if (!project) throw new Error('Project not found.');
+    if (project.kind !== 'mcp') throw new Error('studio-mcp-call only applies to "mcp" projects.');
+    if (!project.preview_url) throw new Error("Nothing's deployed to preview yet — call studio-deploy-preview first.");
+
+    try {
+      const res = await fetch(project.preview_url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: { name: input.name, arguments: input.arguments ?? {} },
+        }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      const text = await res.text();
+      let response: unknown;
+      try {
+        response = JSON.parse(text);
+      } catch {
+        response = { raw: text.slice(0, 4000) };
+      }
+      // Guard against a tool response alone being big enough to exhaust the turn's token budget —
+      // the same class of bug fixed for studio-read-file/git-diff (see truncateForAgent above).
+      const serialized = JSON.stringify(response);
+      if (serialized.length > MAX_FILE_CONTENT_CHARS) {
+        response = { raw: truncateForAgent(serialized, MAX_FILE_CONTENT_CHARS) };
+      }
+      return { ok: res.ok, response };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+});
+
 export const studioRequestSecretTool = createTool({
   id: 'studio-request-secret',
   strict: false,
@@ -501,5 +568,6 @@ export const studioTools = {
   [studioGitCheckoutTool.id]: studioGitCheckoutTool,
   [studioCheckPreviewTool.id]: studioCheckPreviewTool,
   [studioDeployPreviewTool.id]: studioDeployPreviewTool,
+  [studioMcpCallTool.id]: studioMcpCallTool,
   [studioRequestSecretTool.id]: studioRequestSecretTool,
 };
