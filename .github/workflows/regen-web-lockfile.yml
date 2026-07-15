@@ -1,0 +1,25 @@
+name: Regenerate web lockfile (one-off)
+on:
+  push:
+    branches: [chore/regen-web-lockfile]
+
+jobs:
+  regen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chore/regen-web-lockfile
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: bun install (regenerate lockfile)
+        working-directory: lntera-aiag/web
+        run: bun install
+      - name: Commit updated lockfile
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add lntera-aiag/web/bun.lock
+          git diff --cached --quiet && echo "No lockfile changes" || git commit -m "chore: regenerate web/bun.lock"
+          git push origin HEAD:chore/regen-web-lockfile
