@@ -139,6 +139,11 @@ export const mastra = new Mastra({
     // Bridge the authenticated tenant into the existing tenant_master_id tool contract.
     middleware: [{ path: '/api/*', handler: tenantContextMiddleware }],
     cors: getCorsConfig(),
+    // Mastra's own default (4.5MB) is well below the knowledge-upload route's real limit — a
+    // base64-encoded 10MB file (the frontend's own cap, see MAX_KNOWLEDGE_UPLOAD_BYTES) is ~13.3MB,
+    // plus JSON envelope overhead. Without raising this, Hono's bodyLimit middleware rejects the
+    // request with a raw 413 before it ever reaches that route's own (more generous) validation.
+    bodySizeLimit: 16 * 1024 * 1024,
   },
   // Agent memory (threads + messages) and observability traces — Supabase Postgres via DATABASE_URL.
   // @mastra/pg auto-creates tables under the `mastra` schema. Use the session pooler (5432) or a
