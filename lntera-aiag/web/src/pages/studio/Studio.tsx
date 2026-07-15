@@ -741,6 +741,18 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
     }
   }
 
+  /** Called when a studio-request-secret card is submitted. The agent itself has NO way to know when
+   *  (or whether) the user actually filled in the card — saving one is purely a client-side UI action,
+   *  never a tool call or message the agent sees. Its own instructions tell it not to block waiting for
+   *  the value, so left alone it either never revisits the feature that needed the secret, or — worse,
+   *  confirmed in production — re-tests/re-deploys too early and reports the secret as "not set" as if
+   *  it were a persistent bug, when the user simply hadn't entered it yet. Sending a real follow-up
+   *  message gives the agent an explicit, real signal to act on at exactly the right time. */
+  async function handleSecretSaved(name: string) {
+    await refreshSecretEnv();
+    void send(`I've entered the ${name} secret. Please redeploy the preview and verify the feature that needed it now.`);
+  }
+
   async function publish() {
     const provider = providerRef.current;
     if (!provider || publishing) return;
@@ -876,7 +888,7 @@ function Workspace({ project, onBack }: { project: StudioProject; onBack: () => 
               </div>
             ) : (
               messages.map((m) => (
-                <StudioMessageBubble key={m.id} message={m} api={api} projectId={project.id} onSecretSaved={() => void refreshSecretEnv()} />
+                <StudioMessageBubble key={m.id} message={m} api={api} projectId={project.id} onSecretSaved={(name) => void handleSecretSaved(name)} />
               ))
             )}
           </div>
