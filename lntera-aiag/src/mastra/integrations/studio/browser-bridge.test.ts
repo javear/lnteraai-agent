@@ -90,7 +90,7 @@ describe('StudioBridge.call', () => {
 
   it('caps concurrent streams per tenant, and frees a slot once a stream unregisters', () => {
     const bridge = new StudioBridge(1000);
-    const sessions = Array.from({ length: 8 }, (_, i) => new FakeSession(bridge, 'tenant1', `s${i}`));
+    const sessions = Array.from({ length: 16 }, (_, i) => new FakeSession(bridge, 'tenant1', `s${i}`));
     assert.throws(() => bridge.registerStream('tenant1', 's-overflow', () => undefined), StudioBridgeError);
     // Freeing one slot (e.g. the stream's heartbeat write failed, or it cleanly closed — either way
     // the route calls unregister()) immediately allows a new registration again.
@@ -98,5 +98,20 @@ describe('StudioBridge.call', () => {
     const revived = new FakeSession(bridge, 'tenant1', 's-revived');
     revived.disconnect();
     for (const s of sessions.slice(1)) s.disconnect();
+  });
+
+  it('evicts a silently-dead connection (write throws) the moment a fresh stream needs its slot, instead of rejecting', () => {
+    const bridge = new StudioBridge(1000);
+    const sessions = Array.from({ length: 15 }, (_, i) => new FakeSession(bridge, 'tenant1', `s${i}`));
+    // A 16th connection whose write() throws on the very next call — simulating a client that vanished
+    // without ever tripping the earlier heartbeat or triggering unregister().
+    bridge.registerStream('tenant1', 's-dead', () => {
+      throw new Error('write failed: peer gone');
+    });
+    // Registering a 17th would normally overflow the 16-slot cap, but the dead one above should get
+    // probed and evicted first, freeing room without ever throwing.
+    const fresh = new FakeSession(bridge, 'tenant1', 's-fresh');
+    fresh.disconnect();
+    for (const s of sessions) s.disconnect();
   });
 });
