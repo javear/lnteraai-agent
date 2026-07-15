@@ -72,9 +72,13 @@ export class GitRepo {
     await git.clone({ fs: this.fs, http, dir: REPO_DIR, url, ref, singleBranch: true });
   }
 
-  /** Network op: push the current branch to `origin` (remote URL comes from the clone's git config). */
-  async push(): Promise<void> {
-    const result = await git.push({ fs: this.fs, http, dir: REPO_DIR, remote: 'origin' });
+  /** Network op: push the current branch to `origin`. Takes an explicit `url` override (the caller's
+   *  freshly-signed git-proxy URL) rather than relying on `origin`'s git-config URL, which is whatever
+   *  was current at this repo's ORIGINAL clone and never updated since — for a project reopened after
+   *  that signed token's TTL elapses, every push then 401s even though pull/fetch (which already takes
+   *  a fresh url each call, see pull() below) keeps working fine. Confirmed in production. */
+  async push(url: string): Promise<void> {
+    const result = await git.push({ fs: this.fs, http, dir: REPO_DIR, remote: 'origin', url });
     if (!result.ok || result.error) {
       throw new Error(`git push failed: ${result.error ?? 'unknown error'}`);
     }

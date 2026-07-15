@@ -125,6 +125,15 @@ export class BrowserPodProvider implements SandboxProvider {
   private readonly previewSubs = new Set<(url: string) => void>();
   // Git runs entirely outside the pod (plain page JS against IndexedDB) — see git.ts for why.
   private readonly git: GitRepo;
+  // The signed git-proxy URL is short-lived (see signGitProxyToken/GIT_PROXY_TTL_MS server-side) and
+  // gitClone() always receives a FRESH one on every boot — but push() has no url parameter of its own
+  // and, unless given one explicitly, isomorphic-git falls back to whatever remote URL is stored in
+  // this repo's git config from its ORIGINAL clone. For a project reopened well after that token
+  // expired, every push then fails with a 401 that looks identical to a real auth problem (confirmed
+  // in production: a 9-day-old project's push failed twice this way, while pull/fetch — which DOES
+  // take a fresh url each call — kept working fine the whole time). Track the latest clone/pull URL
+  // here so push() can reuse it instead of the stale stored one.
+  private lastGitUrl: string | null = null;
 
   // Tenant-supplied secrets (see setEnv), threaded into every exec()/startDevServer() call's `env`.
   private envVars: Record<string, string> = {};
@@ -438,6 +447,7 @@ export class BrowserPodProvider implements SandboxProvider {
   }
 
   async gitClone(url: string, ref?: string): Promise<'cloned' | GitSyncStatus> {
+    this.lastGitUrl = url;
     let result: 'cloned' | GitSyncStatus;
     if (!(await this.git.isCloned())) {
       await this.git.clone(url, ref);
@@ -457,7 +467,8 @@ export class BrowserPodProvider implements SandboxProvider {
   }
 
   async gitPush(): Promise<void> {
-    await this.git.push();
+    if (!this.lastGitUrl) throw new Error('No git remote yet — open/sync the project before pushing.');
+    await this.git.push(this.lastGitUrl);
   }
 
   async gitStatus(): Promise<GitStatusEntry[]> {
