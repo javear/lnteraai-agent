@@ -18,6 +18,8 @@
     "tunnel": "node scripts/tunnel.mjs",
     "mock:sync": "tsx scripts/mock/mock-product-sync.ts",
     "mock:clean": "tsx scripts/mock/mock-cleanup.ts",
+    "mock:finance-seed": "tsx scripts/mock/mock-finance-seed.ts",
+    "mock:finance-clean": "tsx scripts/mock/mock-finance-cleanup.ts",
     "studio:gen-templates": "node scripts/generate-studio-templates.mjs"
   },
   "keywords": [],
