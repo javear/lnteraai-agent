@@ -24,6 +24,23 @@ export interface PdfExtractRequest {
 
 export type PdfExtractResponse = { ok: true; text: string } | { ok: false; error: string };
 
+// PDF.js sometimes throws its own exception classes (InvalidPDFException, UnknownErrorException,
+// PasswordException, etc.) that don't always carry a useful `.message` — a bare `err.message` can
+// come back as an empty string, showing up in the console as just "Error" with zero diagnostic value
+// (exactly what happened on a real failed upload). Report name + message + constructor name so a
+// truly unlabeled exception still tells us SOMETHING.
+function describeError(err: unknown): string {
+  if (err instanceof Error) {
+    const name = err.name && err.name !== 'Error' ? err.name : (err.constructor?.name ?? 'Error');
+    return err.message ? `${name}: ${err.message}` : `${name} (no message)`;
+  }
+  try {
+    return `Non-Error thrown: ${JSON.stringify(err)}`;
+  } catch {
+    return `Non-Error thrown: ${String(err)}`;
+  }
+}
+
 self.onmessage = async (e: MessageEvent<PdfExtractRequest>) => {
   try {
     const doc = await getDocumentProxy(new Uint8Array(e.data.buffer), { maxImageSize: 0 });
@@ -44,7 +61,7 @@ self.onmessage = async (e: MessageEvent<PdfExtractRequest>) => {
     const response: PdfExtractResponse = { ok: true, text: parts.join('\n') };
     self.postMessage(response);
   } catch (err) {
-    const response: PdfExtractResponse = { ok: false, error: err instanceof Error ? err.message : String(err) };
+    const response: PdfExtractResponse = { ok: false, error: describeError(err) };
     self.postMessage(response);
   }
 };

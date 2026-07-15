@@ -30,7 +30,8 @@ export function extractPdfTextInBrowser(file: File): Promise<string> {
     worker.onerror = (e: ErrorEvent) => {
       clearTimeout(timer);
       worker.terminate();
-      reject(new Error(e.message || 'Could not read this PDF.'));
+      const detail = e.message ? `${e.message} (${e.filename}:${e.lineno})` : 'Could not read this PDF (worker crashed with no error detail).';
+      reject(new Error(detail));
     };
 
     file
