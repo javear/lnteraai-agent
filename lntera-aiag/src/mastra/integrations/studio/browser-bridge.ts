@@ -23,10 +23,15 @@ export class StudioBridgeTimeoutError extends StudioBridgeError {
 
 /** Max concurrent open Studio command streams per tenant — a cheap abuse/resource-exhaustion guard
  *  (this process holds one open HTTP response per stream; see RAILWAY.md — single instance). A dead
- *  stream now self-evicts within one heartbeat interval (see the /studio/commands/stream route), so
- *  this only needs to cover genuinely-concurrent legitimate tabs, not "however many reloads happened
- *  before cleanup caught up." */
-const MAX_STREAMS_PER_TENANT = 8;
+ *  stream is supposed to self-evict within one heartbeat interval (see the /studio/commands/stream
+ *  route), but that only works if a write to it actually throws — a client that vanished silently
+ *  (laptop sleep, a network path drop with no TCP RST reaching us) can sit "open" server-side
+ *  indefinitely with writes still succeeding into the OS socket buffer. Confirmed in production: a
+ *  brand-new Studio session got rejected outright. registerStream() below now actively probes and
+ *  evicts this tenant's connections the moment a fresh one needs a slot, instead of only relying on
+ *  the next scheduled heartbeat — this cap just needs enough headroom for genuinely-concurrent
+ *  legitimate tabs on top of that. */
+const MAX_STREAMS_PER_TENANT = 16;
 
 interface StudioConnection {
   tenantId: string;
@@ -68,9 +73,24 @@ export class StudioBridge {
     if (existing && existing.tenantId !== tenantId) {
       throw new StudioBridgeError('Session id already in use.');
     }
-    const count = this.tenantStreamCounts.get(tenantId) ?? 0;
+    let count = this.tenantStreamCounts.get(tenantId) ?? 0;
     if (count >= MAX_STREAMS_PER_TENANT) {
-      throw new StudioBridgeError('Too many open Studio sessions for this tenant.');
+      // Don't trust the count as-is — some of these slots may be connections whose client vanished
+      // without ever tripping a write failure (see MAX_STREAMS_PER_TENANT's comment). Probe every one
+      // of this tenant's registered streams right now and evict whichever fail, then recheck before
+      // giving up — this is strictly cheaper than making a fresh tab wait out the next heartbeat.
+      for (const [sid, conn] of this.connections) {
+        if (conn.tenantId !== tenantId) continue;
+        try {
+          conn.write(': ping\n\n');
+        } catch {
+          this.evict(sid);
+        }
+      }
+      count = this.tenantStreamCounts.get(tenantId) ?? 0;
+      if (count >= MAX_STREAMS_PER_TENANT) {
+        throw new StudioBridgeError('Too many open Studio sessions for this tenant.');
+      }
     }
     const connection: StudioConnection = { tenantId, write };
     this.connections.set(sessionId, connection);
@@ -82,19 +102,28 @@ export class StudioBridge {
       dropped = true;
       // Only clear the registry slot if this registration is still the live one — a fast reconnect
       // may have already replaced it before this (older) stream's own cleanup ran.
-      if (this.connections.get(sessionId) === connection) this.connections.delete(sessionId);
-      const remaining = this.tenantStreamCounts.get(tenantId) ?? 1;
-      if (remaining <= 1) this.tenantStreamCounts.delete(tenantId);
-      else this.tenantStreamCounts.set(tenantId, remaining - 1);
-      // The command payload for anything still in flight to this session was written into a stream
-      // that's now gone (no replay) — fail fast rather than waiting out the full timeout.
-      for (const [cmdId, p] of this.pending) {
-        if (p.sessionId !== sessionId) continue;
-        clearTimeout(p.timer);
-        p.reject(new StudioBridgeError('Studio session disconnected'));
-        this.pending.delete(cmdId);
-      }
+      this.evict(sessionId, connection);
     };
+  }
+
+  /** Drop a registered stream and fail any of its still-in-flight calls. If `expected` is given, only
+   *  evicts when it's still the live registration for `sessionId` (a fast reconnect may have already
+   *  replaced it before an older stream's own cleanup ran). */
+  private evict(sessionId: string, expected?: StudioConnection): void {
+    const current = this.connections.get(sessionId);
+    if (!current || (expected && current !== expected)) return;
+    this.connections.delete(sessionId);
+    const remaining = this.tenantStreamCounts.get(current.tenantId) ?? 1;
+    if (remaining <= 1) this.tenantStreamCounts.delete(current.tenantId);
+    else this.tenantStreamCounts.set(current.tenantId, remaining - 1);
+    // The command payload for anything still in flight to this session was written into a stream
+    // that's now gone (no replay) — fail fast rather than waiting out the full timeout.
+    for (const [cmdId, p] of this.pending) {
+      if (p.sessionId !== sessionId) continue;
+      clearTimeout(p.timer);
+      p.reject(new StudioBridgeError('Studio session disconnected'));
+      this.pending.delete(cmdId);
+    }
   }
 
   /**
