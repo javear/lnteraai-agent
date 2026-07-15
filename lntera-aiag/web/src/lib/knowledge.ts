@@ -94,7 +94,15 @@ export async function uploadKnowledgeDocument(api: Api, file: File): Promise<Kno
   // reason, fall through silently — the server still parses the raw file as a fallback either way.
   const [fileBase64, extractedText] = await Promise.all([
     fileToBase64(file),
-    isPdfFile(file) ? extractPdfTextInBrowser(file).catch(() => undefined) : Promise.resolve(undefined),
+    isPdfFile(file)
+      ? extractPdfTextInBrowser(file).catch((err) => {
+          // Visible in DevTools so a silent extraction failure (timeout, malformed PDF, worker crash)
+          // isn't indistinguishable from "nothing happened" — the upload still proceeds without
+          // extractedText either way, falling back to the server's own parser.
+          console.warn('[knowledge] client-side PDF extraction failed, falling back to server parsing:', err);
+          return undefined;
+        })
+      : Promise.resolve(undefined),
   ]);
   const res = await api('/svc/v1/knowledge/documents', {
     method: 'POST',
