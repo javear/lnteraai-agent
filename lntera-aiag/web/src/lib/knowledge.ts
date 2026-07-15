@@ -101,7 +101,7 @@ export async function uploadKnowledgeDocument(api: Api, file: File): Promise<Kno
           // user manually relaying it, and Chrome's console.warn(msg, err) form renders an Error object
           // as a collapsed badge that loses `.message` on copy/paste. Plain-string interpolation avoids
           // both problems, and sending it to the server makes failures queryable from Railway logs.
-          const detail = err instanceof Error ? err.message : String(err);
+          const detail = (err instanceof Error && err.message) || String(err) || 'unknown error';
           console.warn(`[knowledge] client-side PDF extraction failed, falling back to server parsing: ${detail}`);
           extractionFailureReason = detail.slice(0, 500);
           return undefined;
