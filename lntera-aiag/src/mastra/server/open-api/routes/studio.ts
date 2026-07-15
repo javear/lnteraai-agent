@@ -544,12 +544,31 @@ export const studioUpsertSecretRoute = registerApiRoute(`${OPEN_API_PREFIX}/stud
       return openApiJsonError(c, 400, 'invalid_body', msg);
     }
 
+    let saved;
     try {
-      const saved = await upsertTenantProjectSecret(project.id, body);
-      return c.json({ name: saved.name, description: saved.description });
+      saved = await upsertTenantProjectSecret(project.id, body);
     } catch (err) {
       return openApiJsonError(c, 400, 'save_failed', err instanceof Error ? err.message : 'Could not save the secret.');
     }
+
+    // Push it to the ALREADY-DEPLOYED EdgeOne function too, not just Vault + the browser's dev
+    // sandbox (the only other delivery path — see BrowserPodProvider.setEnv, wired from
+    // refreshSecretEnv() in Studio.tsx). Without this, submitting a secret after a project has already
+    // been deployed does nothing for it: an "mcp" project has no dev server at all (the deployed
+    // function IS the only real runtime, reached via the MCP Tester / studio-deploy-preview's own URL),
+    // so the secret silently never reaches the code that needs it until the agent happens to redeploy
+    // again — confirmed in production ("Tavily API key is not set" after the user had already set it).
+    // Best-effort: the secret is already saved in Vault either way; a push failure here just means this
+    // specific deployment doesn't see it yet, same as any other setEdgeOneEnvVars call in this codebase.
+    if (project.mcp_url || project.preview_url) {
+      const projectName = repoNameFor(project.id);
+      const secretValues = await resolveTenantProjectSecretValues(project.id).catch(() => ({}) as Record<string, string>);
+      await setEdgeOneEnvVars({ projectName, values: secretValues }).catch((err) =>
+        logErrorBrief(`[studio] failed to push secret to deployed EdgeOne project=${projectName}`, err),
+      );
+    }
+
+    return c.json({ name: saved.name, description: saved.description });
   },
 });
 
