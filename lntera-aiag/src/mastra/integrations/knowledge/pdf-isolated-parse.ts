@@ -144,17 +144,30 @@ export async function extractPdfTextIsolated(buffer: Buffer): Promise<string> {
     await writeFile(inPath, buffer);
     await writeFile(scriptPath, buildWorkerSource(unpdfEntryUrl), 'utf8');
 
+    // Bun ships --smol specifically for memory-constrained containers (smaller default heap growth,
+    // more frequent GC) — Node has no equivalent flag and errors out on an unrecognized one, so only
+    // pass it when the runtime actually spawning the child is Bun (true in production; Node locally).
+    const execArgs = process.versions.bun
+      ? ['--smol', scriptPath, inPath, outPath, String(MAX_PDF_PAGES)]
+      : [scriptPath, inPath, outPath, String(MAX_PDF_PAGES)];
+
     await new Promise<void>((resolve, reject) => {
-      let killedForMemory = false;
+      let killedAtRssKb: number | null = null;
 
       const child = execFile(
         process.execPath,
-        [scriptPath, inPath, outPath, String(MAX_PDF_PAGES)],
+        execArgs,
         { timeout: PARSE_TIMEOUT_MS, maxBuffer: 1024 * 1024 },
         (err, _stdout, stderr) => {
           clearInterval(rssWatch);
           if (!err) return resolve();
-          if (killedForMemory) return reject(new Error(`PDF parsing exceeded ${Math.round(maxRssKb / 1000)}MB resident memory and was stopped.`));
+          if (killedAtRssKb !== null) {
+            return reject(
+              new Error(
+                `PDF parsing used ${Math.round(killedAtRssKb / 1000)}MB resident memory (over the ${Math.round(maxRssKb / 1000)}MB allowance for this request) and was stopped.`,
+              ),
+            );
+          }
           if (err.killed || err.signal === 'SIGTERM') return reject(new Error(`PDF parsing timed out after ${PARSE_TIMEOUT_MS}ms.`));
           const tooManyPages = /PDF_TOO_MANY_PAGES:(\d+)/.exec(stderr ?? '');
           if (tooManyPages) return reject(new Error(`This PDF has ${tooManyPages[1]} pages, over the ${MAX_PDF_PAGES}-page limit — split it into smaller files.`));
@@ -174,7 +187,7 @@ export async function extractPdfTextIsolated(buffer: Buffer): Promise<string> {
         if (!child.pid) return;
         const rssKb = readRssKb(child.pid);
         if (rssKb !== null && rssKb > maxRssKb) {
-          killedForMemory = true;
+          killedAtRssKb = rssKb;
           child.kill('SIGKILL');
         }
       }, RSS_POLL_INTERVAL_MS);
