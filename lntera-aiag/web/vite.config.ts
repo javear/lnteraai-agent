@@ -56,10 +56,6 @@ export default defineConfig(({ mode }) => {
     base,
     server: { headers: crossOriginIsolationHeaders },
     preview: { headers: crossOriginIsolationHeaders },
-    // The PDF-extraction worker (pdf-extract-worker.ts) dynamically imports its own PDF.js bundle
-    // (via unpdf) — Vite's default worker output ('iife') can't code-split, so a dynamic import
-    // inside a worker fails the build unless the worker itself is emitted as an ES module.
-    worker: { format: 'es' },
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
