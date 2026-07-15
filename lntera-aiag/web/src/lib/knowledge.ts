@@ -98,8 +98,12 @@ export async function uploadKnowledgeDocument(api: Api, file: File): Promise<Kno
       ? extractPdfTextInBrowser(file).catch((err) => {
           // Visible in DevTools so a silent extraction failure (timeout, malformed PDF, worker crash)
           // isn't indistinguishable from "nothing happened" — the upload still proceeds without
-          // extractedText either way, falling back to the server's own parser.
-          console.warn('[knowledge] client-side PDF extraction failed, falling back to server parsing:', err);
+          // extractedText either way, falling back to the server's own parser. Logged as a plain
+          // string, NOT the Error object itself — passing an Error as a separate console.warn
+          // argument renders as a collapsed inline badge in Chrome DevTools that shows only the
+          // word "Error" in a plain-text copy/paste unless manually expanded first.
+          const detail = err instanceof Error ? err.message : String(err);
+          console.warn(`[knowledge] client-side PDF extraction failed, falling back to server parsing: ${detail}`);
           return undefined;
         })
       : Promise.resolve(undefined),
