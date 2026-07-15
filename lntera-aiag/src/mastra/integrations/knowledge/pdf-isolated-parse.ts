@@ -91,13 +91,20 @@ function buildWorkerSource(unpdfEntryUrl: string): string {
   // ONE AT A TIME, call page.cleanup() to release that page's resources before moving to the next (so
   // peak memory stays roughly constant regardless of total page count), and append straight to the
   // output file per page instead of building one giant in-memory string.
+  //
+  // maxImageSize: 0 tells PDF.js to skip decoding EVERY embedded image (checked against width*height
+  // before any pixel data is touched — over the cap, it's just omitted with a warning). Confirmed via
+  // a real production failure: a text+image PDF kept exceeding several hundred MB across every other
+  // optimization here, because decoding large scanned/photo images is what actually drove memory up,
+  // not page count. getTextContent() never needs decoded image pixels — text position/content comes
+  // entirely from its own operators, independent of any image draw calls on the same page.
   return `import { readFileSync, writeFileSync, appendFileSync } from 'node:fs';
 import { getDocumentProxy } from ${JSON.stringify(unpdfEntryUrl)};
 
 const [, , inPath, outPath, maxPagesRaw] = process.argv;
 const maxPages = Number(maxPagesRaw) || 0;
 const buf = readFileSync(inPath);
-const doc = await getDocumentProxy(new Uint8Array(buf));
+const doc = await getDocumentProxy(new Uint8Array(buf), { maxImageSize: 0 });
 if (maxPages && doc.numPages > maxPages) {
   process.stderr.write('PDF_TOO_MANY_PAGES:' + doc.numPages);
   process.exit(2);
