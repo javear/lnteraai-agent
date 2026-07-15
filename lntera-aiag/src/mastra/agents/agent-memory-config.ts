@@ -3,7 +3,7 @@
 /**
  * Working-memory template: a small, BOUNDED markdown doc the agent maintains per tenant (resource
  * scope) across all their chats. Kept short on purpose — it folds into the system prompt and stays
- * prompt-cacheable, so it persists useful business facts WITHOUT bloating the ~7k input budget. The
+ * prompt-cacheable, so it persists useful business facts WITHOUT bloating the agent's input budget. The
  * agent fills/updates it via the working-memory tool as it learns durable facts (never guesses).
  */
 export const WORKING_MEMORY_TEMPLATE = `# Seller Profile
@@ -47,11 +47,25 @@ export function getAgentLastMessages(): number {
   return Number.isFinite(n) && n > 0 ? n : 8;
 }
 
+/**
+ * Raised from 7000 → 16000 after a real production crash: "TokenLimiterProcessor: No messages fit
+ * within the remaining token budget." TokenLimiterProcessor's `trimMode: 'contiguous'` throws outright
+ * the instant even the SINGLE most recent message can't fit in what's left after subtracting system
+ * tokens (own instructions + knowledge-pre-retrieval injection, up to ~2500 tokens worst case) — a
+ * capped-but-still-substantial tool result (a scrape-url call, already truncated to 8000 chars/~2000
+ * tokens) was enough to exceed what little budget remained at 7000. This limit is unrelated to any
+ * model's REAL context window — every model general-agent can route to (Groq's free-tier llama models,
+ * Gemini free tier, any BYOK/paid provider) supports well over 100k tokens of real context, so this was
+ * purely an artificial ceiling, not a capability constraint. 16000 gives comfortable headroom for
+ * system content + a knowledge injection + a web-search + a scrape-url result all landing in the same
+ * turn, while staying well below technical-agent's 32k (general-agent doesn't carry full file contents
+ * or build logs the way Forge does).
+ */
 export function getAgentInputTokenLimit(): number {
   const raw = process.env.AGENT_INPUT_TOKEN_LIMIT?.trim();
-  if (!raw) return 7000;
+  if (!raw) return 16_000;
   const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) && n > 0 ? n : 7000;
+  return Number.isFinite(n) && n > 0 ? n : 16_000;
 }
 
 /**
