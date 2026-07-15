@@ -1,61 +1,73 @@
-// Extracts a PDF's text in a Web Worker on the user's own device, BEFORE upload — so the server never
-// has to run the memory-hungry part of PDF parsing at all. Every attempt to contain that cost purely
-// on the server side (isolated child process, cgroup-aware memory ceiling, sequential page
-// processing — see pdf-isolated-parse.ts) still shares the same constrained container budget as the
-// rest of the app; the user's own device has far more headroom and is exactly where a browser's own
-// PDF.js is designed to run in the first place.
-import type { PdfExtractRequest, PdfExtractResponse } from './pdf-extract-worker';
+// Extracts a PDF's text on the user's own device, BEFORE upload — so the server never has to run the
+// memory-hungry part of PDF parsing at all. Runs directly on the main thread, NOT in a Web Worker.
+//
+// A dedicated-Worker wrapper was the original design (isolate the parse, keep the main thread free),
+// but unpdf's browser bundle is PDF.js's "serverless" build, meant to run inline in whatever context
+// calls it. PDF.js's OWN internal worker-detection logic (see node_modules/unpdf/dist/pdfjs.mjs) checks
+// `typeof window === 'undefined'` to decide whether it's already inside a worker-like context; when
+// true, it tries to spin up ANOTHER real nested worker (expecting its own pdf.worker.js entry point,
+// which this bundle doesn't ship) instead of using its same-thread "fake worker" fallback. Wrapping
+// extraction in our own Worker made that condition true. Confirmed by direct reproduction in a real
+// headless Chrome: the exact same file + options that parse in under 20ms on the main thread hang
+// indefinitely inside a dedicated Worker — for every PDF tested, not just image-heavy ones. That's the
+// real reason client-side extraction has been unreliable throughout this feature's life, regardless of
+// a given document's content. Measured extraction time is well under 200ms locally for realistic
+// documents (bounded further by the caps below), so running it on the main thread is an acceptable
+// brief task, not a real UI-blocking concern.
+import { getDocumentProxy } from 'unpdf';
 
 // Mirrors the server's own MAX_PDF_PAGES (pdf-isolated-parse.ts) — same friendly cap either way.
 const MAX_PDF_PAGES = 300;
 const EXTRACT_TIMEOUT_MS = 60_000;
 
-// A real production failure showed up as a completely blank reason ("...falling back to server
-// parsing: ") — traced to a caught value that WAS `instanceof Error` but had an empty `.message`
-// (e.g. some DOMExceptions, like a File read failing after its underlying handle became invalid).
-// Every rejection from this function must carry SOMETHING readable, or the diagnostics added
-// specifically to unblock this investigation are worthless the next time it happens.
-function nonEmptyMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error && err.message) return err.message;
-  const asString = String(err);
-  if (asString && asString !== '[object Object]') return asString;
-  return fallback;
+// PDF.js sometimes throws its own exception classes (InvalidPDFException, UnknownErrorException,
+// PasswordException, etc.) that don't always carry a useful `.message` — a bare `err.message` can come
+// back as an empty string, showing up in the console/server log as unhelpfully blank. Report name +
+// message + constructor name so a truly unlabeled exception still tells us SOMETHING; also guarantees
+// every rejection from this module carries non-empty text (a real past failure showed up completely
+// blank because a caught DOMException was `instanceof Error` with an empty `.message`).
+function describeError(err: unknown): string {
+  if (err instanceof Error) {
+    const name = err.name && err.name !== 'Error' ? err.name : (err.constructor?.name ?? 'Error');
+    return err.message ? `${name}: ${err.message}` : `${name} (no message)`;
+  }
+  try {
+    return `Non-Error thrown: ${JSON.stringify(err)}`;
+  } catch {
+    return `Non-Error thrown: ${String(err)}`;
+  }
+}
+
+async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
+  const doc = await getDocumentProxy(new Uint8Array(buffer), { maxImageSize: 0 });
+  if (doc.numPages > MAX_PDF_PAGES) {
+    throw new Error(`This PDF has ${doc.numPages} pages, over the ${MAX_PDF_PAGES}-page limit — split it into smaller files.`);
+  }
+  const parts: string[] = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const content = await page.getTextContent();
+    const pageText = content.items
+      .filter((item): item is typeof item & { str: string } => 'str' in item && item.str != null)
+      .map((item) => item.str + ('hasEOL' in item && item.hasEOL ? '\n' : ''))
+      .join('');
+    parts.push(pageText.replace(/\s+/g, ' '));
+    page.cleanup();
+  }
+  return parts.join('\n');
 }
 
 /** Resolves with the extracted plain text, or rejects with a user-facing error message. Callers
  *  should treat a rejection as "couldn't extract client-side" and decide whether to fall back to
  *  letting the server attempt its own (slower, resource-limited) parse. */
-export function extractPdfTextInBrowser(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('./pdf-extract-worker.ts', import.meta.url), { type: 'module' });
-    const timer = setTimeout(() => {
-      worker.terminate();
-      reject(new Error('Reading this PDF took too long.'));
-    }, EXTRACT_TIMEOUT_MS);
-
-    worker.onmessage = (e: MessageEvent<PdfExtractResponse>) => {
-      clearTimeout(timer);
-      worker.terminate();
-      if (e.data.ok) resolve(e.data.text);
-      else reject(new Error(e.data.error || 'Worker reported failure with no error detail.'));
-    };
-    worker.onerror = (e: ErrorEvent) => {
-      clearTimeout(timer);
-      worker.terminate();
-      const detail = e.message ? `${e.message} (${e.filename}:${e.lineno})` : 'Could not read this PDF (worker crashed with no error detail).';
-      reject(new Error(detail));
-    };
-
-    file
-      .arrayBuffer()
-      .then((buffer) => {
-        const request: PdfExtractRequest = { buffer, maxPages: MAX_PDF_PAGES };
-        worker.postMessage(request, [buffer]);
-      })
-      .catch((err) => {
-        clearTimeout(timer);
-        worker.terminate();
-        reject(new Error(nonEmptyMessage(err, 'Could not read this file from disk.')));
-      });
+export async function extractPdfTextInBrowser(file: File): Promise<string> {
+  const timeout = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error('Reading this PDF took too long.')), EXTRACT_TIMEOUT_MS);
   });
+  try {
+    const buffer = await file.arrayBuffer();
+    return await Promise.race([extractPdfText(buffer), timeout]);
+  } catch (err) {
+    throw new Error(describeError(err));
+  }
 }
