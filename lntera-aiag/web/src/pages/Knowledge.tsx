@@ -23,6 +23,25 @@ import {
 // toolbar/sheet UI stays fast even before the graph engine loads.
 const ForceGraph2D = lazy(() => import('react-force-graph-2d'));
 
+// react-force-graph mutates x/y/vx/vy onto node objects for its physics simulation and restarts that
+// simulation (full "collapse and expand" jitter) whenever it receives a new `graphData` object — even
+// if the underlying entities/relationships are identical. The ingestion poll (below) refetches every
+// 4s and the API always returns fresh object literals, so without this check the graph visibly
+// reset itself every few seconds while a document was processing, regardless of whether anything
+// actually changed. Comparing a cheap structural signature lets us skip the state update (and thus
+// the graphData prop change) when nothing meaningfully changed.
+function graphSignature(g: KnowledgeGraphSnapshot): string {
+  const nodePart = g.nodes
+    .map((n) => `${n.id}:${n.caption}:${n.type ?? ''}`)
+    .sort()
+    .join('|');
+  const edgePart = g.edges
+    .map((e) => `${e.source}>${e.target}:${e.label}`)
+    .sort()
+    .join('|');
+  return `${g.rebuilding ? 'R' : ''}${nodePart}##${edgePart}`;
+}
+
 function statusTone(status: KnowledgeDocument['status']): 'success' | 'danger' | 'neutral' {
   if (status === 'ready') return 'success';
   if (status === 'failed') return 'danger';
@@ -228,9 +247,16 @@ export default function Knowledge() {
     setUsage(data.usage);
   }, [api]);
 
+  const graphSigRef = useRef<string>('');
   const loadGraph = useCallback(async () => {
     try {
-      setGraph(await fetchKnowledgeGraph(api));
+      const next = await fetchKnowledgeGraph(api);
+      const sig = graphSignature(next);
+      // Skip the update (and thus the graphData reference change) when nothing actually changed —
+      // see the comment on graphSignature for why this matters during ingestion polling.
+      if (sig === graphSigRef.current) return;
+      graphSigRef.current = sig;
+      setGraph(next);
     } catch {
       // keep the previously rendered graph on a transient error rather than blanking the canvas
     }
@@ -312,6 +338,50 @@ export default function Knowledge() {
     };
   }, [graph, search]);
 
+  // Degree (connection count) drives both node size and how "important" a node reads visually —
+  // computed from the FULL graph (not the search-filtered view) so a node's weight stays stable
+  // regardless of what's currently searched for.
+  const degreeMap = useMemo(() => {
+    const m = new Map<string, number>();
+    if (graph) {
+      for (const e of graph.edges) {
+        m.set(e.source, (m.get(e.source) ?? 0) + 1);
+        m.set(e.target, (m.get(e.target) ?? 0) + 1);
+      }
+    }
+    return m;
+  }, [graph]);
+  const maxDegree = useMemo(() => Math.max(1, ...Array.from(degreeMap.values())), [degreeMap]);
+
+  // One hue per entity `type`, spread via the golden angle so adjacent types stay visually distinct
+  // regardless of how many distinct types exist. Sorted alphabetically so the same type always gets
+  // the same hue across reloads instead of shuffling with insertion order.
+  const typeHues = useMemo(() => {
+    const types = Array.from(new Set((graph?.nodes ?? []).map((n) => n.type).filter((t): t is string => Boolean(t)))).sort();
+    const map = new Map<string, number>();
+    types.forEach((t, i) => map.set(t, (i * 137.508) % 360));
+    return map;
+  }, [graph]);
+
+  // Hue = entity type (categorical, "what kind of thing"). Lightness/saturation = degree (how
+  // connected, i.e. "how important") — darker and more saturated for hub nodes, lighter and more
+  // washed out for peripheral ones, so the graph visually foregrounds what actually matters.
+  const nodeColor = useCallback(
+    (node: KnowledgeGraphNode) => {
+      const hue = typeHues.get(node.type ?? '') ?? 212;
+      const degree = degreeMap.get(node.id) ?? 0;
+      const t = Math.log2(degree + 1) / Math.log2(maxDegree + 1);
+      const lightness = 74 - t * 40;
+      const saturation = 50 + t * 20;
+      return `hsl(${hue.toFixed(0)}, ${saturation.toFixed(0)}%, ${lightness.toFixed(0)}%)`;
+    },
+    [typeHues, degreeMap, maxDegree],
+  );
+  // react-force-graph derives node radius from sqrt(val) — passing the raw (1 + degree) count gives
+  // perceptually-correct, area-proportional sizing (a node with 4x the connections gets ~2x the radius,
+  // not 4x), so hub nodes read as bigger without swallowing the rest of the graph.
+  const nodeVal = useCallback((node: KnowledgeGraphNode) => 1 + (degreeMap.get(node.id) ?? 0), [degreeMap]);
+
   const hasNodes = (graph?.nodes.length ?? 0) > 0;
   const rebuilding = Boolean(graph?.rebuilding);
 
@@ -351,10 +421,14 @@ export default function Knowledge() {
               graphData={visibleGraphData}
               backgroundColor="rgba(0,0,0,0)"
               nodeLabel="caption"
-              nodeAutoColorBy="type"
-              linkColor={() => 'rgba(148,163,184,0.4)'}
+              nodeColor={nodeColor as (node: object) => string}
+              nodeVal={nodeVal as (node: object) => number}
+              nodeRelSize={4}
+              linkColor={() => 'rgba(148,163,184,0.35)'}
               linkWidth={1}
-              nodeRelSize={5}
+              linkDirectionalParticles={1}
+              linkDirectionalParticleWidth={1.5}
+              linkDirectionalParticleSpeed={0.004}
               onNodeClick={(node) => setSelectedNode(node as unknown as KnowledgeGraphNode)}
               onBackgroundClick={() => setSelectedNode(null)}
               cooldownTicks={100}
