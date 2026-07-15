@@ -47,20 +47,42 @@ export function signGitProxyToken(claim: GitProxyClaim): string {
   return `${payload}.${sig}`;
 }
 
-/** Verify + decode a git-proxy token; returns null if malformed, tampered, or expired. */
+/** Verify + decode a git-proxy token; returns null if malformed, tampered, or expired.
+ *
+ * Logs WHY on every rejection — a real production report ("git push fails with a bare 401") had no
+ * way to tell whether this check rejected the token or GitHub itself did (the proxy forwards GitHub's
+ * status verbatim, and isomorphic-git's own generic "HTTP Error: 401" client-side message looks
+ * identical either way). Without this, distinguishing "our token is stale/invalid" from "GitHub
+ * rejected the server's own PAT" requires reproducing the exact failure, which isn't reliably
+ * possible from outside the live session that hit it. */
 export function verifyGitProxyToken(token: string): GitProxyClaim | null {
   const [payload, sig] = token.split('.');
-  if (!payload || !sig) return null;
+  if (!payload || !sig) {
+    console.warn('[studio] git-proxy token rejected: malformed (missing payload or signature segment)');
+    return null;
+  }
   const expected = b64url(createHmac('sha256', proxySecret()).update(payload).digest());
   const a = Buffer.from(sig);
   const b = Buffer.from(expected);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    console.warn('[studio] git-proxy token rejected: signature mismatch (tampered, or signed with a different secret)');
+    return null;
+  }
   try {
     const claim = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as GitProxyClaim;
-    if (!claim.repo || !claim.projectId || typeof claim.exp !== 'number') return null;
-    if (claim.exp < Date.now()) return null;
+    if (!claim.repo || !claim.projectId || typeof claim.exp !== 'number') {
+      console.warn('[studio] git-proxy token rejected: decoded payload missing repo/projectId/exp');
+      return null;
+    }
+    if (claim.exp < Date.now()) {
+      console.warn(
+        `[studio] git-proxy token rejected: expired ${Math.round((Date.now() - claim.exp) / 1000)}s ago (project=${claim.projectId} repo=${claim.repo})`,
+      );
+      return null;
+    }
     return claim;
-  } catch {
+  } catch (err) {
+    console.warn('[studio] git-proxy token rejected: payload failed to parse as JSON', err);
     return null;
   }
 }
