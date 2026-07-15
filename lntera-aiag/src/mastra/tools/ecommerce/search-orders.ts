@@ -239,7 +239,7 @@ export const searchOrdersTool = createTool({
   /** Groq: strict tool input forces all schema properties to be sent; disable for optional filters. */
   strict: false,
   description:
-    'Search orders for the tenant. Rows are LEAN by default: orderId, shopId, platform, status, statusMeaning, buyerName, totalAmount, currency, dates — enough to list/summarize orders. For items / recipient / address, set enrichWithDetails: true (default false — heavier, fires a detail call per row) or call get-order-details for the one order the user asked about. Optional: platform, status, orderId, dates, pageSize, cursor, includeRaw, enrichWithDetails. Pass shopId from rows into detail/fulfillment/label tools when multiple shops exist.',
+    'Search orders for the tenant. Rows are LEAN by default: orderId, shopId, platform, status, statusMeaning, buyerName, totalAmount, currency, dates — enough to list/summarize orders. For items / recipient / address, set enrichWithDetails: true (default false — heavier, fires a detail call per row) or call get-order-details for the one order the user asked about. Optional: platform, status, orderId, dates, pageSize, cursor, includeRaw, enrichWithDetails. Pass shopId from rows into detail/fulfillment/label tools when multiple shops exist. includeRaw:true caps pageSize at 10 (full marketplace payloads are for spot-checking a few orders, not bulk export).',
   requestContextSchema: z.object({
     [TENANT_MASTER_ID_KEY]: z.string().uuid(),
   }),
@@ -271,7 +271,11 @@ export const searchOrdersTool = createTool({
     const targets: Array<'shopee' | 'tiktok'> =
       platform === 'both' ? ['shopee', 'tiktok'] : [platform];
 
-    const totalPageSize = clampPageSize(args.pageSize, 20, 100);
+    // includeRaw carries each order's full marketplace API JSON payload — at the normal 100-row cap
+    // that's easily enough to alone exceed general-agent's entire per-turn token budget in one tool
+    // result (same class of bug fixed for Forge's studio-read-file/git-diff). Raw payloads are for
+    // occasional deep inspection, not bulk listing, so cap the page size much tighter when requested.
+    const totalPageSize = clampPageSize(args.pageSize, 20, args.includeRaw ? 10 : 100);
     const sliceSizes = splitPageSize(totalPageSize, targets.length);
     const cursor: OrderCursorState = decodeOrderCursor(args.cursor);
 

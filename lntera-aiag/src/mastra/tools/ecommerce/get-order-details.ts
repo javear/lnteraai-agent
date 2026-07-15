@@ -34,7 +34,12 @@ const getOrderDetailsInputSchema = z
   .passthrough()
   .describe('Object with orders (array) and optional includeRaw (default false — set true for marketplace raw payloads). Other keys ignored until widened.');
 
-const getOrderDetailsArgsSchema = z.object({
+export const getOrderDetailsArgsSchema = z.object({
+  // Capped at 20 — with includeRaw:true, each order can carry a full marketplace API JSON payload;
+  // an uncapped batch here was found able to alone exceed general-agent's entire ~7k-token turn
+  // budget in one tool result (the same class of bug fixed for Forge's studio-read-file/git-diff:
+  // see truncateForAgent in src/mastra/integrations/studio/tools.ts). 20 specific orders by id is
+  // already generous for what's normally a "look up this one order" or small-batch use case.
   orders: z
     .array(
       z.discriminatedUnion('platform', [
@@ -52,7 +57,8 @@ const getOrderDetailsArgsSchema = z.object({
         }),
       ]),
     )
-    .min(1),
+    .min(1)
+    .max(20),
   includeRaw: z.boolean().nullable().optional(),
 });
 

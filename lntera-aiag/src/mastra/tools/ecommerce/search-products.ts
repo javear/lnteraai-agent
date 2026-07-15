@@ -177,7 +177,7 @@ export const searchProductsTool = createTool({
   /** Groq: strict tool input forces all schema properties to be sent; disable for optional filters. */
   strict: false,
   description:
-    'Search products. All params optional ({} ok). Each row has shopId for other product tools. Filters: platform, keyword, status, price, sort, pageSize, cursor, includeRaw.',
+    'Search products. All params optional ({} ok). Each row has shopId for other product tools. Filters: platform, keyword, status, price, sort, pageSize, cursor, includeRaw. includeRaw:true caps pageSize at 10 (full marketplace payloads are for spot-checking a few products, not bulk export).',
   requestContextSchema: z.object({
     [TENANT_MASTER_ID_KEY]: z
       .string()
@@ -205,7 +205,9 @@ export const searchProductsTool = createTool({
     const targets: Array<'shopee' | 'tiktok'> =
       platform === 'both' ? ['shopee', 'tiktok'] : [platform];
 
-    const totalPageSize = clampPageSize(args.pageSize, 10, 100);
+    // includeRaw carries each product's full marketplace API JSON payload — same token-budget risk
+    // fixed for search-orders (see the comment there): cap the page size much tighter when requested.
+    const totalPageSize = clampPageSize(args.pageSize, 10, args.includeRaw ? 10 : 100);
     const sliceSizes = splitPageSize(totalPageSize, targets.length);
 
     const cursor: CursorState = decodeCursor(args.cursor);
