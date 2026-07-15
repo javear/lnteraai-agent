@@ -92,18 +92,18 @@ export async function uploadKnowledgeDocument(api: Api, file: File): Promise<Kno
   // shares the same constrained container as the rest of the app; the user's device doesn't have that
   // problem, and this is exactly what a browser's PDF.js is designed for. If extraction fails for any
   // reason, fall through silently — the server still parses the raw file as a fallback either way.
+  let extractionFailureReason: string | undefined;
   const [fileBase64, extractedText] = await Promise.all([
     fileToBase64(file),
     isPdfFile(file)
       ? extractPdfTextInBrowser(file).catch((err) => {
-          // Visible in DevTools so a silent extraction failure (timeout, malformed PDF, worker crash)
-          // isn't indistinguishable from "nothing happened" — the upload still proceeds without
-          // extractedText either way, falling back to the server's own parser. Logged as a plain
-          // string, NOT the Error object itself — passing an Error as a separate console.warn
-          // argument renders as a collapsed inline badge in Chrome DevTools that shows only the
-          // word "Error" in a plain-text copy/paste unless manually expanded first.
+          // Logged locally AND sent to the server (below) — a browser-console-only log depends on the
+          // user manually relaying it, and Chrome's console.warn(msg, err) form renders an Error object
+          // as a collapsed badge that loses `.message` on copy/paste. Plain-string interpolation avoids
+          // both problems, and sending it to the server makes failures queryable from Railway logs.
           const detail = err instanceof Error ? err.message : String(err);
           console.warn(`[knowledge] client-side PDF extraction failed, falling back to server parsing: ${detail}`);
+          extractionFailureReason = detail.slice(0, 500);
           return undefined;
         })
       : Promise.resolve(undefined),
@@ -116,6 +116,7 @@ export async function uploadKnowledgeDocument(api: Api, file: File): Promise<Kno
       mimeType: file.type || 'application/octet-stream',
       fileBase64,
       ...(extractedText ? { extractedText } : {}),
+      ...(extractionFailureReason ? { extractionFailureReason } : {}),
     }),
   });
   if (!res.ok) throw new Error(await apiErrorMessage(res, 'Upload failed.'));

@@ -46,6 +46,9 @@ const uploadBody = z
     // When present (PDFs only), the browser already extracted this document's text — the ingest
     // pipeline uses it directly instead of re-parsing the raw file on the server.
     extractedText: z.string().max(MAX_EXTRACTED_TEXT_LENGTH).optional(),
+    // When client-side extraction was attempted but failed (falling back to server-side parsing),
+    // why — only ever visible in the browser's own console otherwise, which isn't queryable from here.
+    extractionFailureReason: z.string().max(500).optional(),
   })
   .strict();
 
@@ -113,6 +116,13 @@ export const knowledgeUploadDocumentRoute = registerApiRoute(`${OPEN_API_PREFIX}
       await checkQuota(auth.tenantId, buffer.length);
     } catch (err) {
       return openApiJsonError(c, 413, 'quota_exceeded', err instanceof Error ? err.message : 'Knowledge base limit reached.');
+    }
+
+    if (body.extractionFailureReason) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[knowledge] client-side extraction failed for tenant=${auth.tenantId} filename="${body.filename}": ${body.extractionFailureReason}`,
+      );
     }
 
     const documentId = randomUUID();
